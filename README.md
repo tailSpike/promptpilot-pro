@@ -19,7 +19,7 @@ This repo contains the full-stack application built with:
 
 ### Setup
 ```bash
-git clone https://github.com/your-org/promptpilot-pro.git
+git clone https://github.com/tailSpike/promptpilot-pro.git
 cd promptpilot-pro
 npm install
 
