@@ -1,5 +1,7 @@
 import express from 'express';
-import { prisma } from '../index';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 import { authenticate } from '../middleware/auth';
 
 const router = express.Router();
@@ -25,6 +27,23 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ 
         error: { message: 'Variables must be an array' } 
       });
+    }
+
+    // Validate variable types
+    if (variables && variables.length > 0) {
+      const validTypes = ['text', 'number', 'boolean', 'select'];
+      for (const variable of variables) {
+        if (!variable.name || typeof variable.name !== 'string') {
+          return res.status(400).json({
+            error: { message: 'Variable name is required and must be a string' }
+          });
+        }
+        if (!variable.type || !validTypes.includes(variable.type)) {
+          return res.status(400).json({
+            error: { message: `Variable type must be one of: ${validTypes.join(', ')}` }
+          });
+        }
+      }
     }
 
     // Create prompt
@@ -67,8 +86,9 @@ router.get('/', async (req, res) => {
     const userId = req.user!.id;
     const { page = '1', limit = '10', search, isPublic } = req.query;
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
+    // Parse and validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 10)); // Cap at 100
     const skip = (pageNum - 1) * limitNum;
 
     // Build where condition
@@ -83,9 +103,9 @@ router.get('/', async (req, res) => {
     if (search) {
       where.AND = {
         OR: [
-          { name: { contains: search as string, mode: 'insensitive' } },
-          { description: { contains: search as string, mode: 'insensitive' } },
-          { content: { contains: search as string, mode: 'insensitive' } }
+          { name: { contains: search as string } },
+          { description: { contains: search as string } },
+          { content: { contains: search as string } }
         ]
       };
     }
