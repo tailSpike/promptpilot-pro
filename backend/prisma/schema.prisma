@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and ownership
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  prompts   Prompt[]
+  workflows Workflow[]
+
+  @@map("users")
+}
+
+// Prompt model for structured prompts with variables
+model Prompt {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  content     String   // The actual prompt template
+  variables   Json     // Array of variable definitions
+  metadata    Json?    // Additional metadata (tags, categories, etc.)
+  version     Int      @default(1)
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId   String
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions PromptExecution[]
+  workflowSteps WorkflowStep[]
+
+  @@map("prompts")
+}
+
+// Workflow model for chaining prompts
+model Workflow {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId String
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  steps  WorkflowStep[]
+  executions WorkflowExecution[]
+
+  @@map("workflows")
+}
+
+// Workflow step model for individual steps in a workflow
+model WorkflowStep {
+  id       String @id @default(cuid())
+  order    Int
+  config   Json   // Step configuration (variables, conditions, etc.)
+
+  // Relations
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  promptId   String
+  prompt     Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_steps")
+}
+
+// Execution logs for prompts
+model PromptExecution {
+  id        String   @id @default(cuid())
+  input     Json     // Input variables and values
+  output    String   // Generated output
+  model     String   // AI model used
+  metadata  Json?    // Additional execution metadata
+  createdAt DateTime @default(now())
+
+  // Relations
+  promptId String
+  prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@map("prompt_executions")
+}
+
+// Workflow execution logs
+model WorkflowExecution {
+  id        String   @id @default(cuid())
+  input     Json     // Initial input
+  output    Json     // Final output
+  status    ExecutionStatus @default(PENDING)
+  metadata  Json?    // Execution metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_executions")
+}
+
+// Enums
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
