@@ -30,8 +30,9 @@ export default function PromptEditor() {
       setLoading(true);
       const response = await promptsAPI.getPrompt(promptId);
       setPrompt(response.prompt);
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to load prompt');
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(error.response?.data?.error?.message || 'Failed to load prompt');
     } finally {
       setLoading(false);
     }
@@ -59,8 +60,9 @@ export default function PromptEditor() {
           navigate('/prompts');
         }, 1500);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to save prompt');
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(error.response?.data?.error?.message || 'Failed to save prompt');
     } finally {
       setLoading(false);
     }
@@ -79,7 +81,7 @@ export default function PromptEditor() {
     }));
   };
 
-  const updateVariable = (index: number, field: keyof Variable, value: any) => {
+  const updateVariable = (index: number, field: keyof Variable, value: string | boolean | string[]) => {
     setPrompt(prev => ({
       ...prev,
       variables: prev.variables?.map((variable, i) => 

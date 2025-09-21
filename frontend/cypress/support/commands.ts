@@ -44,7 +44,7 @@ function loginUser(email: string, password: string) {
 }
 
 // Export functions for use in tests
-(window as any).testUtils = {
+(window as unknown as { testUtils: Record<string, unknown> }).testUtils = {
   waitForBackend,
   registerUser,
   loginUser

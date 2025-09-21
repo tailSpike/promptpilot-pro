@@ -56,4 +56,4 @@ export interface CreatePromptData {
   isPublic?: boolean;
 }
 
-export interface UpdatePromptData extends Partial<CreatePromptData> {}
+export type UpdatePromptData = Partial<CreatePromptData>;

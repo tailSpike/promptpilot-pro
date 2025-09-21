@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { promptsAPI } from '../services/api';
 import type { Prompt } from '../types';
@@ -11,11 +11,7 @@ export default function PromptList() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  useEffect(() => {
-    loadPrompts();
-  }, [page, search]);
-
-  const loadPrompts = async () => {
+  const loadPrompts = useCallback(async () => {
     try {
       setLoading(true);
       const response = await promptsAPI.getPrompts({
@@ -25,12 +21,17 @@ export default function PromptList() {
       });
       setPrompts(response.prompts);
       setTotalPages(response.pagination.pages);
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to load prompts');
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(error.response?.data?.error?.message || 'Failed to load prompts');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, search]);
+
+  useEffect(() => {
+    loadPrompts();
+  }, [loadPrompts]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this prompt?')) {
@@ -40,8 +41,9 @@ export default function PromptList() {
     try {
       await promptsAPI.deletePrompt(id);
       loadPrompts(); // Reload the list
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to delete prompt');
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(error.response?.data?.error?.message || 'Failed to delete prompt');
     }
   };
 

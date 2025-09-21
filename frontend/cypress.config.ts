@@ -12,7 +12,7 @@ export default defineConfig({
     waitForAnimations: false,
     animationDistanceThreshold: 2,
     chromeWebSecurity: false,
-    setupNodeEvents(_on, _config) {
+    setupNodeEvents() {
       // implement node event listeners here
     },
     env: {
