@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { promptsAPI, type Prompt } from '../services/api';
+import { promptsAPI } from '../services/api';
+import type { Prompt } from '../types';
 
 export default function PromptList() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);

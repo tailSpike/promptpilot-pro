@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { CreatePromptData, UpdatePromptData } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -32,63 +33,15 @@ api.interceptors.response.use(
   }
 );
 
-// Types
-export interface User {
-  id: string;
-  email: string;
-  name?: string;
-  role: string;
-  createdAt: string;
-}
-
-export interface Prompt {
-  id: string;
-  name: string;
-  description?: string;
-  content: string;
-  variables: Variable[];
-  metadata: Record<string, any>;
-  version: number;
-  isPublic: boolean;
-  createdAt: string;
-  updatedAt: string;
-  user: {
-    id: string;
-    name?: string;
-    email: string;
-  };
-  _count?: {
-    executions: number;
-  };
-}
-
-export interface Variable {
-  name: string;
-  type: 'text' | 'number' | 'boolean' | 'select';
-  description?: string;
-  required?: boolean;
-  defaultValue?: any;
-  options?: string[]; // For select type
-}
-
-export interface PromptExecution {
-  id: string;
-  input: Record<string, any>;
-  output: string;
-  model: string;
-  createdAt: string;
-}
-
-export interface CreatePromptData {
-  name: string;
-  description?: string;
-  content: string;
-  variables?: Variable[];
-  metadata?: Record<string, any>;
-  isPublic?: boolean;
-}
-
-export interface UpdatePromptData extends Partial<CreatePromptData> {}
+// Re-export types for convenience
+export type { 
+  User, 
+  Variable, 
+  Prompt, 
+  PromptExecution, 
+  CreatePromptData, 
+  UpdatePromptData 
+} from '../types';
 
 // Auth API
 export const authAPI = {
@@ -140,7 +93,7 @@ export const promptsAPI = {
     return response.data;
   },
 
-  executePrompt: async (id: string, variables: Record<string, any>, model?: string) => {
+  executePrompt: async (id: string, variables: Record<string, unknown>, model?: string) => {
     const response = await api.post(`/prompts/${id}/execute`, { 
       variables, 
       model: model || 'gpt-4' 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { promptsAPI, type Prompt, type Variable, type CreatePromptData } from '../services/api';
+import { promptsAPI } from '../services/api';
+import type { Prompt, Variable, CreatePromptData } from '../types';
 
 export default function PromptEditor() {
   const [prompt, setPrompt] = useState<Partial<Prompt>>({
