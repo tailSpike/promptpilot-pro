@@ -3,7 +3,6 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 2020,
     sourceType: 'module',
-    project: './tsconfig.json',
   },
   plugins: ['@typescript-eslint'],
   extends: [
@@ -22,7 +21,7 @@ module.exports = {
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-namespace': 'warn',
     '@typescript-eslint/no-require-imports': 'warn',
-    'no-console': 'off', // Allow console.log for server logging
+    'no-console': 'off',
   },
-  ignorePatterns: ['dist/', 'node_modules/', '*.js'],
+  ignorePatterns: ['dist/', 'node_modules/', '*.js', 'jest.config.js'],
 };

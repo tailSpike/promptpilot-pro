@@ -6,7 +6,7 @@ function waitForBackend() {
   
   return cy.request({
     method: 'GET',
-    url: `${apiUrl}/health`,
+    url: `${apiUrl}/api/health`,
     timeout: 30000,
     retryOnStatusCodeFailure: true
   });
