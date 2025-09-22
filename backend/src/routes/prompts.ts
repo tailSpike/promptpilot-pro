@@ -92,7 +92,7 @@ router.get('/', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     // Build where condition
-    const where: any = {
+    const where: Record<string, unknown> = {
       OR: [
         { userId }, // User's own prompts
         ...(isPublic !== 'false' ? [{ isPublic: true }] : []) // Public prompts (unless explicitly excluded)
@@ -334,7 +334,7 @@ router.post('/:id/execute', async (req, res) => {
 
     // Process prompt content with variables
     let processedContent = prompt.content;
-    const promptVariables = prompt.variables as any[];
+    const promptVariables = prompt.variables as Array<{ name: string; type: string; required?: boolean }>;
 
     // Replace variables in content
     if (inputVariables && typeof inputVariables === 'object') {
