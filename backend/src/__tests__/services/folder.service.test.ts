@@ -128,7 +128,7 @@ describe('FolderService', () => {
         name: 'Root 1'
       });
 
-      const root2 = await FolderService.createFolder(testUserId, {
+      const _root2 = await FolderService.createFolder(testUserId, {
         name: 'Root 2'
       });
 
@@ -137,7 +137,7 @@ describe('FolderService', () => {
         parentId: root1.id
       });
 
-      const grandchild = await FolderService.createFolder(testUserId, {
+      const _grandchild = await FolderService.createFolder(testUserId, {
         name: 'Grandchild',
         parentId: child1.id
       });
@@ -151,9 +151,11 @@ describe('FolderService', () => {
 
       expect(root1Result).toBeDefined();
       expect(root1Result!.children).toHaveLength(1);
-      expect(root1Result!.children![0].name).toBe('Child 1');
-      expect(root1Result!.children![0].children).toHaveLength(1);
-      expect(root1Result!.children![0].children![0].name).toBe('Grandchild');
+      const child1Folder = root1Result!.children![0] as any;
+      expect(child1Folder?.name).toBe('Child 1');
+      expect(child1Folder?.children).toHaveLength(1);
+      const grandchildFolder = child1Folder?.children?.[0] as any;
+      expect(grandchildFolder?.name).toBe('Grandchild');
 
       expect(root2Result).toBeDefined();
       expect(root2Result!.children).toHaveLength(0);
@@ -233,7 +235,7 @@ describe('FolderService', () => {
         name: 'To Delete'
       });
 
-      const childFolder = await FolderService.createFolder(testUserId, {
+      const _childFolder = await FolderService.createFolder(testUserId, {
         name: 'Child',
         parentId: folder.id
       });
@@ -254,8 +256,9 @@ describe('FolderService', () => {
       // Check that child folder moved to root
       const folders = await FolderService.getUserFolders(testUserId);
       expect(folders).toHaveLength(1);
-      expect(folders[0].name).toBe('Child');
-      expect(folders[0].parentId).toBeNull();
+      const firstFolder = folders[0] as any;
+      expect(firstFolder?.name).toBe('Child');
+      expect(firstFolder?.parentId).toBeNull();
 
       // Check that prompt moved to root
       const updatedPrompt = await prisma.prompt.findUnique({
@@ -273,7 +276,7 @@ describe('FolderService', () => {
         name: 'To Delete'
       });
 
-      const childFolder = await FolderService.createFolder(testUserId, {
+      const _childFolder = await FolderService.createFolder(testUserId, {
         name: 'Child',
         parentId: folderToDelete.id
       });
@@ -281,11 +284,12 @@ describe('FolderService', () => {
       await FolderService.deleteFolder(testUserId, folderToDelete.id, targetFolder.id);
 
       const folders = await FolderService.getUserFolders(testUserId);
-      const target = folders.find(f => f.name === 'Target');
+      const target = folders.find(f => (f as any).name === 'Target');
       
       expect(target).toBeDefined();
       expect(target!.children).toHaveLength(1);
-      expect(target!.children![0].name).toBe('Child');
+      const targetChild = target!.children![0] as any;
+      expect(targetChild?.name).toBe('Child');
     });
   });
 });

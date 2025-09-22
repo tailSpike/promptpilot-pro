@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma';
-import type { Folder, User, PrismaClient } from '@prisma/client';
+import type { Folder } from '@prisma/client';
 
 export interface CreateFolderData {
   name: string;
