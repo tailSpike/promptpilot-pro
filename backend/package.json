@@ -13,9 +13,11 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "test": "jest --runInBand",
+    "test:unit": "jest --config jest.config.unit.js --runInBand",
+    "test:integration": "jest --config jest.config.integration.js --runInBand",
+    "test:all": "npm run test:unit && npm run test:integration",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage --runInBand",
-    "test:integration": "jest --testPathPattern=integration"
+    "test:coverage": "jest --coverage --runInBand"
   },
   "keywords": [],
   "author": "",
