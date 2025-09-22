@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 
 // Extend Express Request type to include user
 declare module 'express-serve-static-core' {
@@ -25,7 +23,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret') as { userId: string; email: string };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret') as jwt.JwtPayload & { userId: string; email: string };
     
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
