@@ -128,6 +128,7 @@ describe('FolderService', () => {
         name: 'Root 1'
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _root2 = await FolderService.createFolder(testUserId, {
         name: 'Root 2'
       });
@@ -137,6 +138,7 @@ describe('FolderService', () => {
         parentId: root1.id
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _grandchild = await FolderService.createFolder(testUserId, {
         name: 'Grandchild',
         parentId: child1.id
@@ -235,6 +237,7 @@ describe('FolderService', () => {
         name: 'To Delete'
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _childFolder = await FolderService.createFolder(testUserId, {
         name: 'Child',
         parentId: folder.id
@@ -276,6 +279,7 @@ describe('FolderService', () => {
         name: 'To Delete'
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _childFolder = await FolderService.createFolder(testUserId, {
         name: 'Child',
         parentId: folderToDelete.id

@@ -293,7 +293,8 @@ describe('Folder API Integration Tests', () => {
         .send({ name: 'To Delete' });
 
       // Create child folder
-      const childResponse = await request(app)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _childResponse = await request(app)
         .post('/api/folders')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ 
