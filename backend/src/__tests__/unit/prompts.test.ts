@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import authRoutes from '../../routes/auth';
 import promptRoutes from '../../routes/prompts';
-import { prisma } from '../test-setup';
 
 const app = express();
 app.use(cors());
@@ -13,7 +12,6 @@ app.use('/api/prompts', promptRoutes);
 
 describe('Prompt Routes - Epic 1, Story 1: Structured Prompt Creation', () => {
   let authToken: string;
-  let userId: string;
 
   beforeEach(async () => {
     // Create and login user for each test
@@ -26,7 +24,6 @@ describe('Prompt Routes - Epic 1, Story 1: Structured Prompt Creation', () => {
       });
 
     authToken = registerResponse.body.token;
-    userId = registerResponse.body.user.id;
   });
 
   describe('POST /api/prompts - Create Structured Prompt with Variables', () => {

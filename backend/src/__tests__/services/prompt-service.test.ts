@@ -1,7 +1,15 @@
 import { prisma } from '../test-setup';
 
+// Define variable interface for type safety
+interface Variable {
+  name?: string;
+  type?: string;
+  required?: boolean;
+  options?: string[];
+}
+
 // Mock service functions for testing business logic
-const validateVariable = (variable: any): boolean | string => {
+const validateVariable = (variable: Variable): boolean | string => {
   if (!variable.name || !variable.type) return false;
   if (!['text', 'number', 'select', 'multiselect'].includes(variable.type)) return false;
   if (variable.type === 'select' && (!variable.options || !Array.isArray(variable.options))) return false;
@@ -46,7 +54,7 @@ describe('Prompt Service Logic', () => {
       ];
 
       // Simulate variable validation logic
-      const validateVariable = (variable: any) => {
+      const validateVariable = (variable: Variable) => {
         const validTypes = ['text', 'number', 'boolean', 'select'];
         return variable.name && 
                typeof variable.name === 'string' && 

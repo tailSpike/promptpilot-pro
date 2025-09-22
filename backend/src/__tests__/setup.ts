@@ -12,7 +12,7 @@ const prisma = new PrismaClient({
 // Suppress console errors in tests to avoid noise
 const originalConsoleError = console.error;
 beforeAll(() => {
-  console.error = (...args: any[]) => {
+  console.error = (...args: unknown[]) => {
     // Suppress JWT-related errors during testing
     const message = args[0]?.toString() || '';
     const allArgs = args.join(' ').toString();

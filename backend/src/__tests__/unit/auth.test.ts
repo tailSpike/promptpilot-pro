@@ -2,10 +2,6 @@ import request from 'supertest';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from '../../routes/auth';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import * as authService from '../../services/auth-service';
-import { hashPassword, comparePassword, generateToken, verifyToken } from '../../services/auth-service';
 
 const app = express();
 app.use(cors());
