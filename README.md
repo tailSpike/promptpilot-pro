@@ -174,4 +174,4 @@ Detailed documentation available in `/docs`:
 
 ## 📜 License
 
-This project is licensed under the MIT License.
+This project is proprietary software owned by Rodney Palmer. All rights reserved.
