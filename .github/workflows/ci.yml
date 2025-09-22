@@ -2,14 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, 'feature/*' ]
   pull_request:
     branches: [ main, master, develop ]
 
 jobs:
-  test:
+  backend-ci:
     runs-on: ubuntu-latest
-
+    name: Backend CI
+    
+    env:
+      DATABASE_URL: 'file:./test.db'
+      JWT_SECRET: 'test-jwt-secret-key-for-ci'
+      NODE_ENV: 'test'
+    
     strategy:
       matrix:
         node-version: [18.x, 20.x]
@@ -22,21 +28,63 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
     
-    - name: Install dependencies
+    - name: Install backend dependencies
+      working-directory: ./backend
       run: npm ci
     
-    - name: Run linter
+    - name: Setup test database
+      working-directory: ./backend
+      run: |
+        npx prisma generate
+        npx prisma db push --force-reset
+    
+    - name: Run backend linter
+      working-directory: ./backend
       run: npm run lint --if-present
     
-    - name: Run tests
-      run: npm test --if-present
+    - name: Run backend tests (unit + integration)
+      working-directory: ./backend
+      run: npm run test:all
     
-    - name: Build project
+    - name: Build backend
+      working-directory: ./backend
       run: npm run build --if-present
 
-  security-audit:
+  frontend-ci:
     runs-on: ubuntu-latest
+    name: Frontend CI
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Run frontend linter
+      working-directory: ./frontend
+      run: npm run lint --if-present
+    
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+
+  backend-security-audit:
+    runs-on: ubuntu-latest
+    name: Backend Security Audit
     steps:
     - uses: actions/checkout@v4
     
@@ -45,9 +93,33 @@ jobs:
       with:
         node-version: '20.x'
         cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
     
-    - name: Install dependencies
+    - name: Install backend dependencies
+      working-directory: ./backend
       run: npm ci
     
-    - name: Run security audit
+    - name: Run backend security audit
+      working-directory: ./backend
+      run: npm audit --audit-level high
+
+  frontend-security-audit:
+    runs-on: ubuntu-latest
+    name: Frontend Security Audit
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Run frontend security audit
+      working-directory: ./frontend
       run: npm audit --audit-level high
