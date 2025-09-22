@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, 'feature/*' ]
   pull_request:
     branches: [ main, master, develop ]
 
@@ -10,6 +10,11 @@ jobs:
   backend-ci:
     runs-on: ubuntu-latest
     name: Backend CI
+    
+    env:
+      DATABASE_URL: 'file:./test.db'
+      JWT_SECRET: 'test-jwt-secret-key-for-ci'
+      NODE_ENV: 'test'
     
     strategy:
       matrix:
@@ -29,13 +34,19 @@ jobs:
       working-directory: ./backend
       run: npm ci
     
+    - name: Setup test database
+      working-directory: ./backend
+      run: |
+        npx prisma generate
+        npx prisma db push --force-reset
+    
     - name: Run backend linter
       working-directory: ./backend
       run: npm run lint --if-present
     
-    - name: Run backend tests
+    - name: Run backend tests (unit + integration)
       working-directory: ./backend
-      run: npm test
+      run: npm run test:all
     
     - name: Build backend
       working-directory: ./backend
