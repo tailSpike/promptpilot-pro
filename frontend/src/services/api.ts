@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { CreatePromptData, UpdatePromptData } from '../types';
+import type { CreatePromptData, UpdatePromptData, CreateFolderData, UpdateFolderData } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -40,7 +40,10 @@ export type {
   Prompt, 
   PromptExecution, 
   CreatePromptData, 
-  UpdatePromptData 
+  UpdatePromptData,
+  Folder,
+  CreateFolderData,
+  UpdateFolderData
 } from '../types';
 
 // Auth API
@@ -98,6 +101,35 @@ export const promptsAPI = {
       variables, 
       model: model || 'gpt-4' 
     });
+    return response.data;
+  },
+};
+
+// Folders API
+export const foldersAPI = {
+  getFolders: async () => {
+    const response = await api.get('/folders');
+    return response.data;
+  },
+
+  getFolder: async (id: string) => {
+    const response = await api.get(`/folders/${id}`);
+    return response.data;
+  },
+
+  createFolder: async (data: CreateFolderData) => {
+    const response = await api.post('/folders', data);
+    return response.data;
+  },
+
+  updateFolder: async (id: string, data: UpdateFolderData) => {
+    const response = await api.put(`/folders/${id}`, data);
+    return response.data;
+  },
+
+  deleteFolder: async (id: string, moveToFolderId?: string) => {
+    const params = moveToFolderId ? { moveToFolderId } : {};
+    const response = await api.delete(`/folders/${id}`, { params });
     return response.data;
   },
 };

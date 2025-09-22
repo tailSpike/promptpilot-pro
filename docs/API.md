@@ -15,7 +15,71 @@ This document defines the core RESTful endpoints for PromptPilot Pro. These APIs
 
 ---
 
-## 📘 Prompt Endpoints
+## � Folder Endpoints
+
+### `POST /folders`
+Create a new folder  
+**Body:**
+```json
+{
+  "name": "My Folder",
+  "description": "Optional description",
+  "color": "#3B82F6",
+  "parentId": "optional-parent-folder-id"
+}
+```
+
+### `GET /folders`
+Retrieve all folders in hierarchical structure
+**Response:**
+```json
+{
+  "message": "Folders retrieved successfully",
+  "folders": [
+    {
+      "id": "folder_123",
+      "name": "My Folder",
+      "description": "A sample folder",
+      "color": "#3B82F6",
+      "parentId": null,
+      "children": [
+        {
+          "id": "folder_456",
+          "name": "Subfolder",
+          "parentId": "folder_123",
+          "children": [],
+          "_count": { "prompts": 5, "children": 0 }
+        }
+      ],
+      "_count": { "prompts": 10, "children": 1 }
+    }
+  ]
+}
+```
+
+### `GET /folders/:id`
+Retrieve folder details with contents
+
+### `PUT /folders/:id`
+Update folder properties
+**Body:**
+```json
+{
+  "name": "Updated Name",
+  "description": "Updated description",
+  "color": "#EF4444",
+  "parentId": "new-parent-id"
+}
+```
+
+### `DELETE /folders/:id`
+Delete folder and optionally move contents
+**Query Parameters:**
+- `moveToFolderId` (optional): ID of folder to move contents to
+
+---
+
+## �📘 Prompt Endpoints
 
 ### `POST /prompts`
 Create a new prompt  
@@ -28,7 +92,9 @@ Create a new prompt
   "metadata": {
     "category": "summarization",
     "tags": ["meeting", "summary"]
-  }
+  },
+  "folderId": "optional-folder-id",
+  "isPublic": false
 }
 ```
 

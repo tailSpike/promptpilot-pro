@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { promptsAPI } from '../services/api';
-import type { Prompt } from '../types';
+import { promptsAPI, foldersAPI } from '../services/api';
+import type { Prompt, Folder } from '../types';
+import FolderTreeView from './FolderTreeView';
+import FolderModal from './FolderModal';
 
 export default function PromptList() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -10,6 +12,21 @@ export default function PromptList() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  
+  // Folder-related state
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [folderModalParentId, setFolderModalParentId] = useState<string | undefined>();
+
+  const loadFolders = useCallback(async () => {
+    try {
+      const response = await foldersAPI.getFolders();
+      setFolders(response.folders || []);
+    } catch (err) {
+      console.error('Failed to load folders:', err);
+    }
+  }, []);
 
   const loadPrompts = useCallback(async () => {
     try {
@@ -18,8 +35,18 @@ export default function PromptList() {
         page,
         limit: 10,
         search: search || undefined,
+        // TODO: Add folderId filter once backend supports it
       });
-      setPrompts(response.prompts);
+      
+      // Filter prompts by selected folder on frontend for now
+      let filteredPrompts = response.prompts;
+      if (selectedFolderId !== null) {
+        filteredPrompts = response.prompts.filter((prompt: Prompt) => prompt.folderId === selectedFolderId);
+      } else {
+        filteredPrompts = response.prompts.filter((prompt: Prompt) => !prompt.folderId);
+      }
+      
+      setPrompts(filteredPrompts);
       setTotalPages(response.pagination.pages);
     } catch (err) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
@@ -27,11 +54,12 @@ export default function PromptList() {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, selectedFolderId]);
 
   useEffect(() => {
     loadPrompts();
-  }, [loadPrompts]);
+    loadFolders();
+  }, [loadPrompts, loadFolders]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this prompt?')) {
@@ -53,6 +81,21 @@ export default function PromptList() {
     loadPrompts();
   };
 
+  const handleFolderSelect = (folderId: string | null) => {
+    setSelectedFolderId(folderId);
+    setPage(1); // Reset to first page when changing folders
+  };
+
+  const handleCreateFolder = (parentId?: string) => {
+    setFolderModalParentId(parentId);
+    setShowFolderModal(true);
+  };
+
+  const handleFolderModalSuccess = () => {
+    loadFolders(); // Reload folders
+    setShowFolderModal(false);
+  };
+
   if (loading && prompts.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -62,19 +105,32 @@ export default function PromptList() {
   }
 
   return (
-    <div className="px-4 py-6 sm:px-0">
-      <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Your Prompts</h1>
-            <p className="mt-2 text-gray-600">
-              Manage your structured prompts with variables and metadata.
-            </p>
-          </div>
-          <Link
-            to="/prompts/new"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-          >
+    <div className="flex h-full">
+      {/* Sidebar with folder tree */}
+      <div className="w-80 bg-gray-50 border-r border-gray-200 flex-shrink-0">
+        <FolderTreeView
+          onFolderSelect={handleFolderSelect}
+          selectedFolderId={selectedFolderId}
+          onCreateFolder={handleCreateFolder}
+        />
+      </div>
+
+      {/* Main content area */}
+      <div className="flex-1 px-4 py-6 sm:px-6">
+        <div className="mb-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {selectedFolderId === null ? 'All Prompts' : 'Folder Prompts'}
+              </h1>
+              <p className="mt-2 text-gray-600">
+                Manage your structured prompts with variables and metadata.
+              </p>
+            </div>
+            <Link
+              to="/prompts/new"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            >
             Create New Prompt
           </Link>
         </div>
@@ -206,6 +262,16 @@ export default function PromptList() {
           </nav>
         </div>
       )}
+      </div>
+
+      {/* Folder Modal */}
+      <FolderModal
+        isOpen={showFolderModal}
+        onClose={() => setShowFolderModal(false)}
+        onSuccess={handleFolderModalSuccess}
+        parentFolderId={folderModalParentId}
+        allFolders={folders}
+      />
     </div>
   );
 }
