@@ -129,7 +129,7 @@ export class AuthService {
         process.env.JWT_SECRET || 'fallback-secret'
       ) as { userId: string; email: string };
       return decoded;
-    } catch (error) {
+    } catch {
       throw new Error('Invalid token');
     }
   }
