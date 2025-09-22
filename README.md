@@ -36,20 +36,31 @@ cd promptpilot-pro
 
 # Backend setup
 cd backend
+cp .env.example .env  # Copy and configure environment variables
 npm install
 npx prisma generate
 npx prisma db push    # Creates SQLite database
 npm run dev           # Runs on http://localhost:3001
 
 # Frontend setup (new terminal)
-cd frontend  
+cd frontend
+cp .env.example .env  # Copy and configure environment variables  
 npm install
 npm run dev           # Runs on http://localhost:5173
 
 ```
 
 ### Environment Variables
-Create `.env` files in both backend and frontend directories:
+Copy the example files and configure as needed:
+```bash
+# Backend
+cp backend/.env.example backend/.env
+
+# Frontend  
+cp frontend/.env.example frontend/.env
+```
+
+Environment variable templates:
 
 **Backend (.env):**
 ```env
