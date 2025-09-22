@@ -13,32 +13,32 @@ beforeEach(async () => {
   // Clean database before each test - order matters due to foreign keys
   try {
     await prisma.promptExecution.deleteMany();
-  } catch (_e) {
+  } catch {
     // Table might not exist yet
   }
   try {
     await prisma.workflowExecution.deleteMany();
-  } catch (_e) {
+  } catch {
     // Table might not exist yet
   }
   try {
     await prisma.workflowStep.deleteMany();
-  } catch (_e) {
+  } catch {
     // Table might not exist yet
   }
   try {
     await prisma.prompt.deleteMany();
-  } catch (_e) {
+  } catch {
     // Table might not exist yet
   }
   try {
     await prisma.workflow.deleteMany();
-  } catch (_e) {
+  } catch {
     // Table might not exist yet
   }
   try {
     await prisma.user.deleteMany();
-  } catch (_e) {
+  } catch {
     // Table might not exist yet
   }
 });
