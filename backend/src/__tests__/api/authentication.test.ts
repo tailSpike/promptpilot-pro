@@ -1,8 +1,8 @@
 import request from 'supertest';
 import express from 'express';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 import authRoutes from '../../routes/auth';
-import { prisma } from '../test-setup';
 
 const app = express();
 app.use(cors());
@@ -188,7 +188,6 @@ describe('Authentication API', () => {
 
     it('should handle token for non-existent user', async () => {
       // Create a valid token for a non-existent user
-      const jwt = require('jsonwebtoken');
       const fakeToken = jwt.sign(
         { userId: 'non-existent-user-id' },
         process.env.JWT_SECRET || 'fallback-secret'

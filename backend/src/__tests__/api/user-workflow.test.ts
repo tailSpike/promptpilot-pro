@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import authRoutes from '../../routes/auth';
 import promptRoutes from '../../routes/prompts';
-import { prisma } from '../test-setup';
 
 const app = express();
 app.use(cors());
@@ -148,8 +147,8 @@ The {{companyName}} Team`,
       expect(createdPrompt.isPublic).toBe(false);
 
       // Step 4: Verify Variables are Properly Structured
-      const requiredVariables = createdPrompt.variables.filter((v: any) => v.required);
-      const optionalVariables = createdPrompt.variables.filter((v: any) => !v.required);
+      const requiredVariables = createdPrompt.variables.filter((v: { required: boolean }) => v.required);
+      const optionalVariables = createdPrompt.variables.filter((v: { required: boolean }) => !v.required);
       
       expect(requiredVariables).toHaveLength(5);
       expect(optionalVariables).toHaveLength(3);
@@ -188,7 +187,7 @@ Best regards,
         isPublic: false
       };
 
-      const createSecondPromptResponse = await request(app)
+      await request(app)
         .post('/api/prompts')
         .set('Authorization', `Bearer ${authToken}`)
         .send(meetingPromptData)
