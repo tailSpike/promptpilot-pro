@@ -36,6 +36,15 @@ Epic 1 focuses on the core prompt management capabilities that form the foundati
 - Visual diff comparison and branching support
 - Collaborative version management with approval workflows
 
+### Story 4: Enhanced Metadata & Preview System 📋 NOT STARTED
+**User Story:** As a user, I want comprehensive tagging, real-time preview, and advanced filtering so I can efficiently manage and discover prompts.
+📄 **[View Full Story Details](./EPIC1_STORY4.md)**
+
+**Key Features:**
+- Comprehensive tags and categories system
+- Real-time preview with live variable substitution
+- Advanced search and filtering capabilities
+
 ---
 
 ## 🔄 Epic 2: Workflow Automation
