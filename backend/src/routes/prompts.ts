@@ -111,7 +111,7 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const userId = req.user!.id;
-    const { page = '1', limit = '10', search, isPublic } = req.query;
+    const { page = '1', limit = '10', search, isPublic, folderId } = req.query;
 
     // Parse and validate pagination parameters
     const pageNum = Math.max(1, parseInt(String(page)) || 1);
@@ -135,6 +135,22 @@ router.get('/', async (req, res) => {
           { content: { contains: search as string } }
         ]
       };
+    }
+
+    // Add folder filter
+    if (folderId !== undefined) {
+      // Handle both explicit folderId and null/empty for uncategorized
+      const folderFilter = folderId === '' || folderId === 'null' ? null : folderId;
+      
+      // If we already have an AND condition from search, merge the folder filter
+      if (where.AND) {
+        where.AND = {
+          ...where.AND,
+          folderId: folderFilter
+        };
+      } else {
+        where.folderId = folderFilter;
+      }
     }
 
     const [prompts, total] = await Promise.all([

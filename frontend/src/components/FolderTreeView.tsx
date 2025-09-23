@@ -3,8 +3,8 @@ import { foldersAPI } from '../services/api';
 import type { Folder } from '../types';
 
 interface FolderTreeViewProps {
-  onFolderSelect?: (folderId: string | null) => void;
-  selectedFolderId?: string | null;
+  onFolderSelect?: (folderId: string | null | 'uncategorized') => void;
+  selectedFolderId?: string | null | 'uncategorized';
   onCreateFolder?: (parentId?: string) => void;
   onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
   onFolderChange?: () => void;
@@ -17,8 +17,8 @@ export interface FolderTreeViewRef {
 interface FolderNodeProps {
   folder: Folder;
   level: number;
-  onFolderSelect?: (folderId: string | null) => void;
-  selectedFolderId?: string | null;
+  onFolderSelect?: (folderId: string | null | 'uncategorized') => void;
+  selectedFolderId?: string | null | 'uncategorized';
   onCreateFolder?: (parentId?: string) => void;
   onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
   onFolderUpdate?: () => void;
@@ -177,10 +177,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
         </div>
         
         <div className="flex items-center flex-1 min-w-0">
-          <div
-            className="w-4 h-4 rounded-sm mr-2 flex-shrink-0"
-            style={{ backgroundColor: folder.color || '#6B7280' }}
-          />
+          <span className="mr-2 text-base">📁</span>
           
           {isEditing ? (
             <input
@@ -286,6 +283,7 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isDragOverAllPrompts, setIsDragOverAllPrompts] = useState(false);
+  const [folderCounts, setFolderCounts] = useState<{ total: number; uncategorized: number }>({ total: 0, uncategorized: 0 });
 
   useEffect(() => {
     loadFolders();
@@ -296,6 +294,7 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
       setLoading(true);
       const response = await foldersAPI.getFolders();
       setFolders(response.folders || []);
+      setFolderCounts(response.counts || { total: 0, uncategorized: 0 });
     } catch (err) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setError(error.response?.data?.error?.message || 'Failed to load folders');
@@ -383,9 +382,9 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
           </button>
         </div>
 
-        {/* All Prompts (Root) */}
+        {/* All Prompts (View All) */}
         <div
-          className={`flex items-center px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md mb-1 transition-colors ${
+          className={`flex items-center justify-between px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md mb-1 transition-colors ${
             selectedFolderId === null ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
           } ${
             isDragOverAllPrompts ? 'bg-green-50 ring-2 ring-green-200 ring-inset' : ''
@@ -395,9 +394,38 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
           onDragLeave={handleAllPromptsDragLeave}
           onDrop={handleAllPromptsDrop}
         >
-          <div className="w-4 h-4 rounded-sm mr-2 bg-gray-400" />
-          <span className="text-sm">All Prompts</span>
+          <div className="flex items-center">
+            <span className="mr-2 text-base">🔍</span>
+            <span className="text-sm">All Prompts</span>
+          </div>
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+            {folderCounts.total}
+          </span>
         </div>
+
+        {/* Uncategorized (Actual folder for unorganized prompts) */}
+        <div
+          className={`flex items-center justify-between px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md mb-1 transition-colors ${
+            selectedFolderId === 'uncategorized' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+          }`}
+          onClick={() => onFolderSelect?.('uncategorized')}
+          onDragOver={handleAllPromptsDragOver}
+          onDragLeave={handleAllPromptsDragLeave}
+          onDrop={handleAllPromptsDrop}
+        >
+          <div className="flex items-center">
+            <span className="mr-2 text-base">📂</span>
+            <span className="text-sm">Uncategorized</span>
+          </div>
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+            {folderCounts.uncategorized}
+          </span>
+        </div>
+
+        {/* Visual separator */}
+        {folders.length > 0 && (
+          <div className="border-t border-gray-200 my-2"></div>
+        )}
       </div>
 
       {/* Folder Tree */}

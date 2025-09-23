@@ -196,10 +196,18 @@ export class VersionService {
         variables: targetVersion.variables,
         metadata: targetVersion.metadata,
         folderId: targetVersion.folderId, // Also revert the folder location
-        // version: targetVersion.versionNumber, // Skip for now
-        // currentVersionId: targetVersion.id, // Skip for now
         updatedAt: new Date()
       }
+    });
+    
+    // Create a new version to record the revert action
+    const revertCommitMessage = `Reverted to version ${targetVersion.versionNumber}`;
+    
+    await this.createVersion({
+      promptId,
+      userId,
+      commitMessage: revertCommitMessage,
+      changeType: 'PATCH' as VersionChangeType
     });
     
     return updatedPrompt;

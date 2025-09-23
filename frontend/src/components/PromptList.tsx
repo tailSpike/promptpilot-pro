@@ -14,7 +14,7 @@ export default function PromptList() {
   const [totalPages, setTotalPages] = useState(1);
   
   // Folder-related state
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null | 'uncategorized'>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [folderModalParentId, setFolderModalParentId] = useState<string | undefined>();
@@ -43,11 +43,22 @@ export default function PromptList() {
   const loadPrompts = useCallback(async () => {
     try {
       setLoading(true);
+      
+      // Handle special folder selection cases
+      let folderIdParam: string | undefined;
+      if (selectedFolderId === 'uncategorized') {
+        folderIdParam = 'null'; // Send 'null' string to indicate uncategorized prompts
+      } else if (selectedFolderId === null) {
+        folderIdParam = undefined; // Don't filter by folder - show all prompts
+      } else {
+        folderIdParam = selectedFolderId; // Send the actual folder ID
+      }
+      
       const response = await promptsAPI.getPrompts({
         page,
         limit: 10,
         search: search || undefined,
-        folderId: selectedFolderId || undefined,
+        folderId: folderIdParam,
       });
       
       setPrompts(response.prompts);
@@ -85,7 +96,7 @@ export default function PromptList() {
     loadPrompts();
   };
 
-  const handleFolderSelect = (folderId: string | null) => {
+  const handleFolderSelect = (folderId: string | null | 'uncategorized') => {
     setSelectedFolderId(folderId);
     setPage(1); // Reset to first page when changing folders
   };
@@ -161,10 +172,14 @@ export default function PromptList() {
             <div className="flex justify-between items-center">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">
-                  {selectedFolderId === null ? 'All Prompts' : 'Folder Prompts'}
+                  {selectedFolderId === null ? 'All Prompts' : 
+                   selectedFolderId === 'uncategorized' ? 'Uncategorized Prompts' : 
+                   'Folder Prompts'}
                 </h1>
                 <p className="mt-2 text-gray-600">
-                  Manage your structured prompts with variables and metadata. Drag prompts to move them between folders.
+                  {selectedFolderId === null ? 'View all your prompts across all folders. Drag prompts to move them between folders.' :
+                   selectedFolderId === 'uncategorized' ? 'Prompts that haven\'t been organized into folders yet. Drag them to folders to organize.' :
+                   'Manage your structured prompts with variables and metadata. Drag prompts to move them between folders.'}
                 </p>
               </div>
               <Link
@@ -255,13 +270,17 @@ export default function PromptList() {
                       <div>
                         Updated: {new Date(prompt.updatedAt).toLocaleDateString()}
                       </div>
-                      {prompt.folder && (
-                        <div className="flex items-center">
+                      <div className="flex items-center">
+                        {prompt.folder ? (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             📁 {prompt.folder.name}
                           </span>
-                        </div>
-                      )}
+                        ) : selectedFolderId === null ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            � Uncategorized
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   

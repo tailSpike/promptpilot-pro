@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate } from '../middleware/auth';
 import { FolderService } from '../services/folder.service';
 import type { CreateFolderData, UpdateFolderData } from '../services/folder.service';
+import prisma from '../lib/prisma';
 
 const router = express.Router();
 
@@ -90,9 +91,25 @@ router.get('/', async (req, res) => {
     const userId = req.user!.id;
     const folders = await FolderService.getUserFolders(userId);
 
+    // Get prompt counts for special views
+    const totalPrompts = await prisma.prompt.count({
+      where: { userId }
+    });
+    
+    const uncategorizedPrompts = await prisma.prompt.count({
+      where: { 
+        userId,
+        folderId: null 
+      }
+    });
+
     res.json({
       message: 'Folders retrieved successfully',
-      folders
+      folders,
+      counts: {
+        total: totalPrompts,
+        uncategorized: uncategorizedPrompts
+      }
     });
   } catch (error) {
     console.error('Get folders error:', error);
