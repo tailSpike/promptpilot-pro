@@ -195,6 +195,7 @@ export class VersionService {
         content: targetVersion.content,
         variables: targetVersion.variables,
         metadata: targetVersion.metadata,
+        folderId: targetVersion.folderId, // Also revert the folder location
         // version: targetVersion.versionNumber, // Skip for now
         // currentVersionId: targetVersion.id, // Skip for now
         updatedAt: new Date()
@@ -454,8 +455,8 @@ export class VersionService {
    * Calculate changes between folder IDs and get folder names
    */
   private static async calculateFolderIdChanges(oldFolderId: string | null, newFolderId: string | null) {
-    let fromFolderName = 'Root';
-    let toFolderName = 'Root';
+    let fromFolderName = 'All Prompts';
+    let toFolderName = 'All Prompts';
     
     // Get old folder name
     if (oldFolderId) {
@@ -477,9 +478,9 @@ export class VersionService {
     
     let description: string;
     if (!oldFolderId && newFolderId) {
-      description = `Moved from Root to "${toFolderName}" folder`;
+      description = `Moved from All Prompts to "${toFolderName}" folder`;
     } else if (oldFolderId && !newFolderId) {
-      description = `Moved from "${fromFolderName}" folder to Root`;
+      description = `Moved from "${fromFolderName}" folder to All Prompts`;
     } else {
       description = `Moved from "${fromFolderName}" to "${toFolderName}" folder`;
     }

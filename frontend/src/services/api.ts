@@ -150,7 +150,7 @@ export const versionsAPI = {
   },
 
   revertToVersion: async (promptId: string, versionId: string) => {
-    const response = await api.post(`/prompts/${promptId}/versions/${versionId}/revert`);
+    const response = await api.put(`/prompts/${promptId}/revert/${versionId}`);
     return response.data.data; // Extract the actual data from { success: true, data: ... }
   },
 
