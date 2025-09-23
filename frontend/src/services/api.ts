@@ -3,12 +3,14 @@ import type { CreatePromptData, UpdatePromptData, CreateFolderData, UpdateFolder
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-// Create axios instance
+// Create axios instance with CORS support
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Important for CORS with credentials
+  timeout: 10000, // 10 second timeout
 });
 
 // Request interceptor to add auth token
