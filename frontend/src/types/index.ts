@@ -60,7 +60,7 @@ export interface CreatePromptData {
   variables?: Variable[];
   metadata?: Record<string, unknown>;
   isPublic?: boolean;
-  folderId?: string;
+  folderId?: string | null;
 }
 
 export type UpdatePromptData = Partial<CreatePromptData>;

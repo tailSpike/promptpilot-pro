@@ -71,6 +71,7 @@ export const promptsAPI = {
     limit?: number;
     search?: string;
     isPublic?: boolean;
+    folderId?: string;
   }) => {
     const response = await api.get('/prompts', { params });
     return response.data;

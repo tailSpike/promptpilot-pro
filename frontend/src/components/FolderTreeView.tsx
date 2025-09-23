@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { foldersAPI } from '../services/api';
 import type { Folder } from '../types';
 
@@ -6,6 +6,11 @@ interface FolderTreeViewProps {
   onFolderSelect?: (folderId: string | null) => void;
   selectedFolderId?: string | null;
   onCreateFolder?: (parentId?: string) => void;
+  onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
+}
+
+export interface FolderTreeViewRef {
+  refreshFolders: () => Promise<void>;
 }
 
 interface FolderNodeProps {
@@ -14,6 +19,7 @@ interface FolderNodeProps {
   onFolderSelect?: (folderId: string | null) => void;
   selectedFolderId?: string | null;
   onCreateFolder?: (parentId?: string) => void;
+  onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({
@@ -21,9 +27,11 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   level,
   onFolderSelect,
   selectedFolderId,
-  onCreateFolder
+  onCreateFolder,
+  onMovePromptToFolder
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [isDragOver, setIsDragOver] = useState(false);
   const hasChildren = folder.children && folder.children.length > 0;
   const isSelected = selectedFolderId === folder.id;
 
@@ -41,35 +49,70 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     onCreateFolder?.(folder.id);
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // Allow drop
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data.type === 'prompt' && data.promptId) {
+        onMovePromptToFolder?.(data.promptId, folder.id);
+      }
+    } catch (error) {
+      console.error('Failed to parse drag data:', error);
+    }
+  };
+
   return (
     <div className="select-none">
       <div
-        className={`flex items-center px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md group ${
+        className={`flex items-center px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md group transition-colors ${
           isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+        } ${
+          isDragOver ? 'bg-green-50 ring-2 ring-green-200 ring-inset' : ''
         }`}
         style={{ paddingLeft: `${level * 20 + 8}px` }}
         onClick={handleClick}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
-        {hasChildren && (
-          <button
-            onClick={handleToggle}
-            className="mr-1 p-0.5 hover:bg-gray-200 rounded"
-          >
-            <svg
-              className={`w-3 h-3 transform transition-transform ${
-                isExpanded ? 'rotate-90' : ''
-              }`}
-              fill="currentColor"
-              viewBox="0 0 20 20"
+        {/* Always reserve space for caret to ensure consistent alignment */}
+        <div className="mr-1 p-0.5 w-4 h-4 flex items-center justify-center">
+          {hasChildren ? (
+            <button
+              onClick={handleToggle}
+              className="hover:bg-gray-200 rounded w-full h-full flex items-center justify-center"
             >
-              <path
-                fillRule="evenodd"
-                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
-        )}
+              <svg
+                className={`w-3 h-3 transform transition-transform ${
+                  isExpanded ? 'rotate-90' : ''
+                }`}
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+          ) : (
+            <div className="w-3 h-3" />
+          )}
+        </div>
         
         <div className="flex items-center flex-1 min-w-0">
           <div
@@ -105,6 +148,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
               onFolderSelect={onFolderSelect}
               selectedFolderId={selectedFolderId}
               onCreateFolder={onCreateFolder}
+              onMovePromptToFolder={onMovePromptToFolder}
             />
           ))}
         </div>
@@ -113,14 +157,16 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   );
 };
 
-export default function FolderTreeView({
+const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
   onFolderSelect,
   selectedFolderId,
-  onCreateFolder
-}: FolderTreeViewProps) {
+  onCreateFolder,
+  onMovePromptToFolder
+}, ref) => {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isDragOverAllPrompts, setIsDragOverAllPrompts] = useState(false);
 
   useEffect(() => {
     loadFolders();
@@ -139,12 +185,41 @@ export default function FolderTreeView({
     }
   };
 
+  useImperativeHandle(ref, () => ({
+    refreshFolders: loadFolders,
+  }));
+
   const handleRootFolderSelect = () => {
     onFolderSelect?.(null);
   };
 
   const handleCreateRootFolder = () => {
     onCreateFolder?.();
+  };
+
+  const handleAllPromptsDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOverAllPrompts(true);
+  };
+
+  const handleAllPromptsDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverAllPrompts(false);
+  };
+
+  const handleAllPromptsDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverAllPrompts(false);
+    
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data.type === 'prompt' && data.promptId) {
+        onMovePromptToFolder?.(data.promptId, null);
+      }
+    } catch (error) {
+      console.error('Failed to parse drag data:', error);
+    }
   };
 
   if (loading) {
@@ -191,10 +266,15 @@ export default function FolderTreeView({
 
         {/* All Prompts (Root) */}
         <div
-          className={`flex items-center px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md mb-1 ${
+          className={`flex items-center px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md mb-1 transition-colors ${
             selectedFolderId === null ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+          } ${
+            isDragOverAllPrompts ? 'bg-green-50 ring-2 ring-green-200 ring-inset' : ''
           }`}
           onClick={handleRootFolderSelect}
+          onDragOver={handleAllPromptsDragOver}
+          onDragLeave={handleAllPromptsDragLeave}
+          onDrop={handleAllPromptsDrop}
         >
           <div className="w-4 h-4 rounded-sm mr-2 bg-gray-400" />
           <span className="text-sm">All Prompts</span>
@@ -211,6 +291,7 @@ export default function FolderTreeView({
             onFolderSelect={onFolderSelect}
             selectedFolderId={selectedFolderId}
             onCreateFolder={onCreateFolder}
+            onMovePromptToFolder={onMovePromptToFolder}
           />
         ))}
       </div>
@@ -231,4 +312,8 @@ export default function FolderTreeView({
       )}
     </div>
   );
-}
+});
+
+FolderTreeView.displayName = 'FolderTreeView';
+
+export default FolderTreeView;

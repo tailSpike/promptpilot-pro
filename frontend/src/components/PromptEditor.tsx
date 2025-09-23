@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { promptsAPI } from '../services/api';
-import type { Prompt, Variable, CreatePromptData } from '../types';
+import { promptsAPI, foldersAPI } from '../services/api';
+import type { Prompt, Variable, CreatePromptData, Folder } from '../types';
 
 export default function PromptEditor() {
   const [prompt, setPrompt] = useState<Partial<Prompt>>({
@@ -11,7 +11,9 @@ export default function PromptEditor() {
     variables: [],
     metadata: {},
     isPublic: false,
+    folderId: '',
   });
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -23,7 +25,36 @@ export default function PromptEditor() {
     if (isEditing && id) {
       loadPrompt(id);
     }
+    loadFolders();
   }, [id, isEditing]);
+
+  const loadFolders = async () => {
+    try {
+      const response = await foldersAPI.getFolders();
+      setFolders(response.folders || []);
+    } catch (err) {
+      console.error('Failed to load folders:', err);
+    }
+  };
+
+  const buildFolderOptions = (folders: Folder[], level = 0): React.ReactElement[] => {
+    const options: React.ReactElement[] = [];
+    
+    folders.forEach(folder => {
+      const indent = '  '.repeat(level);
+      options.push(
+        <option key={folder.id} value={folder.id}>
+          {indent}{folder.name}
+        </option>
+      );
+
+      if (folder.children) {
+        options.push(...buildFolderOptions(folder.children, level + 1));
+      }
+    });
+
+    return options;
+  };
 
   const loadPrompt = async (promptId: string) => {
     try {
@@ -129,7 +160,7 @@ export default function PromptEditor() {
   }
 
   return (
-    <div className="px-4 py-6 sm:px-0">
+    <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">
           {isEditing ? 'Edit Prompt' : 'Create New Prompt'}
@@ -139,198 +170,229 @@ export default function PromptEditor() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
-        )}
-        
-        {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-            {success}
-          </div>
-        )}
-
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h2>
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Content Area - Left and Center Columns */}
+        <div className="lg:col-span-2 space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+              {error}
+            </div>
+          )}
           
-          <div className="grid grid-cols-1 gap-6">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Prompt Name *
-              </label>
-              <input
-                type="text"
-                id="name"
-                value={prompt.name || ''}
-                onChange={(e) => setPrompt(prev => ({ ...prev, name: e.target.value }))}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Enter a descriptive name for your prompt"
-                required
-              />
+          {success && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+              {success}
             </div>
+          )}
 
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                Description
-              </label>
-              <textarea
-                id="description"
-                rows={3}
-                value={prompt.description || ''}
-                onChange={(e) => setPrompt(prev => ({ ...prev, description: e.target.value }))}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Describe what this prompt does and when to use it"
-              />
-            </div>
-
-            <div>
-              <label className="flex items-center">
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h2>
+            
+            <div className="grid grid-cols-1 gap-6">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                  Prompt Name *
+                </label>
                 <input
-                  type="checkbox"
-                  checked={prompt.isPublic || false}
-                  onChange={(e) => setPrompt(prev => ({ ...prev, isPublic: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                  type="text"
+                  id="name"
+                  value={prompt.name || ''}
+                  onChange={(e) => setPrompt(prev => ({ ...prev, name: e.target.value }))}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Enter a descriptive name for your prompt"
+                  required
                 />
-                <span className="ml-2 text-sm text-gray-700">Make this prompt public</span>
-              </label>
-              <p className="mt-1 text-xs text-gray-500">
-                Public prompts can be discovered and used by other users
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-medium text-gray-900">Variables</h2>
-            <button
-              type="button"
-              onClick={addVariable}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Add Variable
-            </button>
-          </div>
-          
-          <p className="text-sm text-gray-600 mb-4">
-            Define variables that can be replaced in your prompt content. Use {`{{variableName}}`} syntax in your content.
-          </p>
-
-          {(prompt.variables || []).map((variable, index) => (
-            <div key={index} className="border border-gray-200 rounded-lg p-4 mb-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
-                  <input
-                    type="text"
-                    value={variable.name}
-                    onChange={(e) => updateVariable(index, 'name', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="variableName"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Type</label>
-                  <select
-                    value={variable.type}
-                    onChange={(e) => updateVariable(index, 'type', e.target.value as Variable['type'])}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  >
-                    <option value="text">Text</option>
-                    <option value="number">Number</option>
-                    <option value="boolean">Boolean</option>
-                    <option value="select">Select</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700">Description</label>
-                  <input
-                    type="text"
-                    value={variable.description || ''}
-                    onChange={(e) => updateVariable(index, 'description', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Describe this variable"
-                  />
-                </div>
               </div>
-              
-              <div className="flex items-center justify-between mt-4">
+
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  id="description"
+                  rows={3}
+                  value={prompt.description || ''}
+                  onChange={(e) => setPrompt(prev => ({ ...prev, description: e.target.value }))}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Describe what this prompt does and when to use it"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="folder" className="block text-sm font-medium text-gray-700">
+                  Folder
+                </label>
+                <select
+                  id="folder"
+                  value={prompt.folderId || ''}
+                  onChange={(e) => setPrompt(prev => ({ ...prev, folderId: e.target.value || undefined }))}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                >
+                  <option value="">No folder (Root level)</option>
+                  {buildFolderOptions(folders)}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Choose a folder to organize this prompt
+                </p>
+              </div>
+
+              <div>
                 <label className="flex items-center">
                   <input
                     type="checkbox"
-                    checked={variable.required || false}
-                    onChange={(e) => updateVariable(index, 'required', e.target.checked)}
+                    checked={prompt.isPublic || false}
+                    onChange={(e) => setPrompt(prev => ({ ...prev, isPublic: e.target.checked }))}
                     className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
                   />
-                  <span className="ml-2 text-sm text-gray-700">Required</span>
+                  <span className="ml-2 text-sm text-gray-700">Make this prompt public</span>
                 </label>
-                
-                <div className="flex space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => insertVariableIntoContent(variable.name)}
-                    disabled={!variable.name}
-                    className="text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-400"
-                  >
-                    Insert into Content
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeVariable(index)}
-                    className="text-sm text-red-600 hover:text-red-800"
-                  >
-                    Remove
-                  </button>
-                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Public prompts can be discovered and used by other users
+                </p>
               </div>
             </div>
-          ))}
+          </div>
 
-          {(prompt.variables || []).length === 0 && (
-            <div className="text-center py-6 text-gray-500">
-              No variables defined. Click "Add Variable" to get started.
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Prompt Content</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Write your prompt content here. Use {`{{variableName}}`} syntax to reference variables.
+            </p>
+            
+            <textarea
+              id="content"
+              rows={16}
+              value={prompt.content || ''}
+              onChange={(e) => handleContentChange(e.target.value)}
+              className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-mono"
+              placeholder="Enter your prompt content here. Use {{variableName}} to reference variables..."
+              required
+            />
+            
+            <div className="mt-2 text-xs text-gray-500">
+              Example: "Write a {'{tone}'} email about {'{topic}'} for {'{audience}'}"
             </div>
-          )}
-        </div>
+          </div>
 
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Prompt Content</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Write your prompt content here. Use {`{{variableName}}`} syntax to reference variables.
-          </p>
-          
-          <textarea
-            id="content"
-            rows={12}
-            value={prompt.content || ''}
-            onChange={(e) => handleContentChange(e.target.value)}
-            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-mono"
-            placeholder="Enter your prompt content here. Use {{variableName}} to reference variables..."
-            required
-          />
-          
-          <div className="mt-2 text-xs text-gray-500">
-            Example: "Write a {'{tone}'} email about {'{topic}'} for {'{audience}'}"
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={() => navigate('/prompts')}
+              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Saving...' : (isEditing ? 'Update Prompt' : 'Create Prompt')}
+            </button>
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3">
-          <button
-            type="button"
-            onClick={() => navigate('/prompts')}
-            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Saving...' : (isEditing ? 'Update Prompt' : 'Create Prompt')}
-          </button>
+        {/* Variables Panel - Right Sidebar */}
+        <div className="lg:col-span-1">
+          <div className="bg-white shadow rounded-lg p-6 sticky top-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-medium text-gray-900">Variables</h2>
+              <button
+                type="button"
+                onClick={addVariable}
+                className="inline-flex items-center px-2 py-1 border border-transparent text-xs leading-4 font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                + Add
+              </button>
+            </div>
+            
+            <p className="text-xs text-gray-600 mb-4">
+              Define variables to use in your prompt. Click variable names to insert into content.
+            </p>
+
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {(prompt.variables || []).map((variable, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-3">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700">Name</label>
+                      <input
+                        type="text"
+                        value={variable.name}
+                        onChange={(e) => updateVariable(index, 'name', e.target.value)}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        placeholder="variableName"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700">Type</label>
+                      <select
+                        value={variable.type}
+                        onChange={(e) => updateVariable(index, 'type', e.target.value as Variable['type'])}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      >
+                        <option value="text">Text</option>
+                        <option value="number">Number</option>
+                        <option value="boolean">Boolean</option>
+                        <option value="select">Select</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700">Description</label>
+                      <input
+                        type="text"
+                        value={variable.description || ''}
+                        onChange={(e) => updateVariable(index, 'description', e.target.value)}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        placeholder="Describe this variable"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={variable.required || false}
+                          onChange={(e) => updateVariable(index, 'required', e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                        />
+                        <span className="ml-2 text-xs text-gray-700">Required</span>
+                      </label>
+                      
+                      <button
+                        type="button"
+                        onClick={() => removeVariable(index)}
+                        className="text-xs text-red-600 hover:text-red-800"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => insertVariableIntoContent(variable.name)}
+                      disabled={!variable.name}
+                      className="w-full text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 py-2 px-3 rounded border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Insert {variable.name ? `{{${variable.name}}}` : 'Variable'} into Content
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {(prompt.variables || []).length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  <svg className="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  <p className="text-xs">No variables yet</p>
+                  <p className="text-xs text-gray-400">Click "Add" to create your first variable</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </form>
     </div>
