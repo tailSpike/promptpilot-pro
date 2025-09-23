@@ -7,6 +7,7 @@ interface FolderTreeViewProps {
   selectedFolderId?: string | null;
   onCreateFolder?: (parentId?: string) => void;
   onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
+  onFolderChange?: () => void;
 }
 
 export interface FolderTreeViewRef {
@@ -21,6 +22,7 @@ interface FolderNodeProps {
   onCreateFolder?: (parentId?: string) => void;
   onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
   onFolderUpdate?: () => void;
+  onFolderChange?: () => void;
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({
@@ -30,7 +32,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   selectedFolderId,
   onCreateFolder,
   onMovePromptToFolder,
-  onFolderUpdate
+  onFolderUpdate,
+  onFolderChange
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -88,7 +91,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     if (editName.trim() && editName.trim() !== folder.name) {
       try {
         await foldersAPI.updateFolder(folder.id, { name: editName.trim() });
-        onFolderUpdate?.();
+        onFolderUpdate?.(); // Refresh folder tree
+        onFolderChange?.(); // Refresh prompts to show updated folder names
       } catch (error) {
         console.error('Failed to update folder:', error);
         setEditName(folder.name); // Reset on error
@@ -122,7 +126,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     try {
       setIsDeleting(true);
       await foldersAPI.deleteFolder(folder.id); // This will move prompts to root (All Prompts)
-      onFolderUpdate?.();
+      onFolderUpdate?.(); // Refresh folder tree
+      onFolderChange?.(); // Refresh prompts to show updated folder assignments
     } catch (error) {
       console.error('Failed to delete folder:', error);
       alert('Failed to delete folder. Please try again.');
@@ -261,6 +266,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
               onCreateFolder={onCreateFolder}
               onMovePromptToFolder={onMovePromptToFolder}
               onFolderUpdate={onFolderUpdate}
+              onFolderChange={onFolderChange}
             />
           ))}
         </div>
@@ -273,7 +279,8 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
   onFolderSelect,
   selectedFolderId,
   onCreateFolder,
-  onMovePromptToFolder
+  onMovePromptToFolder,
+  onFolderChange
 }, ref) => {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -405,6 +412,7 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
             onCreateFolder={onCreateFolder}
             onMovePromptToFolder={onMovePromptToFolder}
             onFolderUpdate={loadFolders}
+            onFolderChange={onFolderChange}
           />
         ))}
       </div>

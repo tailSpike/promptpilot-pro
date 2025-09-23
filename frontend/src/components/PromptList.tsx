@@ -151,6 +151,7 @@ export default function PromptList() {
           selectedFolderId={selectedFolderId}
           onCreateFolder={handleCreateFolder}
           onMovePromptToFolder={handleMovePromptToFolder}
+          onFolderChange={loadPrompts}
         />
       </div>
 
