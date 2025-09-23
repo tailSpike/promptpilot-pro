@@ -27,12 +27,18 @@ export interface Prompt {
   metadata: Record<string, unknown>;
   version: number;
   isPublic: boolean;
+  folderId?: string;
   createdAt: string;
   updatedAt: string;
   user: {
     id: string;
     name?: string;
     email: string;
+  };
+  folder?: {
+    id: string;
+    name: string;
+    color?: string;
   };
   _count?: {
     executions: number;
@@ -54,6 +60,32 @@ export interface CreatePromptData {
   variables?: Variable[];
   metadata?: Record<string, unknown>;
   isPublic?: boolean;
+  folderId?: string | null;
 }
 
 export type UpdatePromptData = Partial<CreatePromptData>;
+
+// Folder types
+export interface Folder {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  parentId?: string;
+  createdAt: string;
+  updatedAt: string;
+  children?: Folder[];
+  _count?: {
+    prompts: number;
+    children: number;
+  };
+}
+
+export interface CreateFolderData {
+  name: string;
+  description?: string;
+  color?: string;
+  parentId?: string;
+}
+
+export type UpdateFolderData = Partial<CreateFolderData>;

@@ -26,8 +26,31 @@ model User {
   // Relations
   prompts   Prompt[]
   workflows Workflow[]
+  folders   Folder[]
 
   @@map("users")
+}
+
+// Folder model for organizing prompts hierarchically
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  color       String?  // Optional color for visual organization
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Self-referencing for folder hierarchy
+  parentId String?
+  parent   Folder? @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderHierarchy")
+
+  // Relations
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompts Prompt[]
+
+  @@map("folders")
 }
 
 // Prompt model for structured prompts with variables
@@ -46,6 +69,8 @@ model Prompt {
   // Relations
   userId   String
   user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folderId String?
+  folder   Folder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
   executions PromptExecution[]
   workflowSteps WorkflowStep[]
 

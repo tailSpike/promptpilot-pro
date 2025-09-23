@@ -6,6 +6,7 @@ PromptPilot Pro is a comprehensive AI prompt management platform that enables us
 
 - **User Authentication**: JWT-based secure login and registration
 - **Prompt Management**: Create, edit, delete, and organize prompts with variables
+- **Folder Organization**: Hierarchical folder system for organizing prompts with color coding
 - **Variable System**: Define dynamic variables ({{name}}, {{company}}) for prompt reusability
 - **Public/Private Sharing**: Control prompt visibility and sharing permissions
 - **Search & Filtering**: Find prompts by name, content, or variables
@@ -103,10 +104,11 @@ npm run lint
 ```
 
 ### Testing Architecture
-- **Unit Tests (33)**: Pure business logic without database calls
-- **Integration Tests (4)**: Real SQLite database operations  
+- **Unit Tests (41)**: Pure business logic without database calls
+- **Integration Tests (25)**: Real SQLite database operations including folder management
 - **Service Layer**: Extracted business logic for better testability
 - **No ORM Mocking**: Uses real database for integration testing
+- **Comprehensive Coverage**: 66 total tests including folder hierarchy and prompt organization
 
 ## 🚀 API Overview
 
@@ -116,12 +118,19 @@ npm run lint
 - `GET /api/health` - Health check
 
 ### Prompt Management Endpoints
-- `GET /api/prompts` - List prompts (with search, pagination)
+- `GET /api/prompts` - List prompts (with search, pagination, folder filtering)
 - `POST /api/prompts` - Create new prompt
 - `GET /api/prompts/:id` - Get specific prompt
 - `PUT /api/prompts/:id` - Update prompt
 - `DELETE /api/prompts/:id` - Delete prompt
 - `POST /api/prompts/:id/execute` - Execute prompt with variables
+
+### Folder Management Endpoints
+- `GET /api/folders` - List all folders in hierarchical structure
+- `POST /api/folders` - Create new folder
+- `GET /api/folders/:id` - Get specific folder with contents
+- `PUT /api/folders/:id` - Update folder (name, description, color, parent)
+- `DELETE /api/folders/:id` - Delete folder and move contents to parent
 
 ## 📁 Project Structure
 
@@ -129,17 +138,19 @@ npm run lint
 promptpilot-pro/
 ├── backend/                 # Node.js + Express API
 │   ├── src/
-│   │   ├── services/       # Business logic layer
-│   │   ├── routes/         # HTTP route handlers  
+│   │   ├── services/       # Business logic layer (auth, prompts, folders)
+│   │   ├── routes/         # HTTP route handlers (auth, prompts, folders)
 │   │   ├── middleware/     # Auth, validation middleware
 │   │   ├── lib/           # Shared utilities (Prisma client)
-│   │   └── __tests__/     # Unit + Integration tests
+│   │   └── __tests__/     # Unit + Integration tests (66 total)
 │   ├── prisma/            # Database schema & migrations
 │   └── jest.config.*.js   # Separate test configurations
 ├── frontend/              # React + Vite SPA
 │   ├── src/
-│   │   ├── components/    # Reusable UI components
+│   │   ├── components/    # Reusable UI components (including FolderTreeView, FolderModal)
 │   │   ├── pages/        # Route-level components
+│   │   ├── services/     # API services (auth, prompts, folders)
+│   │   ├── types/        # TypeScript type definitions
 │   │   └── utils/        # Frontend utilities
 │   └── cypress/          # E2E test specs
 └── docs/                 # Architecture documentation
@@ -150,7 +161,7 @@ promptpilot-pro/
 - **Service Layer Architecture**: Business logic separated from HTTP handlers
 - **Real Database Testing**: Integration tests use actual SQLite database
 - **Type Safety**: Full TypeScript coverage on frontend and backend
-- **Test-Driven**: Comprehensive test suite with 37+ test scenarios
+- **Test-Driven**: Comprehensive test suite with 66+ test scenarios
 - **Clean Code**: ESLint + Prettier for consistent code style
 - **CI/CD Ready**: GitHub Actions pipeline with automated testing
 
