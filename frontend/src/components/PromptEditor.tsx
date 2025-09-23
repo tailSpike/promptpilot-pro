@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { promptsAPI, foldersAPI } from '../services/api';
 import type { Prompt, Variable, CreatePromptData, Folder } from '../types';
+import VersionHistory from './VersionHistory';
 
 export default function PromptEditor() {
   const [prompt, setPrompt] = useState<Partial<Prompt>>({
@@ -17,6 +18,7 @@ export default function PromptEditor() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState<'editor' | 'history'>('editor');
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = Boolean(id);
@@ -168,16 +170,46 @@ export default function PromptEditor() {
         <p className="mt-2 text-gray-600">
           Build structured prompts with variables that can be reused across workflows.
         </p>
+        
+        {/* Tab Navigation - only show for editing */}
+        {isEditing && (
+          <div className="mt-6 border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('editor')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'editor'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                📝 Editor
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'history'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                🌳 Version History
+              </button>
+            </nav>
+          </div>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content Area - Left and Center Columns */}
-        <div className="lg:col-span-2 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
+      {/* Tab Content */}
+      {activeTab === 'editor' ? (
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Content Area - Left and Center Columns */}
+          <div className="lg:col-span-2 space-y-6">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                {error}
+              </div>
+            )}
           
           {success && (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
@@ -394,7 +426,26 @@ export default function PromptEditor() {
             </div>
           </div>
         </div>
-      </form>
+        </form>
+      ) : (
+        /* Version History Tab */
+        <div className="max-w-4xl mx-auto">
+          {isEditing && id ? (
+            <VersionHistory 
+              promptId={id}
+              onRevert={() => {
+                // Reload the prompt after revert
+                if (id) loadPrompt(id);
+                setActiveTab('editor'); // Switch back to editor
+              }}
+            />
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              Save the prompt first to see version history
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
