@@ -132,6 +132,7 @@ model PromptVersion {
   content       String   // The prompt template at this version
   variables     Json     // Variable definitions at this version
   metadata      Json?    // Metadata at this version
+  folderId      String?  // Folder assignment at this version
   
   // Version metadata
   commitMessage String?  // Optional commit message

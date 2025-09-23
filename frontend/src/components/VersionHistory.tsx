@@ -206,20 +206,14 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
             </div>
           )}
           
-          {change.field === 'folders' && (change.added || change.removed) && (
-            <div className="mt-1 space-y-1">
-              {change.added && change.added.length > 0 && (
-                <div className="text-xs">
-                  <span className="text-green-600 font-medium">Added to:</span>{' '}
-                  {(change.added as string[]).join(', ')}
-                </div>
-              )}
-              {change.removed && change.removed.length > 0 && (
-                <div className="text-xs">
-                  <span className="text-red-600 font-medium">Removed from:</span>{' '}
-                  {(change.removed as string[]).join(', ')}
-                </div>
-              )}
+          {change.field === 'folders' && (change.from !== undefined || change.to !== undefined) && (
+            <div className="mt-1 text-xs text-gray-500">
+              <div className="bg-orange-50 text-orange-700 px-2 py-1 rounded mb-1">
+                <span className="font-medium">From:</span> {change.from || 'Root'}
+              </div>
+              <div className="bg-green-50 text-green-700 px-2 py-1 rounded">
+                <span className="font-medium">To:</span> {change.to || 'Root'}
+              </div>
             </div>
           )}
           

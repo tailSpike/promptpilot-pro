@@ -34,9 +34,14 @@ export class VersionService {
   static async createVersion(options: CreateVersionOptions) {
     const { promptId, userId, changeType = VersionChangeType.PATCH, commitMessage, parentVersionId } = options;
     
-    // Get the current prompt data
+    // Get the current prompt data including folder information
     const prompt = await prisma.prompt.findUnique({
-      where: { id: promptId }
+      where: { id: promptId },
+      include: {
+        folder: {
+          select: { id: true, name: true }
+        }
+      }
     });
     
     if (!prompt) {
@@ -71,6 +76,7 @@ export class VersionService {
         content: prompt.content,
         variables: prompt.variables,
         metadata: prompt.metadata,
+        folderId: prompt.folderId, // Include folder information in version
         commitMessage,
         changeType,
         changesSummary,
@@ -349,24 +355,17 @@ export class VersionService {
       };
     }
     
-    // Folders changes (if exists)
-    if (currentPrompt.folders !== undefined && previousVersion.folders !== undefined) {
-      const oldFolders = Array.isArray(previousVersion.folders) ? previousVersion.folders : [];
-      const newFolders = Array.isArray(currentPrompt.folders) ? currentPrompt.folders : [];
-      
-      if (JSON.stringify(oldFolders) !== JSON.stringify(newFolders)) {
-        const folderChanges = this.calculateFolderChanges(oldFolders, newFolders);
-        changes.folders = {
-          type: 'modified',
-          field: 'folders',
-          hasChanges: true,
-          oldCount: oldFolders.length,
-          newCount: newFolders.length,
-          added: folderChanges.added,
-          removed: folderChanges.removed,
-          description: this.generateFolderChangeDescription(folderChanges)
-        };
-      }
+    // Folder changes (comparing folderId)
+    if (currentPrompt.folderId !== previousVersion.folderId) {
+      const folderChanges = await this.calculateFolderIdChanges(previousVersion.folderId, currentPrompt.folderId);
+      changes.folders = {
+        type: 'modified',
+        field: 'folders',
+        hasChanges: true,
+        from: folderChanges.fromFolderName,
+        to: folderChanges.toFolderName,
+        description: folderChanges.description
+      };
     }
     
     return Object.keys(changes).length > 0 ? changes : null;
@@ -440,6 +439,47 @@ export class VersionService {
     });
     
     return { added, removed };
+  }
+  
+  /**
+   * Calculate changes between folder IDs and get folder names
+   */
+  private static async calculateFolderIdChanges(oldFolderId: string | null, newFolderId: string | null) {
+    let fromFolderName = 'Root';
+    let toFolderName = 'Root';
+    
+    // Get old folder name
+    if (oldFolderId) {
+      const oldFolder = await prisma.folder.findUnique({
+        where: { id: oldFolderId },
+        select: { name: true }
+      });
+      fromFolderName = oldFolder?.name || 'Unknown Folder';
+    }
+    
+    // Get new folder name  
+    if (newFolderId) {
+      const newFolder = await prisma.folder.findUnique({
+        where: { id: newFolderId },
+        select: { name: true }
+      });
+      toFolderName = newFolder?.name || 'Unknown Folder';
+    }
+    
+    let description: string;
+    if (!oldFolderId && newFolderId) {
+      description = `Moved from Root to "${toFolderName}" folder`;
+    } else if (oldFolderId && !newFolderId) {
+      description = `Moved from "${fromFolderName}" folder to Root`;
+    } else {
+      description = `Moved from "${fromFolderName}" to "${toFolderName}" folder`;
+    }
+    
+    return {
+      fromFolderName,
+      toFolderName,
+      description
+    };
   }
   
   /**
