@@ -8,6 +8,24 @@ interface Variable {
   defaultValue?: string;
 }
 
+interface FieldChange {
+  type: 'modified' | 'added' | 'removed';
+  field: string;
+  description: string;
+  from?: string | number;
+  to?: string | number;
+  hasChanges?: boolean;
+  added?: Variable[] | string[];
+  removed?: Variable[] | string[];
+  modified?: Array<{ old: Variable; new: Variable }>;
+  wordsAdded?: number;
+  wordsRemoved?: number;
+  oldLength?: number;
+  newLength?: number;
+  oldCount?: number;
+  newCount?: number;
+}
+
 interface PromptVersion {
   id: string;
   versionNumber: string;
@@ -28,6 +46,7 @@ interface PromptVersion {
     id: string;
     versionNumber: string;
   };
+  changes?: Record<string, FieldChange>;
 }
 
 interface VersionHistoryProps {
@@ -94,6 +113,129 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const renderFieldChanges = (changes: Record<string, FieldChange>) => {
+    if (!changes || Object.keys(changes).length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="mt-3 pt-3 border-t border-gray-200">
+        <div className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+          <span className="mr-2">📝</span>
+          Changes Made:
+        </div>
+        <div className="space-y-2">
+          {Object.entries(changes).map(([fieldName, change]) => (
+            <div key={fieldName} className="text-sm">
+              {renderFieldChange(change)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderFieldChange = (change: FieldChange) => {
+    const getFieldIcon = (field: string) => {
+      switch (field) {
+        case 'name': return '🏷️';
+        case 'description': return '📄';
+        case 'content': return '📝';
+        case 'variables': return '🔧';
+        case 'folders': return '📁';
+        default: return '⚙️';
+      }
+    };
+
+    const getFieldDisplayName = (field: string) => {
+      return field.charAt(0).toUpperCase() + field.slice(1);
+    };
+
+    return (
+      <div className="flex items-start space-x-2">
+        <span className="flex-shrink-0 mt-0.5">{getFieldIcon(change.field)}</span>
+        <div className="flex-1">
+          <div className="flex items-center space-x-2">
+            <span className="font-medium text-gray-800">
+              {getFieldDisplayName(change.field)}
+            </span>
+            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+              {change.type}
+            </span>
+          </div>
+          <div className="text-gray-600 mt-1">
+            {change.description}
+          </div>
+          
+          {/* Detailed change information */}
+          {change.field === 'content' && change.wordsAdded !== undefined && change.wordsRemoved !== undefined && (
+            <div className="mt-1 text-xs text-gray-500">
+              <span className="inline-flex items-center space-x-2">
+                {change.wordsAdded > 0 && (
+                  <span className="text-green-600">+{change.wordsAdded} words</span>
+                )}
+                {change.wordsRemoved > 0 && (
+                  <span className="text-red-600">-{change.wordsRemoved} words</span>
+                )}
+              </span>
+            </div>
+          )}
+          
+          {change.field === 'variables' && (change.added || change.removed || change.modified) && (
+            <div className="mt-1 space-y-1">
+              {change.added && change.added.length > 0 && (
+                <div className="text-xs">
+                  <span className="text-green-600 font-medium">Added:</span>{' '}
+                  {(change.added as Variable[]).map(v => v.name).join(', ')}
+                </div>
+              )}
+              {change.removed && change.removed.length > 0 && (
+                <div className="text-xs">
+                  <span className="text-red-600 font-medium">Removed:</span>{' '}
+                  {(change.removed as Variable[]).map(v => v.name).join(', ')}
+                </div>
+              )}
+              {change.modified && change.modified.length > 0 && (
+                <div className="text-xs">
+                  <span className="text-blue-600 font-medium">Modified:</span>{' '}
+                  {change.modified.map(m => m.new.name).join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {change.field === 'folders' && (change.added || change.removed) && (
+            <div className="mt-1 space-y-1">
+              {change.added && change.added.length > 0 && (
+                <div className="text-xs">
+                  <span className="text-green-600 font-medium">Added to:</span>{' '}
+                  {(change.added as string[]).join(', ')}
+                </div>
+              )}
+              {change.removed && change.removed.length > 0 && (
+                <div className="text-xs">
+                  <span className="text-red-600 font-medium">Removed from:</span>{' '}
+                  {(change.removed as string[]).join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {(change.field === 'name' || change.field === 'description') && change.from !== undefined && change.to !== undefined && (
+            <div className="mt-1 text-xs text-gray-500">
+              <div className="bg-red-50 text-red-700 px-2 py-1 rounded mb-1">
+                <span className="font-medium">Before:</span> {change.from || '(empty)'}
+              </div>
+              <div className="bg-green-50 text-green-700 px-2 py-1 rounded">
+                <span className="font-medium">After:</span> {change.to || '(empty)'}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -187,6 +329,8 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
                       Based on v{version.parentVersion.versionNumber}
                     </div>
                   )}
+
+                  {version.changes && renderFieldChanges(version.changes)}
                 </div>
 
                 <div className="flex items-center space-x-2 ml-4">

@@ -105,7 +105,7 @@ export class VersionService {
       throw new Error('Prompt not found or access denied');
     }
     
-    return await (prisma as any).promptVersion.findMany({
+    const versions = await (prisma as any).promptVersion.findMany({
       where: { promptId },
       include: {
         createdByUser: { select: { id: true, name: true, email: true } },
@@ -114,6 +114,28 @@ export class VersionService {
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    // Add changes information for each version (except the first one)
+    const versionsWithChanges = [];
+    for (let i = 0; i < versions.length; i++) {
+      const version = versions[i];
+      let changes = null;
+
+      // For versions that have a parent, calculate changes
+      if (version.parentVersion && i < versions.length - 1) {
+        const previousVersion = versions.find((v: any) => v.id === version.parentVersion.id);
+        if (previousVersion) {
+          changes = await this.calculateChangesSummary(version, previousVersion);
+        }
+      }
+
+      versionsWithChanges.push({
+        ...version,
+        changes
+      });
+    }
+    
+    return versionsWithChanges;
   }
   
   /**
@@ -265,38 +287,199 @@ export class VersionService {
   /**
    * Calculate changes summary between current prompt and its current version
    */
-  private static async calculateChangesSummary(currentPrompt: any, previousVersion: any) {
+  public static async calculateChangesSummary(currentPrompt: any, previousVersion: any) {
     const changes: Record<string, any> = {};
     
+    // Name changes
     if (currentPrompt.name !== previousVersion.name) {
-      changes.name = { from: previousVersion.name, to: currentPrompt.name };
+      changes.name = { 
+        type: 'modified',
+        from: previousVersion.name, 
+        to: currentPrompt.name,
+        field: 'name',
+        description: `Name changed from "${previousVersion.name}" to "${currentPrompt.name}"`
+      };
     }
     
+    // Description changes
     if (currentPrompt.description !== previousVersion.description) {
-      changes.description = { from: previousVersion.description, to: currentPrompt.description };
+      changes.description = { 
+        type: 'modified',
+        from: previousVersion.description || '', 
+        to: currentPrompt.description || '',
+        field: 'description',
+        description: `Description ${previousVersion.description ? 'updated' : 'added'}`
+      };
     }
     
+    // Content changes with diff analysis
     if (currentPrompt.content !== previousVersion.content) {
+      const oldContent = previousVersion.content || '';
+      const newContent = currentPrompt.content || '';
+      const wordDiff = this.calculateWordDiff(oldContent, newContent);
+      
       changes.content = {
+        type: 'modified',
+        field: 'content',
         hasChanges: true,
-        oldLength: previousVersion.content?.length || 0,
-        newLength: currentPrompt.content?.length || 0
+        oldLength: oldContent.length,
+        newLength: newContent.length,
+        wordsAdded: wordDiff.added,
+        wordsRemoved: wordDiff.removed,
+        description: `Content updated (${wordDiff.added} words added, ${wordDiff.removed} words removed)`
       };
     }
     
-    // Compare variables array
-    const oldVars = JSON.stringify(previousVersion.variables);
-    const newVars = JSON.stringify(currentPrompt.variables);
+    // Variables changes with detailed comparison
+    const oldVars = Array.isArray(previousVersion.variables) ? previousVersion.variables : [];
+    const newVars = Array.isArray(currentPrompt.variables) ? currentPrompt.variables : [];
     
-    if (oldVars !== newVars) {
+    if (JSON.stringify(oldVars) !== JSON.stringify(newVars)) {
+      const variableChanges = this.calculateVariableChanges(oldVars, newVars);
       changes.variables = {
+        type: 'modified',
+        field: 'variables',
         hasChanges: true,
-        oldCount: Array.isArray(previousVersion.variables) ? previousVersion.variables.length : 0,
-        newCount: Array.isArray(currentPrompt.variables) ? currentPrompt.variables.length : 0
+        oldCount: oldVars.length,
+        newCount: newVars.length,
+        added: variableChanges.added,
+        removed: variableChanges.removed,
+        modified: variableChanges.modified,
+        description: this.generateVariableChangeDescription(variableChanges)
       };
+    }
+    
+    // Folders changes (if exists)
+    if (currentPrompt.folders !== undefined && previousVersion.folders !== undefined) {
+      const oldFolders = Array.isArray(previousVersion.folders) ? previousVersion.folders : [];
+      const newFolders = Array.isArray(currentPrompt.folders) ? currentPrompt.folders : [];
+      
+      if (JSON.stringify(oldFolders) !== JSON.stringify(newFolders)) {
+        const folderChanges = this.calculateFolderChanges(oldFolders, newFolders);
+        changes.folders = {
+          type: 'modified',
+          field: 'folders',
+          hasChanges: true,
+          oldCount: oldFolders.length,
+          newCount: newFolders.length,
+          added: folderChanges.added,
+          removed: folderChanges.removed,
+          description: this.generateFolderChangeDescription(folderChanges)
+        };
+      }
     }
     
     return Object.keys(changes).length > 0 ? changes : null;
+  }
+  
+  /**
+   * Calculate word-level differences between two text strings
+   */
+  private static calculateWordDiff(oldText: string, newText: string) {
+    const oldWords = oldText.split(/\s+/).filter(w => w.length > 0);
+    const newWords = newText.split(/\s+/).filter(w => w.length > 0);
+    
+    // Simple word count difference (could be enhanced with actual diff algorithm)
+    const added = Math.max(0, newWords.length - oldWords.length);
+    const removed = Math.max(0, oldWords.length - newWords.length);
+    
+    return { added, removed };
+  }
+  
+  /**
+   * Calculate changes in variables array
+   */
+  private static calculateVariableChanges(oldVars: any[], newVars: any[]) {
+    const oldVarMap = new Map(oldVars.map(v => [v.name || v.id, v]));
+    const newVarMap = new Map(newVars.map(v => [v.name || v.id, v]));
+    
+    const added: any[] = [];
+    const removed: any[] = [];
+    const modified: any[] = [];
+    
+    // Find added variables
+    for (const [key, newVar] of newVarMap) {
+      if (!oldVarMap.has(key)) {
+        added.push(newVar);
+      }
+    }
+    
+    // Find removed variables
+    for (const [key, oldVar] of oldVarMap) {
+      if (!newVarMap.has(key)) {
+        removed.push(oldVar);
+      }
+    }
+    
+    // Find modified variables
+    for (const [key, newVar] of newVarMap) {
+      const oldVar = oldVarMap.get(key);
+      if (oldVar && JSON.stringify(oldVar) !== JSON.stringify(newVar)) {
+        modified.push({ old: oldVar, new: newVar });
+      }
+    }
+    
+    return { added, removed, modified };
+  }
+  
+  /**
+   * Calculate changes in folders array
+   */
+  private static calculateFolderChanges(oldFolders: any[], newFolders: any[]) {
+    const oldFolderSet = new Set(oldFolders.map(f => typeof f === 'string' ? f : f.name || f.id));
+    const newFolderSet = new Set(newFolders.map(f => typeof f === 'string' ? f : f.name || f.id));
+    
+    const added = newFolders.filter(f => {
+      const key = typeof f === 'string' ? f : f.name || f.id;
+      return !oldFolderSet.has(key);
+    });
+    
+    const removed = oldFolders.filter(f => {
+      const key = typeof f === 'string' ? f : f.name || f.id;
+      return !newFolderSet.has(key);
+    });
+    
+    return { added, removed };
+  }
+  
+  /**
+   * Generate human-readable description for variable changes
+   */
+  private static generateVariableChangeDescription(changes: any) {
+    const parts = [];
+    
+    if (changes.added.length > 0) {
+      parts.push(`${changes.added.length} variable${changes.added.length === 1 ? '' : 's'} added`);
+    }
+    
+    if (changes.removed.length > 0) {
+      parts.push(`${changes.removed.length} variable${changes.removed.length === 1 ? '' : 's'} removed`);
+    }
+    
+    if (changes.modified.length > 0) {
+      parts.push(`${changes.modified.length} variable${changes.modified.length === 1 ? '' : 's'} modified`);
+    }
+    
+    return parts.length > 0 ? `Variables updated: ${parts.join(', ')}` : 'Variables updated';
+  }
+  
+  /**
+   * Generate human-readable description for folder changes
+   */
+  private static generateFolderChangeDescription(changes: any) {
+    const parts = [];
+    
+    if (changes.added.length > 0) {
+      const folderNames = changes.added.map((f: any) => typeof f === 'string' ? f : f.name || f.id).join(', ');
+      parts.push(`Added to folders: ${folderNames}`);
+    }
+    
+    if (changes.removed.length > 0) {
+      const folderNames = changes.removed.map((f: any) => typeof f === 'string' ? f : f.name || f.id).join(', ');
+      parts.push(`Removed from folders: ${folderNames}`);
+    }
+    
+    return parts.length > 0 ? parts.join('; ') : 'Folder assignment updated';
   }
   
   /**
