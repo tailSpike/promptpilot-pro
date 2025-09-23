@@ -84,9 +84,10 @@ export class FolderService {
           }
         }
       },
-      orderBy: {
-        name: 'asc'
-      }
+      orderBy: [
+        { sortOrder: 'asc' },
+        { name: 'asc' } // Secondary sort by name for consistency
+      ]
     });
 
     // Build hierarchical structure

@@ -23,14 +23,11 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(helmet());
 
-// Enhanced CORS configuration with debugging
+// Production-ready CORS configuration
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, origin?: boolean | string | RegExp | (boolean | string | RegExp)[]) => void) {
-    console.log(`CORS: Incoming request from origin: ${origin || 'no-origin'}`);
-    
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) {
-      console.log('CORS: Allowing request with no origin');
       return callback(null, true);
     }
     
@@ -45,13 +42,9 @@ const corsOptions = {
       process.env.CORS_ORIGIN
     ].filter(Boolean);
     
-    console.log(`CORS: Allowed origins:`, allowedOrigins);
-    
-    if (allowedOrigins.includes(origin)) {
-      console.log(`CORS: Allowing request from origin: ${origin}`);
+    if (allowedOrigins.includes(origin) || (process.env.NODE_ENV === 'development' && origin.includes('localhost'))) {
       callback(null, true);
     } else {
-      console.log(`CORS: Blocking request from origin: ${origin}`);
       callback(new Error('Not allowed by CORS'), false);
     }
   },
@@ -68,7 +61,7 @@ const corsOptions = {
   ],
   exposedHeaders: ['Authorization'],
   preflightContinue: false,
-  optionsSuccessStatus: 204 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));

@@ -106,8 +106,17 @@ export default function PromptList() {
     setShowFolderModal(true);
   };
 
-  const handleFolderModalSuccess = () => {
+  const handleFolderModalSuccess = async () => {
+    // Add a small delay to ensure the backend has processed the folder creation
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     loadFolders(); // Reload folders
+    
+    // Also refresh the folder tree component
+    if (folderTreeRef.current) {
+      await folderTreeRef.current.refreshFolders();
+    }
+    
     setShowFolderModal(false);
   };
 

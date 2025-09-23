@@ -472,7 +472,7 @@ export class VersionService {
         where: { id: oldFolderId },
         select: { name: true }
       });
-      fromFolderName = oldFolder?.name || 'Unknown Folder';
+      fromFolderName = oldFolder?.name || 'Deleted Folder';
     }
     
     // Get new folder name  
@@ -481,7 +481,7 @@ export class VersionService {
         where: { id: newFolderId },
         select: { name: true }
       });
-      toFolderName = newFolder?.name || 'Unknown Folder';
+      toFolderName = newFolder?.name || 'Deleted Folder';
     }
     
     let description: string;

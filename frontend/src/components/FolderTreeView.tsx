@@ -83,14 +83,18 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     const y = e.clientY - rect.top;
     const height = rect.height;
     
+    let newPosition: 'before' | 'after' | 'inside';
     if (y < height * 0.25) {
-      setDropPosition('before');
+      newPosition = 'before';
     } else if (y > height * 0.75) {
-      setDropPosition('after');
+      newPosition = 'after';
     } else {
-      setDropPosition('inside');
+      newPosition = 'inside';
     }
     
+
+    
+    setDropPosition(newPosition);
     setIsDragOver(true);
   };
 
@@ -108,6 +112,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      
       if (data.type === 'prompt' && data.promptId) {
         // For prompts, only allow dropping inside folders
         if (currentDropPosition === 'inside') {
