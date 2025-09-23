@@ -91,4 +91,9 @@ export interface CreateFolderData {
   parentId?: string;
 }
 
-export type UpdateFolderData = Partial<CreateFolderData>;
+export interface UpdateFolderData {
+  name?: string;
+  description?: string | null;
+  color?: string | null;
+  parentId?: string | null;
+}

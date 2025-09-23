@@ -47,6 +47,20 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     onFolderSelect?.(folder.id);
   };
 
+  const handleFolderDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'folder',
+      folderId: folder.id,
+      folderName: folder.name
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+    
+    // Add some visual feedback
+    const dragImage = e.currentTarget.cloneNode(true) as HTMLElement;
+    dragImage.style.opacity = '0.5';
+    e.dataTransfer.setDragImage(dragImage, 0, 0);
+  };
+
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsExpanded(!isExpanded);
@@ -76,9 +90,38 @@ const FolderNode: React.FC<FolderNodeProps> = ({
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       if (data.type === 'prompt' && data.promptId) {
         onMovePromptToFolder?.(data.promptId, folder.id);
+      } else if (data.type === 'folder' && data.folderId) {
+        // Prevent dropping a folder onto itself or its descendants
+        if (data.folderId !== folder.id && !isDescendantOf(data.folderId, folder.id)) {
+          handleMoveFolder(data.folderId, folder.id);
+        }
       }
     } catch (error) {
       console.error('Failed to parse drag data:', error);
+    }
+  };
+
+  // Helper function to check if a folder is a descendant of another folder
+  const isDescendantOf = (childId: string, parentId: string): boolean => {
+    // Prevent dropping a folder onto itself
+    if (childId === parentId) {
+      return true;
+    }
+    
+    // For now, let the backend handle complex circular reference validation
+    // The backend has better access to the complete folder hierarchy
+    return false;
+  };
+
+  const handleMoveFolder = async (folderId: string, newParentId: string) => {
+    try {
+      await foldersAPI.updateFolder(folderId, { parentId: newParentId });
+      onFolderUpdate?.(); // Refresh folder tree
+      onFolderChange?.(); // Refresh prompts if needed
+    } catch (error) {
+      console.error('Failed to move folder:', error);
+      // You could add a toast notification here
+      alert('Failed to move folder. Please check for circular references or try again.');
     }
   };
 
@@ -143,12 +186,15 @@ const FolderNode: React.FC<FolderNodeProps> = ({
           isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
         } ${
           isDragOver ? 'bg-green-50 ring-2 ring-green-200 ring-inset' : ''
-        }`}
+        } hover:cursor-move`}
         style={{ paddingLeft: `${level * 20 + 8}px` }}
         onClick={handleClick}
+        draggable={true}
+        onDragStart={handleFolderDragStart}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        title="Drag to move this folder, or drop other folders/prompts here to organize them"
       >
         {/* Always reserve space for caret to ensure consistent alignment */}
         <div className="mr-1 p-0.5 w-4 h-4 flex items-center justify-center">
@@ -334,9 +380,24 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       if (data.type === 'prompt' && data.promptId) {
         onMovePromptToFolder?.(data.promptId, null);
+      } else if (data.type === 'folder' && data.folderId) {
+        // Move folder to root level (no parent)
+        handleMoveFolderToRoot(data.folderId);
       }
     } catch (error) {
       console.error('Failed to parse drag data:', error);
+    }
+  };
+
+  const handleMoveFolderToRoot = async (folderId: string) => {
+    try {
+      await foldersAPI.updateFolder(folderId, { parentId: null });
+      loadFolders(); // Refresh folder tree
+      onFolderChange?.(); // Refresh prompts if needed
+    } catch (error) {
+      console.error('Failed to move folder to root:', error);
+      // You could add a toast notification here
+      alert('Failed to move folder to root level. Please try again.');
     }
   };
 

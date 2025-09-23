@@ -10,9 +10,9 @@ export interface CreateFolderData {
 
 export interface UpdateFolderData {
   name?: string;
-  description?: string;
-  color?: string;
-  parentId?: string;
+  description?: string | null;
+  color?: string | null;
+  parentId?: string | null;
 }
 
 export interface FolderWithChildren extends Folder {
