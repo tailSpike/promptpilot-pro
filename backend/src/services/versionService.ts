@@ -121,25 +121,34 @@ export class VersionService {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Add changes information for each version (except the first one)
-    const versionsWithChanges = [];
-    for (let i = 0; i < versions.length; i++) {
-      const version = versions[i];
-      let changes = null;
-
-      // For versions that have a parent, calculate changes
-      if (version.parentVersion && i < versions.length - 1) {
-        const previousVersion = versions.find((v: any) => v.id === version.parentVersion.id);
-        if (previousVersion) {
-          changes = await this.calculateChangesSummary(version, previousVersion);
-        }
-      }
-
-      versionsWithChanges.push({
-        ...version,
-        changes
-      });
-    }
+    // Add changes information for each version using stored changesSummary
+    const versionsWithChanges = versions.map((version: any) => {
+      // Create a clean object with only the fields we want
+      const cleanVersion = {
+        id: version.id,
+        versionNumber: version.versionNumber,
+        majorVersion: version.majorVersion,
+        minorVersion: version.minorVersion,
+        patchVersion: version.patchVersion,
+        name: version.name,
+        description: version.description,
+        content: version.content,
+        variables: version.variables,
+        metadata: version.metadata,
+        commitMessage: version.commitMessage,
+        changeType: version.changeType,
+        tags: version.tags,
+        createdAt: version.createdAt,
+        createdBy: version.createdBy,
+        promptId: version.promptId,
+        parentVersionId: version.parentVersionId,
+        createdByUser: version.createdByUser,
+        parentVersion: version.parentVersion,
+        _count: version._count,
+        changes: version.changesSummary // Map changesSummary to changes
+      };
+      return cleanVersion;
+    });
     
     return versionsWithChanges;
   }
@@ -522,6 +531,51 @@ export class VersionService {
     return parts.length > 0 ? parts.join('; ') : 'Folder assignment updated';
   }
   
+  /**
+   * Migrate existing versions to populate changesSummary field
+   */
+  static async migrateExistingVersions(promptId?: string) {
+    console.log('🔄 Migrating existing versions to populate changesSummary...');
+    
+    const whereClause = promptId ? { promptId } : {};
+    const versions = await (prisma as any).promptVersion.findMany({
+      where: {
+        ...whereClause,
+        changesSummary: null, // Only update versions without changesSummary
+        parentVersionId: { not: null } // Only versions that have a parent
+      },
+      include: {
+        parentVersion: true
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    console.log(`Found ${versions.length} versions to migrate`);
+
+    for (const version of versions) {
+      try {
+        if (version.parentVersion) {
+          console.log(`Migrating version ${version.versionNumber}...`);
+          
+          // Calculate changes between this version and its parent
+          const changes = await this.calculateChangesSummary(version, version.parentVersion);
+          
+          // Update the version with the calculated changes
+          await (prisma as any).promptVersion.update({
+            where: { id: version.id },
+            data: { changesSummary: changes }
+          });
+          
+          console.log(`✅ Updated version ${version.versionNumber}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error migrating version ${version.versionNumber}:`, error);
+      }
+    }
+    
+    console.log('✅ Version migration completed');
+  }
+
   /**
    * Get version statistics for a prompt
    */

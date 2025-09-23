@@ -141,24 +141,24 @@ export const foldersAPI = {
 export const versionsAPI = {
   getVersionHistory: async (promptId: string) => {
     const response = await api.get(`/prompts/${promptId}/versions`);
-    return response.data;
+    return response.data.data; // Extract the actual versions array from { success: true, data: versions }
   },
 
   getVersionStats: async (promptId: string) => {
     const response = await api.get(`/prompts/${promptId}/versions/stats`);
-    return response.data;
+    return response.data.data; // Extract the actual stats from { success: true, data: stats }
   },
 
   revertToVersion: async (promptId: string, versionId: string) => {
     const response = await api.post(`/prompts/${promptId}/versions/${versionId}/revert`);
-    return response.data;
+    return response.data.data; // Extract the actual data from { success: true, data: ... }
   },
 
   compareVersions: async (promptId: string, version1: string, version2: string) => {
     const response = await api.get(`/prompts/${promptId}/versions/compare`, {
       params: { version1, version2 }
     });
-    return response.data;
+    return response.data.data; // Extract the actual comparison data from { success: true, data: ... }
   },
 };
 

@@ -47,6 +47,7 @@ interface PromptVersion {
     versionNumber: string;
   };
   changes?: Record<string, FieldChange>;
+  changesSummary?: Record<string, FieldChange>; // Fallback for when backend sends changesSummary instead of changes
 }
 
 interface VersionHistoryProps {
@@ -324,7 +325,8 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
                     </div>
                   )}
 
-                  {version.changes && renderFieldChanges(version.changes)}
+                  {/* Use changesSummary if changes doesn't exist */}
+                  {(version.changes || version.changesSummary) && renderFieldChanges(version.changes || version.changesSummary!)}
                 </div>
 
                 <div className="flex items-center space-x-2 ml-4">

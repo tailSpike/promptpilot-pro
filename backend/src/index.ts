@@ -81,6 +81,31 @@ app.use((req, res, next) => {
   next();
 });
 
+// Migration endpoint (development only) - must be before protected routes
+app.post('/api/migrate-versions', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: { message: 'Migration only available in development' } });
+  }
+  
+  try {
+    const { VersionService } = await import('./services/versionService');
+    const { promptId } = req.body;
+    
+    await VersionService.migrateExistingVersions(promptId);
+    
+    res.json({ 
+      message: 'Version migration completed successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({ 
+      error: { message: 'Migration failed' },
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/prompts', promptRoutes);
