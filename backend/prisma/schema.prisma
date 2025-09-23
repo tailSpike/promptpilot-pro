@@ -39,6 +39,7 @@ model Folder {
   name        String
   description String?
   color       String?  // Optional color for visual organization
+  sortOrder   Int      @default(0) // Order within parent folder
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

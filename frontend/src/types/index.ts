@@ -89,6 +89,7 @@ export interface CreateFolderData {
   description?: string;
   color?: string;
   parentId?: string;
+  sortOrder?: number;
 }
 
 export interface UpdateFolderData {
@@ -96,4 +97,5 @@ export interface UpdateFolderData {
   description?: string | null;
   color?: string | null;
   parentId?: string | null;
+  sortOrder?: number;
 }

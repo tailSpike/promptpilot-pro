@@ -135,6 +135,20 @@ export const foldersAPI = {
     const response = await api.delete(`/folders/${id}`, { params });
     return response.data;
   },
+
+  reorderFolders: async (parentId: string | null, folderIds: string[]) => {
+    const response = await api.post('/folders/reorder', { parentId, folderIds });
+    return response.data;
+  },
+
+  insertFolderAtPosition: async (folderId: string, targetParentId: string | null, position: number) => {
+    const response = await api.post('/folders/insert-at-position', { 
+      folderId, 
+      targetParentId, 
+      position 
+    });
+    return response.data;
+  },
 };
 
 // Versions API

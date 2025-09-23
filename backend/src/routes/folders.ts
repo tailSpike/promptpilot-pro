@@ -279,4 +279,86 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Reorder folders within the same parent
+router.post('/reorder', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { parentId, folderIds } = req.body;
+
+    if (!Array.isArray(folderIds) || folderIds.length === 0) {
+      return res.status(400).json({
+        error: { message: 'Folder IDs array is required' }
+      });
+    }
+
+    // Validate that all folderIds are strings
+    if (!folderIds.every(id => typeof id === 'string')) {
+      return res.status(400).json({
+        error: { message: 'All folder IDs must be strings' }
+      });
+    }
+
+    await FolderService.reorderFolders(userId, parentId || null, folderIds);
+
+    res.json({
+      message: 'Folders reordered successfully'
+    });
+  } catch (error) {
+    console.error('Reorder folders error:', error);
+    
+    if (error instanceof Error && error.message.includes('not found')) {
+      return res.status(404).json({
+        error: { message: error.message }
+      });
+    }
+
+    res.status(500).json({
+      error: { message: 'Failed to reorder folders' }
+    });
+  }
+});
+
+// Insert folder at specific position
+router.post('/insert-at-position', async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { folderId, targetParentId, position } = req.body;
+
+    if (!folderId || typeof folderId !== 'string') {
+      return res.status(400).json({
+        error: { message: 'Folder ID is required' }
+      });
+    }
+
+    if (typeof position !== 'number' || position < 0) {
+      return res.status(400).json({
+        error: { message: 'Position must be a non-negative number' }
+      });
+    }
+
+    await FolderService.insertFolderAtPosition(
+      userId, 
+      folderId, 
+      targetParentId || null, 
+      position
+    );
+
+    res.json({
+      message: 'Folder position updated successfully'
+    });
+  } catch (error) {
+    console.error('Insert folder at position error:', error);
+    
+    if (error instanceof Error && error.message.includes('not found')) {
+      return res.status(404).json({
+        error: { message: error.message }
+      });
+    }
+
+    res.status(500).json({
+      error: { message: 'Failed to update folder position' }
+    });
+  }
+});
+
 export default router;

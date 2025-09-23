@@ -23,6 +23,7 @@ interface FolderNodeProps {
   onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
   onFolderUpdate?: () => void;
   onFolderChange?: () => void;
+  allFolders?: Folder[];
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({
@@ -33,13 +34,15 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   onCreateFolder,
   onMovePromptToFolder,
   onFolderUpdate,
-  onFolderChange
+  onFolderChange,
+  allFolders
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(folder.name);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [dropPosition, setDropPosition] = useState<'before' | 'after' | 'inside' | null>(null);
   const hasChildren = folder.children && folder.children.length > 0;
   const isSelected = selectedFolderId === folder.id;
 
@@ -72,33 +75,90 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault(); // Allow drop
+    e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    
+    // Determine drop position based on mouse position within the element
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+    
+    if (y < height * 0.25) {
+      setDropPosition('before');
+    } else if (y > height * 0.75) {
+      setDropPosition('after');
+    } else {
+      setDropPosition('inside');
+    }
+    
     setIsDragOver(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    setDropPosition(null);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    const currentDropPosition = dropPosition;
+    setDropPosition(null);
     
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       if (data.type === 'prompt' && data.promptId) {
-        onMovePromptToFolder?.(data.promptId, folder.id);
+        // For prompts, only allow dropping inside folders
+        if (currentDropPosition === 'inside') {
+          onMovePromptToFolder?.(data.promptId, folder.id);
+        }
       } else if (data.type === 'folder' && data.folderId) {
         // Prevent dropping a folder onto itself or its descendants
         if (data.folderId !== folder.id && !isDescendantOf(data.folderId, folder.id)) {
-          handleMoveFolder(data.folderId, folder.id);
+          handleFolderDrop(data.folderId, currentDropPosition);
         }
       }
     } catch (error) {
       console.error('Failed to parse drag data:', error);
     }
+  };
+
+  const handleFolderDrop = async (draggedFolderId: string, position: 'before' | 'after' | 'inside' | null) => {
+    try {
+      if (position === 'inside') {
+        // Move folder inside this folder
+        await foldersAPI.updateFolder(draggedFolderId, { parentId: folder.id });
+      } else if (position === 'before' || position === 'after') {
+        // Get sibling folders to determine position
+        const siblings = getCurrentSiblings();
+        const currentIndex = siblings.findIndex(f => f.id === folder.id);
+        const insertPosition = position === 'before' ? currentIndex : currentIndex + 1;
+        
+        await foldersAPI.insertFolderAtPosition(
+          draggedFolderId,
+          folder.parentId || null,
+          insertPosition
+        );
+      }
+      
+      onFolderUpdate?.(); // Refresh folder tree
+      onFolderChange?.(); // Refresh prompts if needed
+    } catch (error) {
+      console.error('Failed to move folder:', error);
+      alert('Failed to move folder. Please try again.');
+    }
+  };
+
+  const getCurrentSiblings = (): { id: string; parentId: string | null }[] => {
+    if (!allFolders) {
+      return [{ id: folder.id, parentId: folder.parentId || null }];
+    }
+    
+    // Find all folders with the same parent
+    return allFolders
+      .filter(f => (f.parentId || null) === (folder.parentId || null))
+      .map(f => ({ id: f.id, parentId: f.parentId || null }));
   };
 
   // Helper function to check if a folder is a descendant of another folder
@@ -113,17 +173,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     return false;
   };
 
-  const handleMoveFolder = async (folderId: string, newParentId: string) => {
-    try {
-      await foldersAPI.updateFolder(folderId, { parentId: newParentId });
-      onFolderUpdate?.(); // Refresh folder tree
-      onFolderChange?.(); // Refresh prompts if needed
-    } catch (error) {
-      console.error('Failed to move folder:', error);
-      // You could add a toast notification here
-      alert('Failed to move folder. Please check for circular references or try again.');
-    }
-  };
+
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -180,12 +230,19 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   };
 
   return (
-    <div className="select-none">
+    <div className="select-none relative">
+      {/* Drop indicator for 'before' position */}
+      {isDragOver && dropPosition === 'before' && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10" />
+      )}
+      
       <div
         className={`flex items-center px-2 py-1 hover:bg-gray-50 cursor-pointer rounded-md group transition-colors ${
           isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
         } ${
-          isDragOver ? 'bg-green-50 ring-2 ring-green-200 ring-inset' : ''
+          isDragOver && dropPosition === 'inside' ? 'bg-green-50 ring-2 ring-green-200 ring-inset' : ''
+        } ${
+          isDragOver && (dropPosition === 'before' || dropPosition === 'after') ? 'bg-blue-50' : ''
         } hover:cursor-move`}
         style={{ paddingLeft: `${level * 20 + 8}px` }}
         onClick={handleClick}
@@ -310,9 +367,15 @@ const FolderNode: React.FC<FolderNodeProps> = ({
               onMovePromptToFolder={onMovePromptToFolder}
               onFolderUpdate={onFolderUpdate}
               onFolderChange={onFolderChange}
+              allFolders={allFolders}
             />
           ))}
         </div>
+      )}
+      
+      {/* Drop indicator for 'after' position */}
+      {isDragOver && dropPosition === 'after' && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 z-10" />
       )}
     </div>
   );
@@ -334,6 +397,17 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
   useEffect(() => {
     loadFolders();
   }, []);
+
+  const flattenFolders = (folders: Folder[]): Folder[] => {
+    const result: Folder[] = [];
+    folders.forEach(folder => {
+      result.push(folder);
+      if (folder.children) {
+        result.push(...flattenFolders(folder.children));
+      }
+    });
+    return result;
+  };
 
   const loadFolders = async () => {
     try {
@@ -502,6 +576,7 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
             onMovePromptToFolder={onMovePromptToFolder}
             onFolderUpdate={loadFolders}
             onFolderChange={onFolderChange}
+            allFolders={flattenFolders(folders)}
           />
         ))}
       </div>
