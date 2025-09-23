@@ -6,15 +6,35 @@ This document outlines the major functional epics for PromptPilot Pro, a modular
 
 ## 🧩 Epic 1: Prompt Creation & Management
 
-### User Stories
-- As a user, I want to create structured prompts with variables so I can reuse them across workflows.
-- As a user, I want to organize prompts into folders, tags, and categories so I can find and iterate quickly.
-- As a user, I want to version-control my prompts so I can track changes and revert when needed.
+### Story Overview
+Epic 1 focuses on the core prompt management capabilities that form the foundation of PromptPilot Pro. This epic is broken down into three distinct stories:
 
-### Acceptance Criteria
-- Prompt Composer supports variable injection and metadata
-- Prompts can be tagged, categorized, and grouped
-- Version history is accessible and revertible
+### Story 1: Structured Prompt Creation ✅ COMPLETED
+**User Story:** As a user, I want to create structured prompts with variables so I can reuse them across workflows.
+📄 **[View Full Story Details](./EPIC1_STORY1.md)**
+
+**Key Features:**
+- Variable injection with typed variables (text, number, boolean, select)
+- Real-time preview with variable substitution
+- Comprehensive validation and metadata support
+
+### Story 2: Hierarchical Organization System ✅ COMPLETED  
+**User Story:** As a user, I want to organize prompts into folders, tags, and categories so I can find and iterate quickly.
+📄 **[View Full Story Details](./EPIC1_STORY2.md)**
+
+**Key Features:**
+- Unlimited folder nesting with color coding
+- Native HTML5 drag-and-drop organization
+- Inline editing with real-time synchronization
+
+### Story 3: Prompt Version Control & History Management 🚧 IN PROGRESS
+**User Story:** As a user, I want to version-control my prompts so I can track changes and revert when needed.
+📄 **[View Full Story Details](./EPIC1_STORY3.md)**
+
+**Key Features:**
+- Semantic versioning with automatic increments
+- Visual diff comparison and branching support
+- Collaborative version management with approval workflows
 
 ---
 
