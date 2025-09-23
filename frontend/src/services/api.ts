@@ -135,4 +135,29 @@ export const foldersAPI = {
   },
 };
 
+// Versions API
+export const versionsAPI = {
+  getVersionHistory: async (promptId: string) => {
+    const response = await api.get(`/prompts/${promptId}/versions`);
+    return response.data;
+  },
+
+  getVersionStats: async (promptId: string) => {
+    const response = await api.get(`/prompts/${promptId}/versions/stats`);
+    return response.data;
+  },
+
+  revertToVersion: async (promptId: string, versionId: string) => {
+    const response = await api.post(`/prompts/${promptId}/versions/${versionId}/revert`);
+    return response.data;
+  },
+
+  compareVersions: async (promptId: string, version1: string, version2: string) => {
+    const response = await api.get(`/prompts/${promptId}/versions/compare`, {
+      params: { version1, version2 }
+    });
+    return response.data;
+  },
+};
+
 export default api;

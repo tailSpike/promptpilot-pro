@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { versionsAPI } from '../services/api';
 
 interface Variable {
   name: string;
@@ -47,21 +48,10 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
   const fetchVersionHistory = useCallback(async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`/api/prompts/${promptId}/versions`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch version history');
-      }
-
-      const data = await response.json();
-      setVersions(data.data);
+      const response = await versionsAPI.getVersionHistory(promptId);
+      // Handle both direct array and API response format
+      const data = response.data || response;
+      setVersions(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -81,20 +71,8 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
     }
 
     try {
-      const token = localStorage.getItem('token');
+      await versionsAPI.revertToVersion(promptId, version.id);
       
-      const response = await fetch(`/api/prompts/${promptId}/revert/${version.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to revert to version');
-      }
-
       // Refresh version history and notify parent
       await fetchVersionHistory();
       if (onRevert) onRevert(version);
@@ -142,7 +120,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="version-history">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center">
           <span className="mr-2">🌳</span>
@@ -168,6 +146,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
               className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
                 index === 0 ? 'border-blue-200 bg-blue-50' : 'border-gray-200'
               }`}
+              data-testid="version-item"
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -197,7 +176,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
                       <span className="mr-1">👤</span>
                       {version.createdByUser.name || version.createdByUser.email}
                     </div>
-                    <div className="flex items-center">
+                    <div className="flex items-center" data-testid="version-timestamp">
                       <span className="mr-1">🕒</span>
                       {formatDate(version.createdAt)}
                     </div>

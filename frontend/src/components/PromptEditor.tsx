@@ -19,6 +19,8 @@ export default function PromptEditor() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState<'editor' | 'history'>('editor');
+  const [commitMessage, setCommitMessage] = useState('');
+  const [changeType, setChangeType] = useState<'PATCH' | 'MINOR' | 'MAJOR'>('PATCH');
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = Boolean(id);
@@ -84,8 +86,16 @@ export default function PromptEditor() {
 
     try {
       if (isEditing && id) {
-        await promptsAPI.updatePrompt(id, prompt);
+        // Include version control data when updating
+        const updateData = {
+          ...prompt,
+          changeType,
+          commitMessage: commitMessage || `Updated prompt: ${prompt.name}`
+        };
+        await promptsAPI.updatePrompt(id, updateData);
         setSuccess('Prompt updated successfully!');
+        // Clear commit message after successful update
+        setCommitMessage('');
       } else {
         await promptsAPI.createPrompt(prompt as CreatePromptData);
         setSuccess('Prompt created successfully!');
@@ -303,6 +313,48 @@ export default function PromptEditor() {
             
             <div className="mt-2 text-xs text-gray-500">
               Example: "Write a {'{tone}'} email about {'{topic}'} for {'{audience}'}"
+            </div>
+          </div>
+
+          {/* Version Control Section */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Version Control</h2>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="commitMessage" className="block text-sm font-medium text-gray-700">
+                  Commit Message
+                </label>
+                <textarea
+                  id="commitMessage"
+                  rows={3}
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Describe what changes you made..."
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Add a brief description of your changes for version history
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="changeType" className="block text-sm font-medium text-gray-700">
+                  Change Type
+                </label>
+                <select
+                  id="changeType"
+                  value={changeType}
+                  onChange={(e) => setChangeType(e.target.value as 'PATCH' | 'MINOR' | 'MAJOR')}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                >
+                  <option value="PATCH">Patch - Small fixes or improvements</option>
+                  <option value="MINOR">Minor - New features or significant changes</option>
+                  <option value="MAJOR">Major - Breaking changes or complete rewrites</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Select the type of change to help with semantic versioning
+                </p>
+              </div>
             </div>
           </div>
 

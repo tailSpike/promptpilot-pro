@@ -63,7 +63,10 @@ export interface CreatePromptData {
   folderId?: string | null;
 }
 
-export type UpdatePromptData = Partial<CreatePromptData>;
+export type UpdatePromptData = Partial<CreatePromptData> & {
+  changeType?: 'PATCH' | 'MINOR' | 'MAJOR';
+  commitMessage?: string;
+};
 
 // Folder types
 export interface Folder {

@@ -66,25 +66,26 @@ Users need comprehensive version control for their prompts to track evolution, c
 ## Technical Requirements
 
 ### Database Schema
-- [ ] PromptVersion table with version metadata and content snapshots
-- [ ] PromptBranch table for managing experimental branches
-- [ ] VersionHistory table for tracking all changes and relationships
+- [x] PromptVersion table with version metadata and content snapshots
+- [x] PromptBranch table for managing experimental branches
+- [x] Self-referencing version relationships for tracking changes
 - [ ] Efficient storage system for version deltas to minimize database size
 
 ### API Endpoints
-- [ ] `GET /api/prompts/:id/versions` - List all versions
-- [ ] `GET /api/prompts/:id/versions/:version` - Get specific version
-- [ ] `POST /api/prompts/:id/versions` - Create new version
-- [ ] `PUT /api/prompts/:id/revert/:version` - Revert to version
-- [ ] `GET /api/prompts/:id/diff/:v1/:v2` - Compare versions
+- [x] `GET /api/prompts/:id/versions` - List all versions
+- [x] `GET /api/versions/:version` - Get specific version
+- [x] `POST /api/prompts/:id/versions` - Create new version
+- [x] `PUT /api/prompts/:id/revert/:version` - Revert to version
+- [x] `GET /api/versions/:v1/compare/:v2` - Compare versions
+- [x] `GET /api/prompts/:id/versions/stats` - Version statistics
 - [ ] `POST /api/prompts/:id/branches` - Create branch
 - [ ] `PUT /api/prompts/:id/merge/:branch` - Merge branch
 
 ### Frontend Components
-- [ ] `VersionHistory.tsx` - Timeline view of all versions
+- [x] `VersionHistory.tsx` - Timeline view of all versions
 - [ ] `DiffViewer.tsx` - Side-by-side comparison component
 - [ ] `BranchManager.tsx` - Branch creation and management
-- [ ] `VersionSelector.tsx` - Version picker and revert interface
+- [x] Version picker and revert interface (integrated in VersionHistory)
 
 ### Performance Considerations
 - [ ] Fast version retrieval and diff calculation for large prompts
