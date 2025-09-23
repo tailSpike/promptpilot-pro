@@ -20,6 +20,7 @@ interface FolderNodeProps {
   selectedFolderId?: string | null;
   onCreateFolder?: (parentId?: string) => void;
   onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
+  onFolderUpdate?: () => void;
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({
@@ -28,10 +29,14 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   onFolderSelect,
   selectedFolderId,
   onCreateFolder,
-  onMovePromptToFolder
+  onMovePromptToFolder,
+  onFolderUpdate
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(folder.name);
+  const [isDeleting, setIsDeleting] = useState(false);
   const hasChildren = folder.children && folder.children.length > 0;
   const isSelected = selectedFolderId === folder.id;
 
@@ -71,6 +76,58 @@ const FolderNode: React.FC<FolderNodeProps> = ({
       }
     } catch (error) {
       console.error('Failed to parse drag data:', error);
+    }
+  };
+
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditing(true);
+  };
+
+  const handleEditSave = async () => {
+    if (editName.trim() && editName.trim() !== folder.name) {
+      try {
+        await foldersAPI.updateFolder(folder.id, { name: editName.trim() });
+        onFolderUpdate?.();
+      } catch (error) {
+        console.error('Failed to update folder:', error);
+        setEditName(folder.name); // Reset on error
+      }
+    }
+    setIsEditing(false);
+  };
+
+  const handleEditCancel = () => {
+    setEditName(folder.name);
+    setIsEditing(false);
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleEditSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleEditCancel();
+    }
+  };
+
+  const handleDeleteClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!window.confirm(`Are you sure you want to delete "${folder.name}"? All prompts in this folder will be moved to "All Prompts".`)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await foldersAPI.deleteFolder(folder.id); // This will move prompts to root (All Prompts)
+      onFolderUpdate?.();
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+      alert('Failed to delete folder. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -119,23 +176,77 @@ const FolderNode: React.FC<FolderNodeProps> = ({
             className="w-4 h-4 rounded-sm mr-2 flex-shrink-0"
             style={{ backgroundColor: folder.color || '#6B7280' }}
           />
-          <span className="truncate text-sm">{folder.name}</span>
-          {folder._count && (
+          
+          {isEditing ? (
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              onBlur={handleEditSave}
+              className="flex-1 text-sm bg-white border border-blue-500 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span 
+              className="truncate text-sm cursor-text"
+              onDoubleClick={handleEditClick}
+              title="Double-click to edit"
+            >
+              {folder.name}
+            </span>
+          )}
+          
+          {folder._count && !isEditing && (
             <span className="ml-auto text-xs text-gray-400">
               {folder._count.prompts}
             </span>
           )}
         </div>
 
-        <button
-          onClick={handleCreateSubfolder}
-          className="ml-2 p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-700 transition-opacity"
-          title="Create subfolder"
-        >
-          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-          </svg>
-        </button>
+        <div className="flex items-center ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          {!isEditing && (
+            <>
+              <button
+                onClick={handleEditClick}
+                className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-700 mr-1"
+                title="Rename folder"
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+              </button>
+              
+              <button
+                onClick={handleDeleteClick}
+                disabled={isDeleting}
+                className="p-1 hover:bg-red-200 rounded text-gray-500 hover:text-red-700 mr-1"
+                title="Delete folder"
+              >
+                {isDeleting ? (
+                  <svg className="w-3 h-3 animate-spin" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            </>
+          )}
+          
+          <button
+            onClick={handleCreateSubfolder}
+            className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-700"
+            title="Create subfolder"
+          >
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {hasChildren && isExpanded && (
@@ -149,6 +260,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
               selectedFolderId={selectedFolderId}
               onCreateFolder={onCreateFolder}
               onMovePromptToFolder={onMovePromptToFolder}
+              onFolderUpdate={onFolderUpdate}
             />
           ))}
         </div>
@@ -292,6 +404,7 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
             selectedFolderId={selectedFolderId}
             onCreateFolder={onCreateFolder}
             onMovePromptToFolder={onMovePromptToFolder}
+            onFolderUpdate={loadFolders}
           />
         ))}
       </div>
