@@ -359,7 +359,7 @@ router.post('/:id/steps', authenticate, async (req, res) => {
 
     const step = await prisma.workflowStep.create({
       data: {
-        workflowId: id!,
+        workflowId: workflow.id,
         name: validatedData.name,
         type: validatedData.type,
         order: validatedData.order,
@@ -417,7 +417,7 @@ router.post('/:id/execute', authenticate, async (req, res) => {
     // Create execution record
     const execution = await prisma.workflowExecution.create({
       data: {
-        workflowId: id!,
+        workflowId: workflow.id,
         input: JSON.stringify(validatedData.input),
         output: JSON.stringify({}), // Initialize with empty output
         status: 'PENDING',

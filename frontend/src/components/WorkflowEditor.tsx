@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { promptsAPI } from '../services/api';
 import type { Prompt } from '../types';
@@ -94,11 +94,10 @@ export default function WorkflowEditor() {
     if (isEditing) {
       fetchWorkflow();
     }
-    fetchPrompts(); // Load available prompts
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isEditing]);
+    fetchPrompts();
+  }, [id, isEditing, fetchWorkflow, fetchPrompts]);
 
-  const fetchPrompts = async () => {
+  const fetchPrompts = useCallback(async () => {
     try {
       setLoadingPrompts(true);
       const response = await promptsAPI.getPrompts({ limit: 100 }); // Get more prompts for selection
@@ -108,9 +107,9 @@ export default function WorkflowEditor() {
     } finally {
       setLoadingPrompts(false);
     }
-  };
+  }, []);
 
-  const fetchWorkflow = async () => {
+  const fetchWorkflow = useCallback(async () => {
     if (!id) return;
     
     try {
@@ -139,7 +138,7 @@ export default function WorkflowEditor() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -482,7 +481,7 @@ export default function WorkflowEditor() {
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   updateStep(index, { 
-                                    promptId: availablePrompts[0]?.id || '',
+                                    promptId: availablePrompts[0]?.id,
                                     config: { ...step.config, promptContent: undefined }
                                   });
                                 }
