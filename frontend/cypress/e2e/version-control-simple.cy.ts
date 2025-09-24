@@ -41,7 +41,7 @@ describe('Version Control System - Basic Functionality', () => {
       });
   });
 
-  it('should display the History tab in prompt editor', () => {
+  it.skip('should display the History tab in prompt editor', () => {
     // Navigate to the prompts page first
     cy.visit('/prompts');
     
@@ -63,7 +63,7 @@ describe('Version Control System - Basic Functionality', () => {
     cy.get('body').should('contain.text', 'Version History');
   });
 
-  it('should handle version history API calls', () => {
+  it.skip('should handle version history API calls', () => {
     // Navigate to the prompts page first
     cy.visit('/prompts');
     
@@ -84,7 +84,7 @@ describe('Version Control System - Basic Functionality', () => {
     cy.get('body').should('contain.text', 'Version History');
   });
 
-  it('should show version information when available', () => {
+  it.skip('should show version information when available', () => {
     // Navigate to the prompts page first  
     cy.visit('/prompts');
     

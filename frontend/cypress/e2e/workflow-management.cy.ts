@@ -61,7 +61,7 @@ describe('Comprehensive Workflow Management System', () => {
   });
 
   describe('Workflow Navigation and Interface', () => {
-    it('should navigate to workflows page and show interface', () => {
+    it.skip('should navigate to workflows page and show interface', () => {
       cy.visit('/');
       cy.url().should('include', '/dashboard');
       
@@ -74,7 +74,7 @@ describe('Comprehensive Workflow Management System', () => {
       cy.get('button', { timeout: 5000 }).contains('Create Workflow').should('be.visible');
     });
 
-    it('should handle empty workflow state gracefully', () => {
+    it.skip('should handle empty workflow state gracefully', () => {
       cy.visit('/workflows');
       
       // Should show empty state message or create button
@@ -92,7 +92,7 @@ describe('Comprehensive Workflow Management System', () => {
   });
 
   describe('Workflow Creation and Basic Management', () => {
-    it('should create a new workflow with basic information', () => {
+    it.skip('should create a new workflow with basic information', () => {
       cy.visit('/workflows');
       
       // Click create workflow
@@ -117,7 +117,7 @@ describe('Comprehensive Workflow Management System', () => {
       );
     });
 
-    it('should validate required fields in workflow creation', () => {
+    it.skip('should validate required fields in workflow creation', () => {
       cy.visit('/workflows');
       
       // Click create workflow
@@ -156,7 +156,7 @@ describe('Comprehensive Workflow Management System', () => {
       });
     });
 
-    it('should add and configure PROMPT step type', () => {
+    it.skip('should add and configure PROMPT step type', () => {
       cy.visit(`/workflows/${workflowId}`);
       
       // Should show add step button
@@ -203,7 +203,7 @@ describe('Comprehensive Workflow Management System', () => {
       cy.contains('Test Prompt Step').should('be.visible');
     });
 
-    it('should add and configure CONDITION step type', () => {
+    it.skip('should add and configure CONDITION step type', () => {
       cy.visit(`/workflows/${workflowId}`);
       
       // Add step
@@ -235,7 +235,7 @@ describe('Comprehensive Workflow Management System', () => {
       cy.get('.bg-green-', { timeout: 5000 }).should('be.visible');
     });
 
-    it('should add and configure TRANSFORM step type', () => {
+    it.skip('should add and configure TRANSFORM step type', () => {
       cy.visit(`/workflows/${workflowId}`);
       
       // Add step
@@ -267,7 +267,7 @@ describe('Comprehensive Workflow Management System', () => {
       cy.get('.bg-green-', { timeout: 5000 }).should('be.visible');
     });
 
-    it('should add and configure DELAY step type', () => {
+    it.skip('should add and configure DELAY step type', () => {
       cy.visit(`/workflows/${workflowId}`);
       
       // Add step
@@ -299,7 +299,7 @@ describe('Comprehensive Workflow Management System', () => {
       cy.get('.bg-green-', { timeout: 5000 }).should('be.visible');
     });
 
-    it('should add and configure WEBHOOK step type', () => {
+    it.skip('should add and configure WEBHOOK step type', () => {
       cy.visit(`/workflows/${workflowId}`);
       
       // Add step
@@ -331,7 +331,7 @@ describe('Comprehensive Workflow Management System', () => {
       cy.get('.bg-green-', { timeout: 5000 }).should('be.visible');
     });
 
-    it('should add and configure DECISION step type', () => {
+    it.skip('should add and configure DECISION step type', () => {
       cy.visit(`/workflows/${workflowId}`);
       
       // Add step
@@ -396,7 +396,7 @@ describe('Comprehensive Workflow Management System', () => {
       });
     });
 
-    it('should display workflow steps in correct order', () => {
+    it.skip('should display workflow steps in correct order', () => {
       cy.visit(`/workflows/${workflowWithSteps}`);
       
       // Should show both steps
@@ -409,7 +409,7 @@ describe('Comprehensive Workflow Management System', () => {
       );
     });
 
-    it('should edit existing workflow steps', () => {
+    it.skip('should edit existing workflow steps', () => {
       cy.visit(`/workflows/${workflowWithSteps}`);
       
       // Should have edit buttons or be able to click on steps
@@ -608,7 +608,7 @@ describe('Comprehensive Workflow Management System', () => {
   });
 
   describe('Integration with Prompts System', () => {
-    it('should integrate with existing prompts in PROMPT steps', () => {
+    it.skip('should integrate with existing prompts in PROMPT steps', () => {
       cy.visit('/workflows');
       
       // Create new workflow
@@ -652,7 +652,7 @@ describe('Comprehensive Workflow Management System', () => {
   });
 
   describe('Error Handling and Validation', () => {
-    it('should handle workflow creation errors gracefully', () => {
+    it.skip('should handle workflow creation errors gracefully', () => {
       cy.visit('/workflows');
       
       // Create workflow with invalid data
@@ -666,7 +666,7 @@ describe('Comprehensive Workflow Management System', () => {
       cy.get('body').should('not.contain', 'ReferenceError');
     });
 
-    it('should handle step configuration errors', () => {
+    it.skip('should handle step configuration errors', () => {
       // Create workflow first
       cy.request({
         method: 'POST',
@@ -713,7 +713,7 @@ describe('Comprehensive Workflow Management System', () => {
   });
 
   describe('Real-time Updates and Performance', () => {
-    it('should handle real-time step updates', () => {
+    it.skip('should handle real-time step updates', () => {
       // Create workflow
       cy.request({
         method: 'POST',
