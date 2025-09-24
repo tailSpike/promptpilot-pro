@@ -5,9 +5,11 @@
 const originalConsoleError = console.error;
 beforeAll(() => {
   console.error = (...args: unknown[]) => {
-    // Suppress JWT-related errors during testing
+    // Suppress expected errors during testing
     const message = args[0]?.toString() || '';
     const allArgs = args.join(' ').toString();
+    
+    // JWT and authentication errors
     if (message.includes('jwt malformed') || 
         message.includes('JWT') || 
         message.includes('Authentication failed') ||
@@ -16,6 +18,17 @@ beforeAll(() => {
         allArgs.includes('jwt malformed')) {
       return;
     }
+    
+    // Expected folder service errors during testing
+    if (message.includes('folder with this name already exists') ||
+        message.includes('Folder not found or access denied') ||
+        message.includes('Moving folder would create a circular reference') ||
+        allArgs.includes('Create folder error') ||
+        allArgs.includes('Get folder error') ||
+        allArgs.includes('Update folder error')) {
+      return;
+    }
+    
     originalConsoleError(...args);
   };
 });
