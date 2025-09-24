@@ -108,6 +108,7 @@ model Workflow {
   steps    WorkflowStep[]
   variables WorkflowVariable[]
   executions WorkflowExecution[]
+  triggers WorkflowTrigger[] // New triggers relation
   templates  WorkflowTemplate[] @relation("TemplateSource")
   createdFromTemplate WorkflowTemplate? @relation("TemplateInstances", fields: [templateId], references: [id])
   templateId String?
@@ -181,6 +182,26 @@ model WorkflowTemplate {
   @@map("workflow_templates")
 }
 
+// Workflow triggers for automated execution
+model WorkflowTrigger {
+  id           String   @id @default(cuid())
+  name         String   // User-friendly name for the trigger
+  type         TriggerType // Type of trigger
+  isActive     Boolean  @default(true)
+  config       Json     // Trigger-specific configuration
+  lastTriggeredAt DateTime?
+  nextRunAt    DateTime? // For scheduled triggers
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Relations
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  executions WorkflowExecution[]
+
+  @@map("workflow_triggers")
+}
+
 // Enhanced workflow execution with detailed tracking
 model WorkflowExecution {
   id         String   @id @default(cuid())
@@ -191,11 +212,13 @@ model WorkflowExecution {
   completedAt DateTime?
   error      Json?    // Error details if failed
   metadata   Json?    // Execution metadata (duration, resource usage)
-  triggerType String  @default("manual") // 'manual', 'scheduled', 'webhook'
+  triggerType String  @default("manual") // 'manual', 'scheduled', 'webhook', 'api'
   
   // Relations
   workflowId String
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  triggerId  String?  // Optional reference to the trigger that initiated this execution
+  trigger    WorkflowTrigger? @relation(fields: [triggerId], references: [id], onDelete: SetNull)
   stepExecutions WorkflowStepExecution[]
 
   @@map("workflow_executions")
@@ -324,25 +347,33 @@ enum Role {
   ADMIN
 }
 
+enum TriggerType {
+  MANUAL      // Manual trigger (button click)
+  SCHEDULED   // Cron-based scheduled trigger
+  WEBHOOK     // External webhook trigger
+  API         // Direct API trigger
+  EVENT       // Event-based trigger (file changes, etc.)
+}
+
+enum StepType {
+  PROMPT      // AI prompt execution
+  CONDITION   // Conditional branching
+  TRANSFORM   // Data transformation
+  DELAY       // Wait/delay step
+  WEBHOOK     // HTTP webhook call
+  DECISION    // Decision point with multiple paths
+}
+
 enum ExecutionStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
+  PENDING     // Waiting to start
+  RUNNING     // Currently executing
+  COMPLETED   // Successfully completed
+  FAILED      // Failed with error
+  CANCELLED   // Manually cancelled
 }
 
 enum VersionChangeType {
   PATCH  // Bug fixes, minor tweaks
   MINOR  // New features, significant improvements
   MAJOR  // Breaking changes, complete rewrites
-}
-
-enum StepType {
-  PROMPT      // Execute a prompt with variables
-  CONDITION   // Conditional branching
-  TRANSFORM   // Data transformation step
-  DELAY       // Wait/delay step
-  WEBHOOK     // External API call
-  DECISION    // User decision point
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import WorkflowTriggers from './WorkflowTriggers';
 
 interface WorkflowStep {
   id: string;
@@ -273,6 +274,15 @@ export default function WorkflowDetail() {
               </div>
             )}
           </div>
+
+          {/* Workflow Triggers */}
+          <WorkflowTriggers 
+            workflowId={workflow.id} 
+            onTriggerExecuted={(triggerId) => {
+              console.log(`Trigger ${triggerId} executed - refreshing workflow data`);
+              fetchWorkflow(); // Refresh executions list
+            }}
+          />
         </div>
 
         {/* Sidebar */}

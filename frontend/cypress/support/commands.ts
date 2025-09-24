@@ -43,9 +43,41 @@ function loginUser(email: string, password: string) {
   });
 }
 
+// Add workflow and trigger utilities
+function createTestWorkflow(name: string, description: string) {
+  const apiUrl = Cypress.env('apiUrl');
+  const token = window.localStorage.getItem('token');
+  
+  return cy.request({
+    method: 'POST',
+    url: `${apiUrl}/api/workflows`,
+    headers: { Authorization: `Bearer ${token}` },
+    body: { name, description, isActive: true }
+  });
+}
+
+function createTestTrigger(workflowId: string, triggerData: Record<string, unknown>) {
+  const apiUrl = Cypress.env('apiUrl');
+  const token = window.localStorage.getItem('token');
+  
+  return cy.request({
+    method: 'POST',
+    url: `${apiUrl}/api/workflows/${workflowId}/triggers`,
+    headers: { Authorization: `Bearer ${token}` },
+    body: triggerData
+  });
+}
+
+function waitForElement(selector: string, timeout = 10000) {
+  return cy.get(selector, { timeout });
+}
+
 // Export functions for use in tests
 (window as unknown as { testUtils: Record<string, unknown> }).testUtils = {
   waitForBackend,
   registerUser,
-  loginUser
+  loginUser,
+  createTestWorkflow,
+  createTestTrigger,
+  waitForElement
 };

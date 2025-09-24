@@ -1,0 +1,74 @@
+{
+  "name": "promptpilot-pro",
+  "version": "1.0.0",
+  "description": "AI-powered prompt engineering and workflow automation platform",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm run install:backend && npm run install:frontend",
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm run preview",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "cd backend && npm run lint",
+    "lint:frontend": "cd frontend && npm run lint",
+    "lint:fix": "npm run lint:fix:backend && npm run lint:fix:frontend",
+    "lint:fix:backend": "cd backend && npm run lint:fix",
+    "lint:fix:frontend": "cd frontend && npm run lint -- --fix",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && npm run test:all",
+    "test:frontend": "cd frontend && npm run test",
+    "test:unit": "npm run test:unit:backend && npm run test:unit:frontend",
+    "test:unit:backend": "cd backend && npm run test:unit",
+    "test:unit:frontend": "cd frontend && npm run test",
+    "test:integration": "cd backend && npm run test:integration",
+    "test:e2e": "cd frontend && npm run e2e",
+    "test:e2e:open": "cd frontend && npm run e2e:open",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "db:setup": "cd backend && npm run db:generate && npm run db:push",
+    "db:migrate": "cd backend && npm run db:migrate",
+    "db:studio": "cd backend && npm run db:studio",
+    "setup": "npm run install:all && npm run db:setup && npm run setup:hooks",
+    "setup:hooks": "bash scripts/setup-hooks.sh || powershell -ExecutionPolicy Bypass -File scripts/setup-hooks.ps1",
+    "precommit": "npm run lint && npm run test:unit",
+    "prepush": "npm run lint && npm run test",
+    "ci": "npm run lint && npm run build && npm run test:all",
+    "clean": "npm run clean:backend && npm run clean:frontend && npm run clean:deps",
+    "clean:backend": "cd backend && rm -rf dist node_modules || rmdir /s /q dist node_modules",
+    "clean:frontend": "cd frontend && rm -rf dist node_modules || rmdir /s /q dist node_modules",
+    "clean:deps": "rm -rf node_modules || rmdir /s /q node_modules"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/promptpilot-pro.git"
+  },
+  "keywords": [
+    "ai",
+    "prompt-engineering",
+    "workflow-automation",
+    "typescript",
+    "react",
+    "node.js",
+    "prisma"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}

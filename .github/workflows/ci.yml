@@ -123,3 +123,123 @@ jobs:
     - name: Run frontend security audit
       working-directory: ./frontend
       run: npm audit --audit-level high
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    name: End-to-End Tests
+    needs: [backend-ci, frontend-ci]
+    
+    env:
+      DATABASE_URL: 'file:./test.db'
+      JWT_SECRET: 'test-jwt-secret-key-for-e2e'
+      NODE_ENV: 'test'
+      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+      API_URL: 'http://localhost:5000'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: npm ci
+    
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Setup test database
+      working-directory: ./backend
+      run: |
+        npx prisma generate
+        npx prisma db push --force-reset
+    
+    - name: Build backend
+      working-directory: ./backend
+      run: npm run build --if-present
+    
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+    
+    - name: Start backend server
+      working-directory: ./backend
+      run: |
+        npm start &
+        echo $! > backend.pid
+        # Wait for backend to be ready
+        timeout 60s bash -c 'until curl -f http://localhost:5000/api/health; do echo "Waiting for backend..."; sleep 2; done'
+      continue-on-error: false
+    
+    - name: Start frontend server
+      working-directory: ./frontend
+      run: |
+        npm run preview &
+        echo $! > frontend.pid
+        # Wait for frontend to be ready
+        timeout 60s bash -c 'until curl -f http://localhost:4173; do echo "Waiting for frontend..."; sleep 2; done'
+      continue-on-error: false
+    
+    - name: Run Cypress E2E tests
+      working-directory: ./frontend
+      run: |
+        npx cypress run --headless --browser chrome --config baseUrl=http://localhost:4173,env.apiUrl=http://localhost:5000
+      env:
+        CYPRESS_baseUrl: 'http://localhost:4173'
+        CYPRESS_apiUrl: 'http://localhost:5000'
+    
+    - name: Upload Cypress screenshots
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: cypress-screenshots
+        path: frontend/cypress/screenshots
+        retention-days: 7
+    
+    - name: Upload Cypress videos
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: cypress-videos
+        path: frontend/cypress/videos
+        retention-days: 7
+    
+    - name: Stop servers
+      run: |
+        if [ -f backend/backend.pid ]; then
+          kill $(cat backend/backend.pid) || true
+        fi
+        if [ -f frontend/frontend.pid ]; then
+          kill $(cat frontend/frontend.pid) || true
+        fi
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    name: Quality Gate
+    needs: [backend-ci, frontend-ci, backend-security-audit, frontend-security-audit, e2e-tests]
+    if: always()
+    
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "Backend CI: ${{ needs.backend-ci.result }}"
+        echo "Frontend CI: ${{ needs.frontend-ci.result }}"
+        echo "Backend Security: ${{ needs.backend-security-audit.result }}"
+        echo "Frontend Security: ${{ needs.frontend-security-audit.result }}"
+        echo "E2E Tests: ${{ needs.e2e-tests.result }}"
+        
+        if [ "${{ needs.backend-ci.result }}" != "success" ] || \
+           [ "${{ needs.frontend-ci.result }}" != "success" ] || \
+           [ "${{ needs.backend-security-audit.result }}" != "success" ] || \
+           [ "${{ needs.frontend-security-audit.result }}" != "success" ] || \
+           [ "${{ needs.e2e-tests.result }}" != "success" ]; then
+          echo "❌ Quality gate failed - one or more jobs failed"
+          exit 1
+        else
+          echo "✅ Quality gate passed - all jobs succeeded"
+        fi

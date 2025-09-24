@@ -69,15 +69,23 @@ describe('Prompt Creation and Management', () => {
       cy.get('textarea#content').type(promptContent, { parseSpecialCharSequences: false });
 
       // Add first variable
-      cy.get('button').contains('Add Variable').click();
-      cy.get('input[placeholder="variableName"]').first().type('customerName');
-      cy.get('select').first().select('text');
-      cy.get('input[type="checkbox"]').first().check(); // Required checkbox
+      cy.get('button').contains('+ Add').click();
+      // Wait for the variable form to appear and fill it
+      cy.get('.border.border-gray-200.rounded-lg').should('have.length', 1);
+      cy.get('.border.border-gray-200.rounded-lg').first().within(() => {
+        cy.get('input[placeholder="variableName"]').type('customerName');
+        cy.get('select').select('text');
+        cy.get('input[type="checkbox"]').check(); // Required checkbox
+      });
 
       // Add second variable
-      cy.get('button').contains('Add Variable').click();
-      cy.get('input[placeholder="variableName"]').last().type('companyName');
-      cy.get('select').last().select('text');
+      cy.get('button').contains('+ Add').click();
+      // Wait for the second variable form to appear and fill it
+      cy.get('.border.border-gray-200.rounded-lg').should('have.length', 2);
+      cy.get('.border.border-gray-200.rounded-lg').last().within(() => {
+        cy.get('input[placeholder="variableName"]').type('companyName');
+        cy.get('select').select('text');
+      });
 
       cy.get('button[type="submit"]').contains('Create Prompt').click();
 
@@ -94,9 +102,13 @@ describe('Prompt Creation and Management', () => {
       cy.get('textarea#content').type('Your selected plan: {{planType}}', { parseSpecialCharSequences: false });
 
       // Add select variable
-      cy.get('button').contains('Add Variable').click();
-      cy.get('input[placeholder="variableName"]').first().type('planType');
-      cy.get('select').first().select('select');
+      cy.get('button').contains('+ Add').click();
+      // Wait for the variable form to appear and fill it
+      cy.get('.border.border-gray-200.rounded-lg').should('have.length', 1);
+      cy.get('.border.border-gray-200.rounded-lg').first().within(() => {
+        cy.get('input[placeholder="variableName"]').type('planType');
+        cy.get('select').select('select');
+      });
 
       // Note: The current UI doesn't seem to have options management for select type yet
       // This test checks the basic functionality
@@ -116,9 +128,13 @@ describe('Prompt Creation and Management', () => {
       cy.get('textarea#content').type('Test {{variable}}', { parseSpecialCharSequences: false });
 
       // Add variable with missing name
-      cy.get('button').contains('Add Variable').click();
-      cy.get('select').first().select('text');
-      // Don't fill variable name - leave it empty
+      cy.get('button').contains('+ Add').click();
+      // Wait for the variable form to appear
+      cy.get('.border.border-gray-200.rounded-lg').should('have.length', 1);
+      cy.get('.border.border-gray-200.rounded-lg').first().within(() => {
+        cy.get('select').select('text');
+        // Don't fill variable name - leave it empty
+      });
 
       cy.get('button[type="submit"]').contains('Create Prompt').click();
 
@@ -217,9 +233,13 @@ describe('Prompt Creation and Management', () => {
       cy.get('textarea#content').clear().type('Updated content with {{variable}}', { parseSpecialCharSequences: false });
 
       // Add a variable
-      cy.get('button').contains('Add Variable').click();
-      cy.get('input[placeholder="variableName"]').first().type('variable');
-      cy.get('select').first().select('text');
+      cy.get('button').contains('+ Add').click();
+      // Wait for the variable form to appear and fill it
+      cy.get('.border.border-gray-200.rounded-lg').should('have.length', 1);
+      cy.get('.border.border-gray-200.rounded-lg').first().within(() => {
+        cy.get('input[placeholder="variableName"]').type('variable');
+        cy.get('select').select('text');
+      });
 
       cy.get('button[type="submit"]').contains('Update Prompt').click();
 
@@ -242,11 +262,21 @@ describe('Prompt Creation and Management', () => {
       cy.visit('/prompts');
       
       // Find the prompt card and click Delete button directly
-      cy.contains('Deletable Prompt');
+      cy.contains('Deletable Prompt').should('be.visible');
       cy.get('button').contains('Delete').first().click();
 
-      // The delete happens immediately with confirm dialog - check that prompt is removed
-      cy.get('.bg-white.shadow').should('not.contain', 'Deletable Prompt');
+      // After deletion, either show empty state or no longer contain the deleted prompt
+      cy.get('body').should('satisfy', ($body) => {
+        // Either there are no prompt cards (empty state) or the deleted prompt is not there
+        const promptCards = $body.find('.bg-white.shadow');
+        if (promptCards.length === 0) {
+          // Empty state - should show "No prompts found"
+          return $body.text().includes('No prompts found');
+        } else {
+          // Still have prompts but not the deleted one
+          return !$body.text().includes('Deletable Prompt');
+        }
+      });
     });
   });
 });

@@ -10,6 +10,7 @@ import authRoutes from './routes/auth';
 import folderRoutes from './routes/folders';
 import versionRoutes from './routes/versions';
 import workflowRoutes from './routes/workflows';
+import triggerRoutes from './routes/triggers';
 
 // Load environment variables
 dotenv.config();
@@ -117,6 +118,7 @@ app.use('/api/prompts', promptRoutes);
 app.use('/api/folders', folderRoutes);
 app.use('/api', versionRoutes);
 app.use('/api/workflows', workflowRoutes);
+app.use('/api/workflows', triggerRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -160,6 +162,15 @@ async function startServer() {
     await prisma.$connect();
     console.log('✅ Connected to database');
 
+    // Initialize trigger service
+    try {
+      const { triggerService } = await import('./services/triggerService');
+      await triggerService.initializeScheduledTriggers();
+      console.log('✅ Trigger service initialized');
+    } catch (error) {
+      console.warn('⚠️  Warning: Failed to initialize trigger service:', error);
+    }
+
     // Start listening
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
@@ -174,12 +185,32 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down server...');
+  
+  // Stop all scheduled triggers
+  try {
+    const { triggerService } = await import('./services/triggerService');
+    await triggerService.stopAllScheduledTriggers();
+    console.log('✅ Trigger service stopped');
+  } catch (error) {
+    console.warn('⚠️  Warning: Failed to stop trigger service:', error);
+  }
+  
   await prisma.$disconnect();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down server...');
+  
+  // Stop all scheduled triggers
+  try {
+    const { triggerService } = await import('./services/triggerService');
+    await triggerService.stopAllScheduledTriggers();
+    console.log('✅ Trigger service stopped');
+  } catch (error) {
+    console.warn('⚠️  Warning: Failed to stop trigger service:', error);
+  }
+  
   await prisma.$disconnect();
   process.exit(0);
 });
