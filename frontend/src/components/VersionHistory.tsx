@@ -1,4 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Edit3, 
+  GitBranch, 
+  FileText, 
+  Wrench, 
+  Folder, 
+  Settings, 
+  User, 
+  Clock, 
+  MessageSquare, 
+  Eye,
+  RotateCcw
+} from 'lucide-react';
 import { versionsAPI } from '../services/api';
 
 interface Variable {
@@ -124,7 +137,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
     return (
       <div className="mt-3 pt-3 border-t border-gray-200">
         <div className="text-sm font-medium text-gray-700 mb-2 flex items-center">
-          <span className="mr-2">📝</span>
+          <Edit3 className="mr-2 h-4 w-4" />
           Changes Made:
         </div>
         <div className="space-y-2">
@@ -140,13 +153,14 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
 
   const renderFieldChange = (change: FieldChange) => {
     const getFieldIcon = (field: string) => {
+      const iconProps = { className: "h-4 w-4 flex-shrink-0" };
       switch (field) {
-        case 'name': return '🏷️';
-        case 'description': return '📄';
-        case 'content': return '📝';
-        case 'variables': return '🔧';
-        case 'folders': return '📁';
-        default: return '⚙️';
+        case 'name': return <FileText {...iconProps} />;
+        case 'description': return <FileText {...iconProps} />;
+        case 'content': return <Edit3 {...iconProps} />;
+        case 'variables': return <Wrench {...iconProps} />;
+        case 'folders': return <Folder {...iconProps} />;
+        default: return <Settings {...iconProps} />;
       }
     };
 
@@ -156,7 +170,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
 
     return (
       <div className="flex items-start space-x-2">
-        <span className="flex-shrink-0 mt-0.5">{getFieldIcon(change.field)}</span>
+        <div className="flex-shrink-0 mt-0.5">{getFieldIcon(change.field)}</div>
         <div className="flex-1">
           <div className="flex items-center space-x-2">
             <span className="font-medium text-gray-800">
@@ -260,7 +274,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
     <div className="space-y-4" data-testid="version-history">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center">
-          <span className="mr-2">🌳</span>
+          <GitBranch className="mr-2 h-5 w-5" />
           Version History ({versions.length})
         </h3>
         <button 
@@ -303,18 +317,18 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
 
                   {version.commitMessage && (
                     <div className="flex items-start mb-2">
-                      <span className="text-gray-400 mt-0.5 mr-2 flex-shrink-0">💬</span>
+                      <MessageSquare className="text-gray-400 mt-0.5 mr-2 h-4 w-4 flex-shrink-0" />
                       <p className="text-gray-700 text-sm">{version.commitMessage}</p>
                     </div>
                   )}
 
                   <div className="flex items-center text-sm text-gray-500 space-x-4">
                     <div className="flex items-center">
-                      <span className="mr-1">👤</span>
+                      <User className="mr-1 h-4 w-4" />
                       {version.createdByUser.name || version.createdByUser.email}
                     </div>
                     <div className="flex items-center" data-testid="version-timestamp">
-                      <span className="mr-1">🕒</span>
+                      <Clock className="mr-1 h-4 w-4" />
                       {formatDate(version.createdAt)}
                     </div>
                   </div>
@@ -336,7 +350,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded"
                       title="Preview this version"
                     >
-                      👁️
+                      <Eye className="h-4 w-4" />
                     </button>
                   )}
                   
@@ -346,7 +360,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
                       className="p-2 text-orange-600 hover:bg-orange-50 rounded"
                       title="Revert to this version"
                     >
-                      ↺
+                      <RotateCcw className="h-4 w-4" />
                     </button>
                   )}
                 </div>
