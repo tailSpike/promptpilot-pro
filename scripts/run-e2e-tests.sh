@@ -167,12 +167,12 @@ fi
 # Setup test database
 print_status "Setting up test database..."
 cd backend
-if ! npx prisma generate --silent; then
+if ! npx prisma generate > /dev/null 2>&1; then
   print_error "Failed to generate Prisma client"
   exit 1
 fi
 
-if ! npx prisma db push --force-reset --silent; then
+if ! npx prisma db push --force-reset > /dev/null 2>&1; then
   print_error "Failed to reset test database"
   exit 1
 fi
@@ -184,12 +184,12 @@ if [ "$SKIP_BUILD" = false ]; then
   
   if [ ! -d "backend/dist" ]; then
     print_info "Building backend..."
-    cd backend && npm run build --silent && cd ..
+    cd backend && npm run build > /dev/null 2>&1 && cd ..
   fi
   
   if [ ! -d "frontend/dist" ]; then
     print_info "Building frontend..."
-    cd frontend && npm run build --silent && cd ..
+    cd frontend && npm run build > /dev/null 2>&1 && cd ..
   fi
 else
   print_info "Skipping build steps"
