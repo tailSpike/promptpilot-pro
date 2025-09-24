@@ -78,12 +78,12 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4">
-              <button
-                disabled
-                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-500 bg-gray-100 cursor-not-allowed"
+              <Link
+                to="/workflows"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
               >
-                Coming Soon
-              </button>
+                Manage Workflows
+              </Link>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { CreatePromptData, UpdatePromptData, CreateFolderData, UpdateFolderData } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // Create axios instance with CORS support
 const api = axios.create({
@@ -51,17 +51,17 @@ export type {
 // Auth API
 export const authAPI = {
   register: async (email: string, password: string, name?: string) => {
-    const response = await api.post('/auth/register', { email, password, name });
+    const response = await api.post('/api/auth/register', { email, password, name });
     return response.data;
   },
 
   login: async (email: string, password: string) => {
-    const response = await api.post('/auth/login', { email, password });
+    const response = await api.post('/api/auth/login', { email, password });
     return response.data;
   },
 
   getProfile: async () => {
-    const response = await api.get('/auth/me');
+    const response = await api.get('/api/auth/me');
     return response.data;
   },
 };
@@ -75,27 +75,27 @@ export const promptsAPI = {
     isPublic?: boolean;
     folderId?: string;
   }) => {
-    const response = await api.get('/prompts', { params });
+    const response = await api.get('/api/prompts', { params });
     return response.data;
   },
 
   getPrompt: async (id: string) => {
-    const response = await api.get(`/prompts/${id}`);
+    const response = await api.get(`/api/prompts/${id}`);
     return response.data;
   },
 
   createPrompt: async (data: CreatePromptData) => {
-    const response = await api.post('/prompts', data);
+    const response = await api.post('/api/prompts', data);
     return response.data;
   },
 
   updatePrompt: async (id: string, data: UpdatePromptData) => {
-    const response = await api.put(`/prompts/${id}`, data);
+    const response = await api.put(`/api/prompts/${id}`, data);
     return response.data;
   },
 
   deletePrompt: async (id: string) => {
-    const response = await api.delete(`/prompts/${id}`);
+    const response = await api.delete(`/api/prompts/${id}`);
     return response.data;
   },
 
@@ -111,38 +111,38 @@ export const promptsAPI = {
 // Folders API
 export const foldersAPI = {
   getFolders: async () => {
-    const response = await api.get('/folders');
+    const response = await api.get('/api/folders');
     return response.data;
   },
 
   getFolder: async (id: string) => {
-    const response = await api.get(`/folders/${id}`);
+    const response = await api.get(`/api/folders/${id}`);
     return response.data;
   },
 
   createFolder: async (data: CreateFolderData) => {
-    const response = await api.post('/folders', data);
+    const response = await api.post('/api/folders', data);
     return response.data;
   },
 
   updateFolder: async (id: string, data: UpdateFolderData) => {
-    const response = await api.put(`/folders/${id}`, data);
+    const response = await api.put(`/api/folders/${id}`, data);
     return response.data;
   },
 
   deleteFolder: async (id: string, moveToFolderId?: string) => {
     const params = moveToFolderId ? { moveToFolderId } : {};
-    const response = await api.delete(`/folders/${id}`, { params });
+    const response = await api.delete(`/api/folders/${id}`, { params });
     return response.data;
   },
 
   reorderFolders: async (parentId: string | null, folderIds: string[]) => {
-    const response = await api.post('/folders/reorder', { parentId, folderIds });
+    const response = await api.post('/api/folders/reorder', { parentId, folderIds });
     return response.data;
   },
 
   insertFolderAtPosition: async (folderId: string, targetParentId: string | null, position: number) => {
-    const response = await api.post('/folders/insert-at-position', { 
+    const response = await api.post('/api/folders/insert-at-position', { 
       folderId, 
       targetParentId, 
       position 
@@ -154,22 +154,22 @@ export const foldersAPI = {
 // Versions API
 export const versionsAPI = {
   getVersionHistory: async (promptId: string) => {
-    const response = await api.get(`/prompts/${promptId}/versions`);
+    const response = await api.get(`/api/prompts/${promptId}/versions`);
     return response.data.data; // Extract the actual versions array from { success: true, data: versions }
   },
 
   getVersionStats: async (promptId: string) => {
-    const response = await api.get(`/prompts/${promptId}/versions/stats`);
+    const response = await api.get(`/api/prompts/${promptId}/versions/stats`);
     return response.data.data; // Extract the actual stats from { success: true, data: stats }
   },
 
   revertToVersion: async (promptId: string, versionId: string) => {
-    const response = await api.put(`/prompts/${promptId}/revert/${versionId}`);
+    const response = await api.put(`/api/prompts/${promptId}/revert/${versionId}`);
     return response.data.data; // Extract the actual data from { success: true, data: ... }
   },
 
   compareVersions: async (promptId: string, version1: string, version2: string) => {
-    const response = await api.get(`/prompts/${promptId}/versions/compare`, {
+    const response = await api.get(`/api/prompts/${promptId}/versions/compare`, {
       params: { version1, version2 }
     });
     return response.data.data; // Extract the actual comparison data from { success: true, data: ... }

@@ -7,6 +7,9 @@ import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import PromptEditor from './components/PromptEditor';
 import PromptList from './components/PromptList';
+import WorkflowList from './components/WorkflowList';
+import WorkflowEditor from './components/WorkflowEditor';
+import WorkflowDetail from './components/WorkflowDetail';
 import Layout from './components/Layout';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -71,6 +74,34 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <PromptEditor />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/workflows" element={
+              <ProtectedRoute>
+                <Layout>
+                  <WorkflowList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/workflows/new" element={
+              <ProtectedRoute>
+                <Layout>
+                  <WorkflowEditor />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/workflows/:id" element={
+              <ProtectedRoute>
+                <Layout>
+                  <WorkflowDetail />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/workflows/:id/edit" element={
+              <ProtectedRoute>
+                <Layout>
+                  <WorkflowEditor />
                 </Layout>
               </ProtectedRoute>
             } />
