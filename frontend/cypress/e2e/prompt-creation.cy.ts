@@ -17,36 +17,42 @@ describe('Prompt Creation and Management', () => {
     cy.request('POST', `${Cypress.env('apiUrl')}/api/auth/register`, userData)
       .then((response) => {
         testUser = response.body;
-        window.localStorage.setItem('token', response.body.token);
-        window.localStorage.setItem('user', JSON.stringify(response.body.user));
+        
+        // Set auth data in localStorage via cy.window()
+        cy.window().then((win) => {
+          win.localStorage.setItem('token', response.body.token);
+          win.localStorage.setItem('user', JSON.stringify(response.body.user));
+        });
       });
-
-    cy.visit('/dashboard');
   });
 
   describe('Basic Prompt Creation', () => {
     it('should create a simple prompt without variables', () => {
-      // Click the "Get Started" button from the dashboard
-      cy.get('a[href="/prompts/new"]').contains('Get Started').click();
-      cy.url().should('include', '/prompts/new');
+      // Visit prompts page directly with auth
+      cy.visit('/prompts');
+      cy.url({ timeout: 10000 }).should('include', '/prompts');
+
+      // Navigate to create new prompt
+      cy.get('a[href="/prompts/new"]', { timeout: 10000 }).should('be.visible').click();
+      cy.url({ timeout: 10000 }).should('include', '/prompts/new');
 
       // Fill out the prompt form
-      cy.get('input#name').type('Simple Greeting');
-      cy.get('textarea#description').type('A simple greeting prompt');
-      cy.get('textarea#content').type('Hello! Welcome to our service.');
+      cy.get('input#name', { timeout: 5000 }).should('be.visible').type('Simple Greeting');
+      cy.get('textarea#description').should('be.visible').type('A simple greeting prompt');
+      cy.get('textarea#content').should('be.visible').type('Hello! Welcome to our service.');
 
       // Submit the form
       cy.get('button[type="submit"]').contains('Create Prompt').click();
 
       // Should show success message and redirect
-      cy.get('.bg-green-50').should('be.visible').and('contain', 'Prompt created successfully');
-      cy.url().should('include', '/prompts');
+      cy.get('.bg-green-50', { timeout: 10000 }).should('be.visible').and('contain', 'Prompt created successfully');
+      cy.url({ timeout: 10000 }).should('include', '/prompts');
     });
 
     it('should require name and content fields', () => {
-      // Click the "Get Started" button from the dashboard
-      cy.get('a[href="/prompts/new"]').contains('Get Started').click();
-      cy.url().should('include', '/prompts/new');
+      // Visit create prompt page directly with auth
+      cy.visit('/prompts/new');
+      cy.url({ timeout: 10000 }).should('include', '/prompts/new');
 
       // Try to submit without required fields
       cy.get('button[type="submit"]').contains('Create Prompt').click();

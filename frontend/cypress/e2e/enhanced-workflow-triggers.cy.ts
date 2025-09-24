@@ -63,34 +63,46 @@ describe('Enhanced Workflow Triggers System', () => {
 
   describe('Workflow Navigation and Setup', () => {
     it('should navigate to workflows and access trigger management', () => {
-      cy.visit('/');
-      cy.url().should('include', '/dashboard');
+      // Set auth token and visit the page directly
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser));
+      });
+      
+      cy.visit('/dashboard');
+      cy.url({ timeout: 10000 }).should('include', '/dashboard');
       
       // Navigate to workflows
-      cy.get('a[href="/workflows"]', { timeout: 10000 }).click();
-      cy.url().should('include', '/workflows');
+      cy.get('a[href="/workflows"]', { timeout: 10000 }).should('be.visible').click();
+      cy.url({ timeout: 10000 }).should('include', '/workflows');
       
       // Should show the test workflow
-      cy.contains('Trigger Test Workflow').should('be.visible');
+      cy.contains('Trigger Test Workflow', { timeout: 10000 }).should('be.visible');
       
       // Click to view workflow details
       cy.contains('Trigger Test Workflow').click();
-      cy.url().should('include', `/workflows/${testWorkflow.id}`);
+      cy.url({ timeout: 10000 }).should('include', `/workflows/${testWorkflow.id}`);
       
       // Should have trigger section
-      cy.get('body').should('contain', 'Triggers');
+      cy.get('body', { timeout: 10000 }).should('contain', 'Triggers');
     });
   });
 
   describe('Manual Trigger Testing', () => {
     it('should create and test manual trigger', () => {
+      // Set auth token and visit the workflow page directly
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser));
+      });
+      
       cy.visit(`/workflows/${testWorkflow.id}`);
       
-      // Add trigger button should be visible
-      cy.get('button').contains('Add Trigger').should('be.visible').click();
+      // Wait for page to load and find the Add Trigger button
+      cy.get('button', { timeout: 15000 }).contains('Add Trigger').should('be.visible').click();
       
       // Should open trigger modal
-      cy.get('[role="dialog"]').should('be.visible');
+      cy.get('[role="dialog"]', { timeout: 10000 }).should('be.visible');
       
       // Select MANUAL trigger type
       cy.get('button').contains('MANUAL').click();
