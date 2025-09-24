@@ -2,7 +2,7 @@ import { defineConfig } from 'cypress'
 
 export default defineConfig({
   e2e: {
-    baseUrl: 'http://localhost:5175',
+    baseUrl: 'http://localhost:4173',
     supportFile: 'cypress/support/e2e.ts',
     specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
     viewportWidth: 1280,
@@ -16,7 +16,7 @@ export default defineConfig({
       // implement node event listeners here
     },
     env: {
-      apiUrl: 'http://localhost:3001'
+      apiUrl: 'http://localhost:5000'
     }
   },
   component: {
