@@ -90,13 +90,6 @@ export default function WorkflowEditor() {
   const [availablePrompts, setAvailablePrompts] = useState<Prompt[]>([]);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
 
-  useEffect(() => {
-    if (isEditing) {
-      fetchWorkflow();
-    }
-    fetchPrompts();
-  }, [id, isEditing, fetchWorkflow, fetchPrompts]);
-
   const fetchPrompts = useCallback(async () => {
     try {
       setLoadingPrompts(true);
@@ -139,6 +132,13 @@ export default function WorkflowEditor() {
       setLoading(false);
     }
   }, [id]);
+
+  useEffect(() => {
+    if (isEditing) {
+      fetchWorkflow();
+    }
+    fetchPrompts();
+  }, [id, isEditing, fetchWorkflow, fetchPrompts]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
