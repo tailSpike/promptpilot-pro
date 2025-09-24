@@ -24,9 +24,11 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  prompts   Prompt[]
-  workflows Workflow[]
-  folders   Folder[]
+  prompts        Prompt[]
+  workflows      Workflow[]
+  folders        Folder[]
+  promptVersions PromptVersion[]
+  promptBranches PromptBranch[]
 
   @@map("users")
 }
@@ -37,6 +39,7 @@ model Folder {
   name        String
   description String?
   color       String?  // Optional color for visual organization
+  sortOrder   Int      @default(0) // Order within parent folder
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -61,18 +64,24 @@ model Prompt {
   content     String   // The actual prompt template
   variables   Json     // Array of variable definitions
   metadata    Json?    // Additional metadata (tags, categories, etc.)
-  version     Int      @default(1)
+  version     String   @default("1.0.0") // Current semantic version
   isPublic    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  userId   String
-  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folderId String?
-  folder   Folder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  executions PromptExecution[]
-  workflowSteps WorkflowStep[]
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folderId       String?
+  folder         Folder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  executions     PromptExecution[]
+  workflowSteps  WorkflowStep[]
+  versions       PromptVersion[]
+  branches       PromptBranch[]
+  
+  // Current version tracking
+  currentVersionId String? @unique
+  currentVersion   PromptVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
 
   @@map("prompts")
 }
@@ -110,6 +119,81 @@ model WorkflowStep {
   @@map("workflow_steps")
 }
 
+// Version control for prompts
+model PromptVersion {
+  id            String   @id @default(cuid())
+  versionNumber String   // Semantic version (e.g., "1.0.0")
+  majorVersion  Int      @default(1)
+  minorVersion  Int      @default(0)
+  patchVersion  Int      @default(0)
+  
+  // Content snapshot
+  name          String
+  description   String?
+  content       String   // The prompt template at this version
+  variables     Json     // Variable definitions at this version
+  metadata      Json?    // Metadata at this version
+  folderId      String?  // Folder assignment at this version
+  
+  // Version metadata
+  commitMessage String?  // Optional commit message
+  changeType    VersionChangeType @default(PATCH)
+  changesSummary Json?   // Summary of what changed
+  tags          Json?    // Version tags (e.g., "production", "experimental")
+  
+  // Timestamps and author
+  createdAt     DateTime @default(now())
+  createdBy     String   // User ID who created this version
+  
+  // Relations
+  promptId      String
+  prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  createdByUser User     @relation(fields: [createdBy], references: [id])
+  
+  // Parent version for tracking changes
+  parentVersionId String?
+  parentVersion   PromptVersion? @relation("VersionHistory", fields: [parentVersionId], references: [id])
+  childVersions   PromptVersion[] @relation("VersionHistory")
+  
+  // Current version relations
+  currentForPrompt Prompt? @relation("CurrentVersion")
+  
+  // Branch relations
+  branchBase PromptBranch[] @relation("BranchBase")
+  branchHead PromptBranch[] @relation("BranchHead")
+  
+  // Execution tracking
+  executions PromptExecution[]
+
+  @@map("prompt_versions")
+  @@unique([promptId, versionNumber])
+  @@index([promptId, createdAt])
+}
+
+// Branches for experimental prompt versions
+model PromptBranch {
+  id          String   @id @default(cuid())
+  name        String   // Branch name (e.g., "experiment-tone", "client-specific")
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  promptId         String
+  prompt           Prompt        @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  baseVersionId    String        // The version this branch was created from
+  baseVersion      PromptVersion @relation("BranchBase", fields: [baseVersionId], references: [id])
+  currentVersionId String?       // Current head version of this branch
+  currentVersion   PromptVersion? @relation("BranchHead", fields: [currentVersionId], references: [id])
+  
+  createdBy        String
+  createdByUser    User          @relation(fields: [createdBy], references: [id])
+
+  @@map("prompt_branches")
+  @@unique([promptId, name])
+}
+
 // Execution logs for prompts
 model PromptExecution {
   id        String   @id @default(cuid())
@@ -122,6 +206,10 @@ model PromptExecution {
   // Relations
   promptId String
   prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  
+  // Optional version tracking
+  versionId String?
+  version   PromptVersion? @relation(fields: [versionId], references: [id])
 
   @@map("prompt_executions")
 }
@@ -154,4 +242,10 @@ enum ExecutionStatus {
   RUNNING
   COMPLETED
   FAILED
+}
+
+enum VersionChangeType {
+  PATCH  // Bug fixes, minor tweaks
+  MINOR  // New features, significant improvements
+  MAJOR  // Breaking changes, complete rewrites
 }

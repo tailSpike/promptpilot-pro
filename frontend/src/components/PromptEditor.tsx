@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { promptsAPI, foldersAPI } from '../services/api';
 import type { Prompt, Variable, CreatePromptData, Folder } from '../types';
+import VersionHistory from './VersionHistory';
 
 export default function PromptEditor() {
   const [prompt, setPrompt] = useState<Partial<Prompt>>({
@@ -17,6 +18,9 @@ export default function PromptEditor() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState<'editor' | 'history'>('editor');
+  const [commitMessage, setCommitMessage] = useState('');
+  const [changeType, setChangeType] = useState<'PATCH' | 'MINOR' | 'MAJOR'>('PATCH');
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = Boolean(id);
@@ -82,8 +86,16 @@ export default function PromptEditor() {
 
     try {
       if (isEditing && id) {
-        await promptsAPI.updatePrompt(id, prompt);
+        // Include version control data when updating
+        const updateData = {
+          ...prompt,
+          changeType,
+          commitMessage: commitMessage || `Updated prompt: ${prompt.name}`
+        };
+        await promptsAPI.updatePrompt(id, updateData);
         setSuccess('Prompt updated successfully!');
+        // Clear commit message after successful update
+        setCommitMessage('');
       } else {
         await promptsAPI.createPrompt(prompt as CreatePromptData);
         setSuccess('Prompt created successfully!');
@@ -168,16 +180,46 @@ export default function PromptEditor() {
         <p className="mt-2 text-gray-600">
           Build structured prompts with variables that can be reused across workflows.
         </p>
+        
+        {/* Tab Navigation - only show for editing */}
+        {isEditing && (
+          <div className="mt-6 border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('editor')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'editor'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                📝 Editor
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'history'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                🌳 Version History
+              </button>
+            </nav>
+          </div>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content Area - Left and Center Columns */}
-        <div className="lg:col-span-2 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
+      {/* Tab Content */}
+      {activeTab === 'editor' ? (
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Content Area - Left and Center Columns */}
+          <div className="lg:col-span-2 space-y-6">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                {error}
+              </div>
+            )}
           
           {success && (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
@@ -271,6 +313,48 @@ export default function PromptEditor() {
             
             <div className="mt-2 text-xs text-gray-500">
               Example: "Write a {'{tone}'} email about {'{topic}'} for {'{audience}'}"
+            </div>
+          </div>
+
+          {/* Version Control Section */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Version Control</h2>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="commitMessage" className="block text-sm font-medium text-gray-700">
+                  Commit Message
+                </label>
+                <textarea
+                  id="commitMessage"
+                  rows={3}
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Describe what changes you made..."
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Add a brief description of your changes for version history
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="changeType" className="block text-sm font-medium text-gray-700">
+                  Change Type
+                </label>
+                <select
+                  id="changeType"
+                  value={changeType}
+                  onChange={(e) => setChangeType(e.target.value as 'PATCH' | 'MINOR' | 'MAJOR')}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                >
+                  <option value="PATCH">Patch - Small fixes or improvements</option>
+                  <option value="MINOR">Minor - New features or significant changes</option>
+                  <option value="MAJOR">Major - Breaking changes or complete rewrites</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Select the type of change to help with semantic versioning
+                </p>
+              </div>
             </div>
           </div>
 
@@ -394,7 +478,26 @@ export default function PromptEditor() {
             </div>
           </div>
         </div>
-      </form>
+        </form>
+      ) : (
+        /* Version History Tab */
+        <div className="max-w-4xl mx-auto">
+          {isEditing && id ? (
+            <VersionHistory 
+              promptId={id}
+              onRevert={() => {
+                // Reload the prompt after revert
+                if (id) loadPrompt(id);
+                setActiveTab('editor'); // Switch back to editor
+              }}
+            />
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              Save the prompt first to see version history
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

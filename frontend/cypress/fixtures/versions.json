@@ -1,0 +1,52 @@
+[
+  {
+    "id": "version-1",
+    "versionNumber": "1.0.0",
+    "name": "Initial Version",
+    "description": "First version of the prompt",
+    "content": "Hello {{name}}, welcome!",
+    "variables": [
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "metadata": {},
+    "commitMessage": "Initial prompt creation",
+    "changeType": "MAJOR",
+    "createdAt": "2024-01-01T10:00:00.000Z",
+    "createdByUser": {
+      "id": "user-1",
+      "name": "Test User",
+      "email": "test@example.com"
+    }
+  },
+  {
+    "id": "version-2",
+    "versionNumber": "1.1.0",
+    "name": "Updated Version",
+    "description": "Updated description",
+    "content": "Hello {{name}}, welcome to our updated service!",
+    "variables": [
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "metadata": {},
+    "commitMessage": "Updated welcome message",
+    "changeType": "MINOR",
+    "createdAt": "2024-01-02T10:00:00.000Z",
+    "createdByUser": {
+      "id": "user-1",
+      "name": "Test User",
+      "email": "test@example.com"
+    },
+    "parentVersion": {
+      "id": "version-1",
+      "versionNumber": "1.0.0"
+    }
+  }
+]

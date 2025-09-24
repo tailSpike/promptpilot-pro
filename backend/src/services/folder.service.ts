@@ -6,13 +6,15 @@ export interface CreateFolderData {
   description?: string;
   color?: string;
   parentId?: string;
+  sortOrder?: number;
 }
 
 export interface UpdateFolderData {
   name?: string;
-  description?: string;
-  color?: string;
-  parentId?: string;
+  description?: string | null;
+  color?: string | null;
+  parentId?: string | null;
+  sortOrder?: number;
 }
 
 export interface FolderWithChildren extends Folder {
@@ -82,9 +84,10 @@ export class FolderService {
           }
         }
       },
-      orderBy: {
-        name: 'asc'
-      }
+      orderBy: [
+        { sortOrder: 'asc' },
+        { name: 'asc' } // Secondary sort by name for consistency
+      ]
     });
 
     // Build hierarchical structure
@@ -350,5 +353,90 @@ export class FolderService {
     }
     
     return false;
+  }
+
+  /**
+   * Reorder folders within the same parent
+   */
+  static async reorderFolders(userId: string, parentId: string | null, folderIds: string[]): Promise<void> {
+    // Verify all folders belong to the user and have the same parent
+    const folders = await prisma.folder.findMany({
+      where: {
+        id: { in: folderIds },
+        userId,
+        parentId
+      }
+    });
+
+    if (folders.length !== folderIds.length) {
+      throw new Error('Some folders not found or access denied');
+    }
+
+    // Update sort order for each folder
+    const updates = folderIds.map((folderId, index) => 
+      prisma.folder.update({
+        where: { id: folderId },
+        data: { sortOrder: index }
+      })
+    );
+
+    await prisma.$transaction(updates);
+  }
+
+  /**
+   * Insert folder at specific position within siblings
+   */
+  static async insertFolderAtPosition(
+    userId: string, 
+    folderId: string, 
+    targetParentId: string | null, 
+    position: number
+  ): Promise<void> {
+    // Get all sibling folders in the target parent
+    const siblings = await prisma.folder.findMany({
+      where: {
+        userId,
+        parentId: targetParentId
+      },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    // Remove the folder being moved from its current position if it's already in this parent
+    const existingIndex = siblings.findIndex(f => f.id === folderId);
+    if (existingIndex !== -1) {
+      siblings.splice(existingIndex, 1);
+    }
+
+    // Insert the folder at the new position
+    const targetPosition = Math.max(0, Math.min(position, siblings.length));
+    
+    // Update sort orders
+    const updates: any[] = [];
+    
+    // Update the moved folder's parent and position
+    updates.push(
+      prisma.folder.update({
+        where: { id: folderId },
+        data: { 
+          parentId: targetParentId,
+          sortOrder: targetPosition
+        }
+      })
+    );
+
+    // Update sort orders for siblings that come after the insertion point
+    siblings.forEach((sibling, index) => {
+      const newSortOrder = index >= targetPosition ? index + 1 : index;
+      if (sibling.sortOrder !== newSortOrder) {
+        updates.push(
+          prisma.folder.update({
+            where: { id: sibling.id },
+            data: { sortOrder: newSortOrder }
+          })
+        );
+      }
+    });
+
+    await prisma.$transaction(updates);
   }
 }

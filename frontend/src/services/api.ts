@@ -3,12 +3,14 @@ import type { CreatePromptData, UpdatePromptData, CreateFolderData, UpdateFolder
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-// Create axios instance
+// Create axios instance with CORS support
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true, // Enable cookies/credentials for CORS
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
 
 // Request interceptor to add auth token
@@ -132,6 +134,45 @@ export const foldersAPI = {
     const params = moveToFolderId ? { moveToFolderId } : {};
     const response = await api.delete(`/folders/${id}`, { params });
     return response.data;
+  },
+
+  reorderFolders: async (parentId: string | null, folderIds: string[]) => {
+    const response = await api.post('/folders/reorder', { parentId, folderIds });
+    return response.data;
+  },
+
+  insertFolderAtPosition: async (folderId: string, targetParentId: string | null, position: number) => {
+    const response = await api.post('/folders/insert-at-position', { 
+      folderId, 
+      targetParentId, 
+      position 
+    });
+    return response.data;
+  },
+};
+
+// Versions API
+export const versionsAPI = {
+  getVersionHistory: async (promptId: string) => {
+    const response = await api.get(`/prompts/${promptId}/versions`);
+    return response.data.data; // Extract the actual versions array from { success: true, data: versions }
+  },
+
+  getVersionStats: async (promptId: string) => {
+    const response = await api.get(`/prompts/${promptId}/versions/stats`);
+    return response.data.data; // Extract the actual stats from { success: true, data: stats }
+  },
+
+  revertToVersion: async (promptId: string, versionId: string) => {
+    const response = await api.put(`/prompts/${promptId}/revert/${versionId}`);
+    return response.data.data; // Extract the actual data from { success: true, data: ... }
+  },
+
+  compareVersions: async (promptId: string, version1: string, version2: string) => {
+    const response = await api.get(`/prompts/${promptId}/versions/compare`, {
+      params: { version1, version2 }
+    });
+    return response.data.data; // Extract the actual comparison data from { success: true, data: ... }
   },
 };
 

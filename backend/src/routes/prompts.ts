@@ -1,6 +1,7 @@
 import express from 'express';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
+import { VersionService, VersionChangeType } from '../services/versionService';
 
 const router = express.Router();
 
@@ -79,6 +80,21 @@ router.post('/', async (req, res) => {
       }
     });
 
+    // Create initial version
+    try {
+      const initialVersion = await VersionService.createVersion({
+        promptId: prompt.id,
+        userId,
+        changeType: VersionChangeType.MAJOR, // First version is always 1.0.0
+        commitMessage: `Initial version: ${name}`
+      });
+      
+      console.log(`Created initial version ${initialVersion.versionNumber} for prompt ${prompt.id}`);
+    } catch (versionError) {
+      console.error('Failed to create initial version:', versionError);
+      // Don't fail the entire creation if versioning fails
+    }
+
     res.status(201).json({
       message: 'Prompt created successfully',
       prompt
@@ -95,7 +111,7 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const userId = req.user!.id;
-    const { page = '1', limit = '10', search, isPublic } = req.query;
+    const { page = '1', limit = '10', search, isPublic, folderId } = req.query;
 
     // Parse and validate pagination parameters
     const pageNum = Math.max(1, parseInt(String(page)) || 1);
@@ -119,6 +135,22 @@ router.get('/', async (req, res) => {
           { content: { contains: search as string } }
         ]
       };
+    }
+
+    // Add folder filter
+    if (folderId !== undefined) {
+      // Handle both explicit folderId and null/empty for uncategorized
+      const folderFilter = folderId === '' || folderId === 'null' ? null : folderId;
+      
+      // If we already have an AND condition from search, merge the folder filter
+      if (where.AND) {
+        where.AND = {
+          ...where.AND,
+          folderId: folderFilter
+        };
+      } else {
+        where.folderId = folderFilter;
+      }
     }
 
     const [prompts, total] = await Promise.all([
@@ -261,6 +293,13 @@ router.put('/:id', async (req, res) => {
     // Validate folderId if provided (skip validation for now to test basic functionality)
     // TODO: Re-enable folder validation once Prisma client is regenerated
 
+    // Check if this is a significant change to determine version type
+    const { changeType = 'PATCH', commitMessage } = req.body;
+    let versionChangeType = VersionChangeType.PATCH;
+    
+    if (changeType === 'MINOR') versionChangeType = VersionChangeType.MINOR;
+    else if (changeType === 'MAJOR') versionChangeType = VersionChangeType.MAJOR;
+
     // Update prompt
     const prompt = await prisma.prompt.update({
       where: { id },
@@ -271,8 +310,8 @@ router.put('/:id', async (req, res) => {
         ...(variables !== undefined && { variables }),
         ...(metadata !== undefined && { metadata }),
         ...(isPublic !== undefined && { isPublic }),
-        ...(folderId !== undefined && { folderId }),
-        version: existingPrompt.version + 1
+        ...(folderId !== undefined && { folderId })
+        // Remove version increment - will be handled by VersionService
       },
       include: {
         user: {
@@ -284,6 +323,21 @@ router.put('/:id', async (req, res) => {
         }
       }
     });
+
+    // Create a new version after successful update
+    try {
+      const version = await VersionService.createVersion({
+        promptId: id,
+        userId,
+        changeType: versionChangeType,
+        commitMessage: commitMessage || `Updated prompt: ${name || existingPrompt.name}`
+      });
+      
+      console.log(`Created version ${version.versionNumber} for prompt ${id}`);
+    } catch (versionError) {
+      console.error('Failed to create version:', versionError);
+      // Don't fail the entire update if versioning fails
+    }
 
     res.json({
       message: 'Prompt updated successfully',
