@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { promptsAPI } from '../services/api';
+import type { Prompt } from '../types';
 
 interface WorkflowStep {
   id?: string;
@@ -85,13 +87,28 @@ export default function WorkflowEditor() {
   const [saving, setSaving] = useState(false);
   const [savingStep, setSavingStep] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availablePrompts, setAvailablePrompts] = useState<Prompt[]>([]);
+  const [loadingPrompts, setLoadingPrompts] = useState(false);
 
   useEffect(() => {
     if (isEditing) {
       fetchWorkflow();
     }
+    fetchPrompts(); // Load available prompts
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isEditing]);
+
+  const fetchPrompts = async () => {
+    try {
+      setLoadingPrompts(true);
+      const response = await promptsAPI.getPrompts({ limit: 100 }); // Get more prompts for selection
+      setAvailablePrompts(response.prompts);
+    } catch (error) {
+      console.error('Failed to load prompts:', error);
+    } finally {
+      setLoadingPrompts(false);
+    }
+  };
 
   const fetchWorkflow = async () => {
     if (!id) return;
@@ -450,21 +467,115 @@ export default function WorkflowEditor() {
                     <div className="space-y-4 border-t pt-4">
                       <h4 className="text-sm font-medium text-gray-900">Prompt Configuration</h4>
                       
+                      {/* Option to select existing prompt or create inline */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Prompt Content
+                        <label className="block text-xs font-medium text-gray-700 mb-2">
+                          Prompt Source
                         </label>
-                        <textarea
-                          value={step.config.promptContent || ''}
-                          onChange={(e) => updateStep(index, {
-                            config: { ...step.config, promptContent: e.target.value }
-                          })}
-                          rows={4}
-                          className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="Enter your prompt text here..."
-                        />
+                        <div className="flex items-center space-x-4 mb-4">
+                          <label className="flex items-center">
+                            <input
+                              type="radio"
+                              name={`promptSource-${index}`}
+                              value="existing"
+                              checked={!!step.promptId}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  updateStep(index, { 
+                                    promptId: availablePrompts[0]?.id || '',
+                                    config: { ...step.config, promptContent: undefined }
+                                  });
+                                }
+                              }}
+                              className="mr-2"
+                            />
+                            Use existing prompt
+                          </label>
+                          <label className="flex items-center">
+                            <input
+                              type="radio"
+                              name={`promptSource-${index}`}
+                              value="inline"
+                              checked={!step.promptId}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  updateStep(index, { 
+                                    promptId: undefined,
+                                    config: { ...step.config, promptContent: '' }
+                                  });
+                                }
+                              }}
+                              className="mr-2"
+                            />
+                            Create inline prompt
+                          </label>
+                        </div>
                       </div>
 
+                      {/* Existing prompt selection */}
+                      {step.promptId !== undefined && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Select Prompt
+                          </label>
+                          <select
+                            value={step.promptId || ''}
+                            onChange={(e) => updateStep(index, { promptId: e.target.value })}
+                            className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                            disabled={loadingPrompts}
+                          >
+                            <option value="">Select a prompt...</option>
+                            {availablePrompts.map(prompt => (
+                              <option key={prompt.id} value={prompt.id}>
+                                {prompt.name} {prompt.folder ? `(${prompt.folder.name})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          {loadingPrompts && (
+                            <p className="text-xs text-gray-500 mt-1">Loading prompts...</p>
+                          )}
+                          {step.promptId && !loadingPrompts && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                              <p className="font-medium">Selected Prompt Preview:</p>
+                              {(() => {
+                                const selectedPrompt = availablePrompts.find(p => p.id === step.promptId);
+                                return selectedPrompt ? (
+                                  <div className="mt-1">
+                                    <p className="text-gray-600 truncate">{selectedPrompt.content}</p>
+                                    {selectedPrompt.variables.length > 0 && (
+                                      <p className="text-gray-500 text-xs mt-1">
+                                        Variables: {selectedPrompt.variables.map(v => `{{${v.name}}}`).join(', ')}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-gray-500">Prompt not found</p>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Inline prompt creation */}
+                      {!step.promptId && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Prompt Content
+                          </label>
+                          <textarea
+                            value={step.config.promptContent || ''}
+                            onChange={(e) => updateStep(index, {
+                              config: { ...step.config, promptContent: e.target.value }
+                            })}
+                            rows={4}
+                            className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                            placeholder="Enter your prompt text here..."
+                          />
+                        </div>
+                      )}
+
+                      {/* Model settings (common for both existing and inline prompts) */}
                       <div className="grid grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -533,6 +644,41 @@ export default function WorkflowEditor() {
                           </select>
                         </div>
                       </div>
+
+                      {/* Variable mapping section for existing prompts */}
+                      {step.promptId && (() => {
+                        const selectedPrompt = availablePrompts.find(p => p.id === step.promptId);
+                        return selectedPrompt && selectedPrompt.variables.length > 0 ? (
+                          <div className="border-t pt-4">
+                            <h5 className="text-sm font-medium text-gray-900 mb-2">Variable Mapping</h5>
+                            <p className="text-xs text-gray-600 mb-3">Map workflow variables to prompt variables:</p>
+                            <div className="space-y-2">
+                              {selectedPrompt.variables.map((variable) => (
+                                <div key={variable.name} className="grid grid-cols-3 gap-2">
+                                  <div className="text-xs text-gray-700 self-center">
+                                    {variable.name} ({variable.type}){variable.required && '*'}
+                                  </div>
+                                  <input
+                                    type="text"
+                                    placeholder="Enter value or {{workflow.variable}}"
+                                    value={step.config.variables?.[variable.name] as string || ''}
+                                    onChange={(e) => updateStep(index, {
+                                      config: {
+                                        ...step.config,
+                                        variables: {
+                                          ...step.config.variables,
+                                          [variable.name]: e.target.value
+                                        }
+                                      }
+                                    })}
+                                    className="col-span-2 text-xs border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   )}
 
