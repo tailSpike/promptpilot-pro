@@ -1,11 +1,9 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import { CreateTriggerSchema, UpdateTriggerSchema, triggerService } from '../services/triggerService';
+import { triggerService } from '../services/triggerService';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/workflows/:workflowId/triggers - List triggers for a workflow
 router.get('/:workflowId/triggers', authenticate, async (req, res) => {
@@ -167,12 +165,8 @@ router.post('/webhooks/:triggerId', async (req, res) => {
       return res.status(400).json({ error: 'Trigger ID is required' });
     }
 
-    const signature = req.headers['x-hub-signature-256'] as string;
-    const origin = req.headers['origin'] as string;
-    
     // For now, just acknowledge the webhook
     // TODO: Implement actual webhook handling and validation
-    console.log(`Received webhook for trigger ${triggerId}`);
     
     res.status(200).json({ 
       message: 'Webhook received', 
@@ -180,8 +174,7 @@ router.post('/webhooks/:triggerId', async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-  } catch (error) {
-    console.error('Error handling webhook:', error);
+  } catch {
     res.status(500).json({ error: 'Failed to handle webhook' });
   }
 });
