@@ -20,7 +20,20 @@
 - **Navigation:** Workflows navigation integrated into main layout
 - **Dashboard Integration:** "Coming Soon" button replaced with functional workflows link
 
-## 🎯 Acceptance Criteria Status
+### Phase 1.6: Enhanced Step Configuration - COMPLETE ✅
+- **Type-Specific Forms:** Comprehensive configuration UI for all 6 step types
+- **PROMPT Integration:** Dual-mode prompt configuration (existing prompts vs inline content)
+- **Variable Mapping:** Automatic variable detection and mapping for existing prompts
+- **Step Validation:** Enhanced backend schema with detailed type-specific validation
+- **Real-time Saving:** Immediate step persistence with loading states and error handling
+
+### Enhanced Step Configuration - COMPLETE ✅
+- [x] **PROMPT Step Integration**: Users can select existing prompts from prompts library OR create inline prompts
+- [x] **Variable Mapping**: Automatic detection and mapping of prompt variables to workflow context  
+- [x] **Type-Specific Configuration**: Tailored configuration forms for each of the 6 step types
+- [x] **Real-time Validation**: Enhanced backend schema with comprehensive step validation
+- [x] **Prompt Preview**: Live preview of selected prompts with content and variable information
+- [x] **Dual-Mode Interface**: Radio button toggle between existing prompts and inline content creation
 
 ### Core Workflow Features - COMPLETE ✅
 - [x] **Workflow Creation**: Users can create workflows via API and frontend forms
