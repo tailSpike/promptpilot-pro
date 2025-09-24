@@ -52,6 +52,7 @@ model Folder {
   userId  String
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   prompts Prompt[]
+  workflows Workflow[]
 
   @@map("folders")
 }
@@ -86,37 +87,140 @@ model Prompt {
   @@map("prompts")
 }
 
-// Workflow model for chaining prompts
+// Workflow model for chaining prompts with comprehensive metadata
 model Workflow {
   id          String   @id @default(cuid())
   name        String
   description String?
+  version     String   @default("1.0.0") // Semantic versioning for workflows
   isActive    Boolean  @default(true)
+  isTemplate  Boolean  @default(false) // Whether this is a reusable template
+  tags        Json?    // Array of tags for categorization
+  metadata    Json?    // Additional metadata (colors, icons, etc.)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
   userId String
-  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  steps  WorkflowStep[]
+  user   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folderId String?           // Optional folder organization
+  folder   Folder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  steps    WorkflowStep[]
+  variables WorkflowVariable[]
   executions WorkflowExecution[]
+  templates  WorkflowTemplate[] @relation("TemplateSource")
+  createdFromTemplate WorkflowTemplate? @relation("TemplateInstances", fields: [templateId], references: [id])
+  templateId String?
 
   @@map("workflows")
 }
 
-// Workflow step model for individual steps in a workflow
-model WorkflowStep {
-  id       String @id @default(cuid())
-  order    Int
-  config   Json   // Step configuration (variables, conditions, etc.)
-
+// Workflow variables for input/output definitions
+model WorkflowVariable {
+  id          String @id @default(cuid())
+  name        String
+  type        String // 'input', 'output', 'intermediate'
+  dataType    String // 'string', 'number', 'boolean', 'array', 'object'
+  description String?
+  defaultValue Json?
+  isRequired  Boolean @default(false)
+  validation  Json?  // Validation rules (min, max, regex, etc.)
+  
   // Relations
   workflowId String
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  promptId   String
-  prompt     Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_variables")
+  @@unique([workflowId, name])
+}
+
+// Enhanced workflow step model with multiple step types
+model WorkflowStep {
+  id       String @id @default(cuid())
+  name     String
+  type     StepType @default(PROMPT) // Type of step
+  order    Int    // Execution order
+  position Json?  // UI position for visual builder {x, y}
+  config   Json   // Step-specific configuration
+  inputs   Json?  // Input variable mappings
+  outputs  Json?  // Output variable mappings
+  conditions Json? // Conditional execution rules
+  retryConfig Json? // Retry configuration for failed steps
+  
+  // Relations
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  promptId   String?
+  prompt     Prompt?   @relation(fields: [promptId], references: [id], onDelete: SetNull)
+  
+  // Execution tracking
+  stepExecutions WorkflowStepExecution[]
 
   @@map("workflow_steps")
+  @@unique([workflowId, order])
+}
+
+// Workflow templates for reusable workflows
+model WorkflowTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String?  // Template category
+  difficulty  String?  // 'beginner', 'intermediate', 'advanced'
+  isPublic    Boolean  @default(false)
+  usageCount  Int      @default(0)
+  rating      Float?   // Average user rating
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  sourceWorkflowId String
+  sourceWorkflow   Workflow @relation("TemplateSource", fields: [sourceWorkflowId], references: [id])
+  instances        Workflow[] @relation("TemplateInstances")
+
+  @@map("workflow_templates")
+}
+
+// Enhanced workflow execution with detailed tracking
+model WorkflowExecution {
+  id         String   @id @default(cuid())
+  input      Json     // Initial input variables
+  output     Json?    // Final output (null if not completed)
+  status     ExecutionStatus @default(PENDING)
+  startedAt  DateTime @default(now())
+  completedAt DateTime?
+  error      Json?    // Error details if failed
+  metadata   Json?    // Execution metadata (duration, resource usage)
+  triggerType String  @default("manual") // 'manual', 'scheduled', 'webhook'
+  
+  // Relations
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  stepExecutions WorkflowStepExecution[]
+
+  @@map("workflow_executions")
+}
+
+// Individual step execution tracking
+model WorkflowStepExecution {
+  id          String   @id @default(cuid())
+  stepOrder   Int      // Order of the step in workflow
+  input       Json?    // Input to this step
+  output      Json?    // Output from this step
+  status      ExecutionStatus @default(PENDING)
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  duration    Int?     // Execution duration in milliseconds
+  error       Json?    // Error details if failed
+  retryCount  Int      @default(0)
+  
+  // Relations
+  executionId String
+  execution   WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  stepId      String
+  step        WorkflowStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_step_executions")
 }
 
 // Version control for prompts
@@ -214,23 +318,6 @@ model PromptExecution {
   @@map("prompt_executions")
 }
 
-// Workflow execution logs
-model WorkflowExecution {
-  id        String   @id @default(cuid())
-  input     Json     // Initial input
-  output    Json     // Final output
-  status    ExecutionStatus @default(PENDING)
-  metadata  Json?    // Execution metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  workflowId String
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-
-  @@map("workflow_executions")
-}
-
 // Enums
 enum Role {
   USER
@@ -242,10 +329,20 @@ enum ExecutionStatus {
   RUNNING
   COMPLETED
   FAILED
+  CANCELLED
 }
 
 enum VersionChangeType {
   PATCH  // Bug fixes, minor tweaks
   MINOR  // New features, significant improvements
   MAJOR  // Breaking changes, complete rewrites
+}
+
+enum StepType {
+  PROMPT      // Execute a prompt with variables
+  CONDITION   // Conditional branching
+  TRANSFORM   // Data transformation step
+  DELAY       // Wait/delay step
+  WEBHOOK     // External API call
+  DECISION    // User decision point
 }

@@ -9,6 +9,7 @@ import promptRoutes from './routes/prompts';
 import authRoutes from './routes/auth';
 import folderRoutes from './routes/folders';
 import versionRoutes from './routes/versions';
+import workflowRoutes from './routes/workflows';
 
 // Load environment variables
 dotenv.config();
@@ -17,7 +18,7 @@ dotenv.config();
 export const prisma = new PrismaClient();
 
 // Create Express app
-const app = express();
+export const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
@@ -115,6 +116,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/prompts', promptRoutes);
 app.use('/api/folders', folderRoutes);
 app.use('/api', versionRoutes);
+app.use('/api/workflows', workflowRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
