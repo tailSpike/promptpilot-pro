@@ -144,6 +144,7 @@ jobs:
       DATABASE_URL: 'file:./test.db'
       JWT_SECRET: 'test-jwt-secret-key-for-e2e'
       NODE_ENV: 'test'
+      PORT: '5000'
       CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
       API_URL: 'http://localhost:5000'
     
