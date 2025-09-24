@@ -1,7 +1,7 @@
 /// <reference types="cypress" />
 
 describe('Version Control System', () => {
-  let testUser: any;
+  let testUser: { token: string; name: string; email: string };
 
   beforeEach(() => {
     cy.clearLocalStorage();
