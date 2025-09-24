@@ -77,7 +77,7 @@ jobs:
         npm cache clean --force
         rm -rf node_modules package-lock.json
         npm install --no-audit --no-fund --no-optional
-        npm install @rollup/rollup-linux-x64-gnu --no-save --ignore-engines
+        npm install @rollup/rollup-linux-x64-gnu lightningcss-linux-x64-gnu --no-save --ignore-engines
     
     - name: Run frontend linter
       working-directory: ./frontend
