@@ -42,11 +42,22 @@ const corsOptions = {
       process.env.CORS_ORIGIN
     ].filter(Boolean);
     
-    if (allowedOrigins.includes(origin) || (process.env.NODE_ENV === 'development' && origin.includes('localhost'))) {
+    // Check exact match against allowed origins first
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'), false);
+      return;
     }
+    
+    // In development, allow specific localhost patterns only
+    if (process.env.NODE_ENV === 'development') {
+      const localhostPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+      if (localhostPattern.test(origin)) {
+        callback(null, true);
+        return;
+      }
+    }
+    
+    callback(new Error('Not allowed by CORS'), false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],

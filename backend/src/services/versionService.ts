@@ -53,6 +53,8 @@ export class VersionService {
     const [major, minor, patch] = nextVersion.split('.').map(Number);
     
     // Get current version to calculate changes
+    // Note: Using 'as any' temporarily due to Prisma client type generation issues
+    // The promptVersion model exists and works correctly at runtime
     const currentVersion = await (prisma as any).promptVersion.findFirst({
       where: { promptId },
       orderBy: { createdAt: 'desc' }
@@ -64,7 +66,9 @@ export class VersionService {
       changesSummary = await this.calculateChangesSummary(prompt, currentVersion);
     }
     
-    // Create the new version using 'any' to bypass TypeScript issues temporarily
+    // Create the new version  
+    // Note: Using 'as any' temporarily due to Prisma client type generation issues
+    // The promptVersion model exists and works correctly at runtime
     const newVersion = await (prisma as any).promptVersion.create({
       data: {
         versionNumber: nextVersion,
@@ -74,12 +78,12 @@ export class VersionService {
         name: prompt.name,
         description: prompt.description,
         content: prompt.content,
-        variables: prompt.variables,
-        metadata: prompt.metadata,
+        variables: prompt.variables || [],
+        metadata: prompt.metadata || {},
         folderId: prompt.folderId, // Include folder information in version
         commitMessage,
         changeType,
-        changesSummary,
+        changesSummary: changesSummary || {},
         promptId,
         createdBy: userId,
         parentVersionId: parentVersionId || currentVersion?.id
