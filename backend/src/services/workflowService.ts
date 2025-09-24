@@ -152,26 +152,14 @@ export class WorkflowService {
       data: {
         name: validated.name,
         description: validated.description,
-        folderId: validated.folderId,
-        isTemplate: validated.isTemplate || false,
-        version: '1.0.0',
-        tags: validated.tags ? JSON.stringify(validated.tags) : undefined,
         userId,
       },
       include: {
         steps: {
-          orderBy: { order: 'asc' },
-          include: {
-            prompt: {
-              select: { id: true, name: true, content: true, variables: true }
-            }
-          }
+          orderBy: { order: 'asc' }
         },
         user: {
           select: { id: true, name: true, email: true }
-        },
-        folder: {
-          select: { id: true, name: true, color: true }
         }
       }
     });
@@ -520,20 +508,15 @@ export class WorkflowService {
     try {
       // Execute steps in order
       for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
-        try {
-          // Execute the step based on its type
-          const stepOutput = await this.executeStep(step, currentInput);
-          
-          // Store step result for future steps
-          stepResults[`step_${step.order}`] = stepOutput;
-          
-          // Merge step output into current input for next step
-          if (stepOutput && typeof stepOutput === 'object') {
-            currentInput = { ...currentInput, ...stepOutput };
-          }
-
-        } catch (stepError: any) {
-          throw stepError; // Fail the entire workflow
+        // Execute the step based on its type
+        const stepOutput = await this.executeStep(step, currentInput);
+        
+        // Store step result for future steps
+        stepResults[`step_${step.order}`] = stepOutput;
+        
+        // Merge step output into current input for next step
+        if (stepOutput && typeof stepOutput === 'object') {
+          currentInput = { ...currentInput, ...stepOutput };
         }
       }
 
