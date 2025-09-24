@@ -112,6 +112,15 @@ app.post('/api/migrate-versions', async (req, res) => {
   }
 });
 
+// Health check endpoint - must be before authenticated routes
+app.get('/api/health', (_req: express.Request, res: express.Response) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/prompts', promptRoutes);
@@ -119,15 +128,6 @@ app.use('/api/folders', folderRoutes);
 app.use('/api', versionRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/workflows', triggerRoutes);
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
-});
 
 // CORS test endpoint
 app.get('/api/cors-test', (req, res) => {
