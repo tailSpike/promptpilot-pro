@@ -78,41 +78,55 @@ check_port() {
   fi
 }
 
-# Function to wait for service
+# Function to wait for service with better error handling
 wait_for_service() {
   local url=$1
   local name=$2
-  local timeout=${3:-30}
+  local timeout=${3:-60}
+  local max_attempts=$((timeout / 2))
+  local attempt=0
   
-  print_info "Waiting for $name to be ready..."
-  if timeout ${timeout}s bash -c "until curl -f $url >/dev/null 2>&1; do sleep 2; done"; then
-    print_status "$name is ready"
-    return 0
-  else
-    print_error "$name failed to start within ${timeout}s"
-    return 1
-  fi
+  print_status "Waiting for $name to be ready (timeout: ${timeout}s)..."
+  
+  while [ $attempt -lt $max_attempts ]; do
+    if curl -s -f "$url" >/dev/null 2>&1; then
+      print_status "$name is ready!"
+      return 0
+    fi
+    
+    attempt=$((attempt + 1))
+    echo "  Attempt $attempt/$max_attempts - waiting for $name..."
+    sleep 2
+  done
+  
+  print_error "$name failed to start within ${timeout}s"
+  return 1
 }
 
 # Cleanup function
 cleanup() {
-  print_info "Cleaning up..."
+  print_info "Cleaning up test environment..."
+  
   if [ ! -z "$BACKEND_PID" ]; then
+    print_status "Stopping backend server (PID: $BACKEND_PID)..."
     kill $BACKEND_PID 2>/dev/null || true
   fi
   if [ ! -z "$FRONTEND_PID" ]; then
+    print_status "Stopping frontend server (PID: $FRONTEND_PID)..."
     kill $FRONTEND_PID 2>/dev/null || true
   fi
   
-  # Kill any processes using our ports
+  # Kill any processes using our ports as backup
   if check_port 5000; then
-    print_info "Killing process on port 5000..."
+    print_info "Cleaning up port 5000..."
     kill $(lsof -ti:5000) 2>/dev/null || true
   fi
   if check_port 4173; then
-    print_info "Killing process on port 4173..."
+    print_info "Cleaning up port 4173..."
     kill $(lsof -ti:4173) 2>/dev/null || true
   fi
+  
+  print_status "Cleanup completed"
 }
 
 # Set up cleanup trap
@@ -181,6 +195,19 @@ else
   print_info "Skipping build steps"
 fi
 
+# Check for port conflicts and clean them up
+if check_port 5000; then
+  print_info "Port 5000 is in use, cleaning up..."
+  kill $(lsof -ti:5000) 2>/dev/null || true
+  sleep 2
+fi
+
+if check_port 4173; then
+  print_info "Port 4173 is in use, cleaning up..."
+  kill $(lsof -ti:4173) 2>/dev/null || true
+  sleep 2
+fi
+
 # Start backend server
 print_status "Starting backend server..."
 cd backend
@@ -188,9 +215,10 @@ PORT=5000 npm start &
 BACKEND_PID=$!
 cd ..
 
-# Wait for backend
-if ! wait_for_service "http://localhost:5000/api/health" "Backend server" 30; then
+# Wait for backend with health check
+if ! wait_for_service "http://localhost:5000/api/health" "Backend server" 60; then
   print_error "Backend server failed to start"
+  print_info "Try: 'netstat -tulpn | grep :5000' to check port conflicts"
   exit 1
 fi
 
@@ -202,8 +230,9 @@ FRONTEND_PID=$!
 cd ..
 
 # Wait for frontend
-if ! wait_for_service "http://localhost:4173" "Frontend server" 30; then
+if ! wait_for_service "http://localhost:4173" "Frontend server" 60; then
   print_error "Frontend server failed to start"
+  print_info "Try: 'netstat -tulpn | grep :4173' to check port conflicts"
   exit 1
 fi
 

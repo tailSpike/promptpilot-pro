@@ -187,8 +187,9 @@ jobs:
       run: |
         npm start &
         echo $! > backend.pid
-        # Wait for backend to be ready
-        timeout 60s bash -c 'until curl -f http://localhost:5000/api/health; do echo "Waiting for backend..."; sleep 2; done'
+        # Wait for backend to be ready - check if endpoint returns 200 OK
+        timeout 60s bash -c 'until [ "$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/health)" = "200" ]; do echo "Waiting for backend..."; sleep 2; done'
+        echo "Backend health check passed!"
       continue-on-error: false
     
     - name: Start frontend server
