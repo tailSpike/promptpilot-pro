@@ -28,7 +28,66 @@ const CreateStepSchema = z.object({
   type: z.enum(['PROMPT', 'CONDITION', 'TRANSFORM', 'DELAY', 'WEBHOOK', 'DECISION']),
   order: z.number().int().min(0),
   promptId: z.string().optional(),
-  config: z.record(z.string(), z.any()).default({}),
+  config: z.object({
+    // Common fields for all step types
+    description: z.string().optional(),
+    
+    // PROMPT step configuration
+    promptContent: z.string().optional(), // Direct prompt content
+    variables: z.record(z.string(), z.any()).optional(), // Variable values
+    modelSettings: z.object({
+      temperature: z.number().min(0).max(2).optional(),
+      maxTokens: z.number().int().positive().optional(),
+      model: z.string().optional(),
+    }).optional(),
+    
+    // CONDITION step configuration
+    condition: z.object({
+      field: z.string().optional(), // Field to check
+      operator: z.enum(['equals', 'contains', 'greater_than', 'less_than', 'exists']).optional(),
+      value: z.any().optional(), // Value to compare against
+      trueStepId: z.string().optional(), // Next step if true
+      falseStepId: z.string().optional(), // Next step if false
+    }).optional(),
+    
+    // TRANSFORM step configuration
+    transform: z.object({
+      inputField: z.string().optional(), // Field to transform
+      outputField: z.string().optional(), // Field to store result
+      operation: z.enum(['extract', 'format', 'convert', 'calculate', 'merge']).optional(),
+      parameters: z.record(z.string(), z.any()).optional(), // Operation-specific params
+      script: z.string().optional(), // Custom JavaScript transformation
+    }).optional(),
+    
+    // DELAY step configuration
+    delay: z.object({
+      duration: z.number().int().positive().optional(), // Milliseconds
+      unit: z.enum(['seconds', 'minutes', 'hours']).optional(),
+      reason: z.string().optional(), // Why the delay is needed
+    }).optional(),
+    
+    // WEBHOOK step configuration
+    webhook: z.object({
+      url: z.string().url().optional(),
+      method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      body: z.record(z.string(), z.any()).optional(),
+      timeout: z.number().int().positive().optional(), // Timeout in seconds
+      retries: z.number().int().min(0).max(5).optional(),
+    }).optional(),
+    
+    // DECISION step configuration
+    decision: z.object({
+      criteria: z.array(z.object({
+        field: z.string(),
+        operator: z.enum(['equals', 'contains', 'greater_than', 'less_than', 'exists']),
+        value: z.any(),
+        weight: z.number().min(0).max(1).optional(),
+      })).optional(),
+      defaultChoice: z.string().optional(), // Default next step
+      choices: z.record(z.string(), z.string()).optional(), // Choice -> next step mapping
+    }).optional(),
+  }).default({}),
 });
 
 const ExecuteWorkflowSchema = z.object({
