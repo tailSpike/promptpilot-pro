@@ -373,7 +373,13 @@ router.post('/:id/steps', authenticate, async (req, res) => {
       }
     });
 
-    res.status(201).json(step);
+    // Parse config back to object for response
+    const responseStep = {
+      ...step,
+      config: step.config ? JSON.parse(step.config as string) : {}
+    };
+
+    res.status(201).json(responseStep);
 
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -381,6 +387,108 @@ router.post('/:id/steps', authenticate, async (req, res) => {
     }
     console.error('Error creating step:', error);
     res.status(500).json({ error: 'Failed to create step' });
+  }
+});
+
+// PUT /api/workflows/:id/steps/:stepId - Update a workflow step
+router.put('/:id/steps/:stepId', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { id, stepId } = req.params;
+    const validatedData = CreateStepSchema.parse(req.body);
+
+    // Check if workflow exists and belongs to user
+    const workflow = await prisma.workflow.findFirst({
+      where: { id, userId }
+    });
+
+    if (!workflow) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    // Check if step exists and belongs to the workflow
+    const existingStep = await prisma.workflowStep.findFirst({
+      where: { id: stepId, workflowId: workflow.id }
+    });
+
+    if (!existingStep) {
+      return res.status(404).json({ error: 'Step not found' });
+    }
+
+    const step = await prisma.workflowStep.update({
+      where: { id: stepId },
+      data: {
+        name: validatedData.name,
+        type: validatedData.type,
+        order: validatedData.order,
+        promptId: validatedData.promptId || undefined,
+        config: JSON.stringify(validatedData.config)
+      },
+      include: {
+        prompt: {
+          select: { id: true, name: true, content: true }
+        }
+      }
+    });
+
+    // Parse config back to object for response
+    const responseStep = {
+      ...step,
+      config: step.config ? JSON.parse(step.config as string) : {}
+    };
+
+    res.json(responseStep);
+
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.issues });
+    }
+    console.error('Error updating step:', error);
+    res.status(500).json({ error: 'Failed to update step' });
+  }
+});
+
+// DELETE /api/workflows/:id/steps/:stepId - Delete a workflow step
+router.delete('/:id/steps/:stepId', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { id, stepId } = req.params;
+
+    // Check if workflow exists and belongs to user
+    const workflow = await prisma.workflow.findFirst({
+      where: { id, userId }
+    });
+
+    if (!workflow) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    // Check if step exists and belongs to the workflow
+    const existingStep = await prisma.workflowStep.findFirst({
+      where: { id: stepId, workflowId: workflow.id }
+    });
+
+    if (!existingStep) {
+      return res.status(404).json({ error: 'Step not found' });
+    }
+
+    await prisma.workflowStep.delete({
+      where: { id: stepId }
+    });
+
+    res.json({ message: 'Step deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting step:', error);
+    res.status(500).json({ error: 'Failed to delete step' });
   }
 });
 
@@ -463,7 +571,11 @@ router.post('/:id/execute', authenticate, async (req, res) => {
     // Start execution asynchronously
     executeWorkflowAsync();
 
-    res.status(201).json(execution);
+    res.status(201).json({
+      ...execution,
+      executionId: execution.id,
+      status: execution.status.toLowerCase()
+    });
 
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -518,6 +630,49 @@ router.get('/:id/executions', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error fetching executions:', error);
     res.status(500).json({ error: 'Failed to fetch executions' });
+  }
+});
+
+// GET /api/workflows/:id/executions/:executionId - Get specific execution status
+router.get('/:id/executions/:executionId', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { id, executionId } = req.params;
+
+    // Check if workflow exists and belongs to user
+    const workflow = await prisma.workflow.findFirst({
+      where: { id, userId },
+      select: { id: true }
+    });
+
+    if (!workflow) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    // Get the execution
+    const execution = await prisma.workflowExecution.findFirst({
+      where: { 
+        id: executionId,
+        workflowId: id
+      }
+    });
+
+    if (!execution) {
+      return res.status(404).json({ error: 'Execution not found' });
+    }
+
+    res.json({
+      ...execution,
+      status: execution.status.toLowerCase()
+    });
+
+  } catch (error) {
+    console.error('Error fetching execution:', error);
+    res.status(500).json({ error: 'Failed to fetch execution' });
   }
 });
 

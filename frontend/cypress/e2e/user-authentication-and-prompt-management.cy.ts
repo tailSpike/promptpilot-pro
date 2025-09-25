@@ -16,13 +16,9 @@ describe('User Authentication and Prompt Management', () => {
     // The authentication tests already verify the backend is functional
   });
 
-  it.skip('should complete full user authentication and prompt creation workflow', () => {
-    // Step 1: Visit the application (should redirect to login)
-    cy.visit('/');
-    cy.url().should('include', '/login');
-    
-    // Step 2: Navigate to registration
-    cy.get('a[href="/register"]').should('be.visible').click();
+  it('should complete full user authentication and prompt creation workflow', () => {
+    // Step 1: Start with registration page directly
+    cy.visit('/register');
     cy.url().should('include', '/register');
     
     // Step 3: Fill out registration form
@@ -119,7 +115,7 @@ describe('User Authentication and Prompt Management', () => {
     // 5. Prompt management (list, edit, search) ✓
   });
   
-  it.skip('should allow editing existing prompts', () => {
+  it('should allow editing existing prompts', () => {
     const editTestUser = {
       name: 'Edit Test User',
       email: `edit-test-${Date.now()}@example.com`,

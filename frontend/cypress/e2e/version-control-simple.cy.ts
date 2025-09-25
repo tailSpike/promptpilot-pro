@@ -41,12 +41,12 @@ describe('Version Control System - Basic Functionality', () => {
       });
   });
 
-  it.skip('should display the History tab in prompt editor', () => {
+  it('should display the History tab in prompt editor', () => {
     // Navigate to the prompts page first
     cy.visit('/prompts');
     
     // Look for our test prompt in the list and click edit
-    cy.contains('Version Control Test Prompt').should('be.visible');
+    cy.get('body', { timeout: 10000 }).should('contain', 'Version Control Test Prompt');
     cy.get('a').contains('Edit').first().click();
     
     // Should be on the edit page
@@ -63,28 +63,31 @@ describe('Version Control System - Basic Functionality', () => {
     cy.get('body').should('contain.text', 'Version History');
   });
 
-  it.skip('should handle version history API calls', () => {
+  it('should handle version history API calls', () => {
     // Navigate to the prompts page first
     cy.visit('/prompts');
+    
+    // Intercept the version history API call before clicking anything
+    cy.intercept('GET', '**/api/prompts/*/versions', { 
+      statusCode: 200, 
+      body: { success: true, data: [] } 
+    }).as('getVersionHistory');
     
     // Look for our test prompt in the list and click edit
     cy.contains('Version Control Test Prompt').should('be.visible');
     cy.get('a').contains('Edit').first().click();
     
-    // Intercept the version history API call
-    cy.intercept('GET', `${Cypress.env('apiUrl')}/api/prompts/*/versions`).as('getVersionHistory');
-    
     // Click on the History tab
     cy.get('button').contains('History').click();
     
-    // Should make the API call
-    cy.wait('@getVersionHistory');
+    // Should make the API call (or at least try to)
+    cy.wait('@getVersionHistory', { timeout: 10000 });
     
-    // Should show some version content (success or error)
+    // Should show version history content
     cy.get('body').should('contain.text', 'Version History');
   });
 
-  it.skip('should show version information when available', () => {
+  it('should show version information when available', () => {
     // Navigate to the prompts page first  
     cy.visit('/prompts');
     

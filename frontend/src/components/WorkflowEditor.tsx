@@ -380,9 +380,10 @@ export default function WorkflowEditor() {
               type="button"
               onClick={addStep}
               disabled={savingStep}
+              data-testid="add-step-button"
               className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {savingStep ? 'Adding...' : '+ Add Step'}
+              {savingStep ? 'Adding...' : 'Add Step'}
             </button>
           </div>
 
@@ -399,7 +400,7 @@ export default function WorkflowEditor() {
           ) : (
             <div className="space-y-4">
               {workflow.steps.map((step, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4">
+                <div key={index} data-testid={`workflow-step-${index}`} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-gray-900">
                       Step {index + 1}
@@ -407,6 +408,7 @@ export default function WorkflowEditor() {
                     <button
                       type="button"
                       onClick={() => removeStep(index)}
+                      data-testid={`remove-step-${index}`}
                       className="text-red-600 hover:text-red-800 text-sm"
                     >
                       Remove
@@ -422,6 +424,7 @@ export default function WorkflowEditor() {
                         type="text"
                         value={step.name}
                         onChange={(e) => updateStep(index, { name: e.target.value })}
+                        data-testid={`step-name-${index}`}
                         className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                       />
                     </div>
@@ -433,6 +436,7 @@ export default function WorkflowEditor() {
                       <select
                         value={step.type}
                         onChange={(e) => updateStep(index, { type: e.target.value as WorkflowStep['type'] })}
+                        data-testid={`step-type-${index}`}
                         className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                       >
                         <option value="PROMPT">Prompt</option>
@@ -1022,6 +1026,7 @@ export default function WorkflowEditor() {
           <button
             type="submit"
             disabled={saving}
+            data-testid="submit-workflow-button"
             className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
           >
             {saving ? 'Saving...' : (isEditing ? 'Update Workflow' : 'Create Workflow')}
