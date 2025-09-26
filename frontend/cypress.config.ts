@@ -16,7 +16,8 @@ export default defineConfig({
       // implement node event listeners here
     },
     env: {
-      apiUrl: 'http://localhost:3001'
+      // Default for local development, can be overridden by CI environment
+      apiUrl: process.env.CYPRESS_apiUrl || 'http://localhost:5000'
     }
   },
   component: {
