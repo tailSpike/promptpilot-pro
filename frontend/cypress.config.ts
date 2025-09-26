@@ -2,7 +2,8 @@ import { defineConfig } from 'cypress'
 
 export default defineConfig({
   e2e: {
-    baseUrl: 'http://localhost:5173',
+    // Environment-aware baseUrl - defaults to dev server, but CI can override
+    baseUrl: process.env.CYPRESS_baseUrl || 'http://localhost:5173',
     supportFile: 'cypress/support/e2e.ts',
     specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
     viewportWidth: 1280,
@@ -16,7 +17,7 @@ export default defineConfig({
       // implement node event listeners here
     },
     env: {
-      // Default for local development, can be overridden by CI environment
+      // Environment-aware API URL - CI uses 5000, local uses 3001
       apiUrl: process.env.CYPRESS_apiUrl || 'http://localhost:3001'
     }
   },

@@ -195,20 +195,25 @@ jobs:
     - name: Start frontend server
       working-directory: ./frontend
       run: |
-        npm run preview &
+        # Use dev server for E2E tests instead of production preview
+        # This ensures all environment variables and configs work correctly
+        npm run dev &
         echo $! > frontend.pid
-        # Wait for frontend to be ready
-        timeout 60s bash -c 'until curl -f http://localhost:4173; do echo "Waiting for frontend..."; sleep 2; done'
+        # Wait for frontend to be ready on dev server port
+        timeout 60s bash -c 'until curl -f http://localhost:5173; do echo "Waiting for frontend dev server..."; sleep 2; done'
+      env:
+        # Critical: Set API URL for frontend to connect to correct backend port in CI
+        VITE_API_URL: 'http://localhost:5000'
       continue-on-error: false
-    
+
     - name: Run Cypress E2E tests
       working-directory: ./frontend
       run: |
-        npx cypress run --headless --browser chrome --config baseUrl=http://localhost:4173,env.apiUrl=http://localhost:5000
+        npx cypress run --headless --browser chrome --config baseUrl=http://localhost:5173,env.apiUrl=http://localhost:5000
       env:
-        CYPRESS_baseUrl: 'http://localhost:4173'
+        CYPRESS_baseUrl: 'http://localhost:5173'
         CYPRESS_apiUrl: 'http://localhost:5000'
-    
+
     - name: Upload Cypress screenshots
       uses: actions/upload-artifact@v4
       if: failure()
