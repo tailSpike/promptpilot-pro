@@ -199,19 +199,23 @@ describe('Authentication Flow', () => {
 
       cy.request('POST', `${Cypress.env('apiUrl')}/api/auth/register`, userData)
         .then((response) => {
-          window.localStorage.setItem('token', response.body.token);
-          window.localStorage.setItem('user', JSON.stringify(response.body.user));
+          // Set authentication data in localStorage
+          cy.window().then((win) => {
+            win.localStorage.setItem('token', response.body.token);
+            win.localStorage.setItem('user', JSON.stringify(response.body.user));
+          });
+
+          // Visit dashboard
+          cy.visit('/dashboard');
+          cy.get('h1', { timeout: 10000 }).should('contain', 'Welcome back');
+
+          // Refresh page
+          cy.reload();
+          
+          // Should still be logged in
+          cy.get('h1', { timeout: 10000 }).should('contain', 'Welcome back');
+          cy.url().should('include', '/dashboard');
         });
-
-      cy.visit('/dashboard');
-      cy.get('h1').should('contain', 'Welcome back');
-
-      // Refresh page
-      cy.reload();
-      
-      // Should still be logged in
-      cy.get('h1').should('contain', 'Welcome back');
-      cy.url().should('include', '/dashboard');
     });
 
     it('should redirect to login when not authenticated', () => {

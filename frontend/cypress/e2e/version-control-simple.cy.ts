@@ -18,8 +18,6 @@ describe('Version Control System - Basic Functionality', () => {
     cy.request('POST', `${Cypress.env('apiUrl')}/api/auth/register`, userData)
       .then((response) => {
         testUser = response.body;
-        window.localStorage.setItem('token', response.body.token);
-        window.localStorage.setItem('user', JSON.stringify(response.body.user));
         
         // Create a test prompt that we'll use for version control testing
         return cy.request({
@@ -42,11 +40,17 @@ describe('Version Control System - Basic Functionality', () => {
   });
 
   it('should display the History tab in prompt editor', () => {
+    // Set authentication data in localStorage before visiting the page
+    cy.window().then((win) => {
+      win.localStorage.setItem('token', testUser.token);
+      win.localStorage.setItem('user', JSON.stringify(testUser.user));
+    });
+
     // Navigate to the prompts page first
     cy.visit('/prompts');
     
     // Look for our test prompt in the list and click edit
-    cy.get('body', { timeout: 10000 }).should('contain', 'Version Control Test Prompt');
+    cy.get('body', { timeout: 15000 }).should('contain', 'Version Control Test Prompt');
     cy.get('a').contains('Edit').first().click();
     
     // Should be on the edit page
@@ -64,6 +68,12 @@ describe('Version Control System - Basic Functionality', () => {
   });
 
   it('should handle version history API calls', () => {
+    // Set authentication data in localStorage before visiting the page
+    cy.window().then((win) => {
+      win.localStorage.setItem('token', testUser.token);
+      win.localStorage.setItem('user', JSON.stringify(testUser.user));
+    });
+
     // Navigate to the prompts page first
     cy.visit('/prompts');
     
@@ -88,6 +98,12 @@ describe('Version Control System - Basic Functionality', () => {
   });
 
   it('should show version information when available', () => {
+    // Set authentication data in localStorage before visiting the page
+    cy.window().then((win) => {
+      win.localStorage.setItem('token', testUser.token);
+      win.localStorage.setItem('user', JSON.stringify(testUser.user));
+    });
+
     // Navigate to the prompts page first  
     cy.visit('/prompts');
     

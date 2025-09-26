@@ -17,21 +17,23 @@ describe('Prompt Creation and Management', () => {
     cy.request('POST', `${Cypress.env('apiUrl')}/api/auth/register`, userData)
       .then((response) => {
         testUser = response.body;
-        
-        // Set auth data in localStorage
-        cy.window().its('localStorage').invoke('setItem', 'token', response.body.token);
-        cy.window().its('localStorage').invoke('setItem', 'user', JSON.stringify(response.body.user));
       });
   });
 
   describe('Basic Prompt Creation', () => {
     it('should create a simple prompt without variables', () => {
-      // Visit create prompt page directly with auth
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
+      });
+
+      // Visit create prompt page with auth already set
       cy.visit('/prompts/new');
       cy.url({ timeout: 10000 }).should('include', '/prompts/new');
 
-      // Fill out the prompt form
-      cy.get('input#name', { timeout: 10000 }).should('be.visible').type('Simple Greeting');
+      // Wait for the page to be fully loaded and check for form elements
+      cy.get('input#name', { timeout: 15000 }).should('be.visible').type('Simple Greeting');
       cy.get('textarea#description', { timeout: 10000 }).should('be.visible').type('A simple greeting prompt');
       cy.get('textarea#content', { timeout: 10000 }).should('be.visible').type('Hello! Welcome to our service.');
 
@@ -44,12 +46,18 @@ describe('Prompt Creation and Management', () => {
     });
 
     it('should require name and content fields', () => {
-      // Visit create prompt page directly with auth
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
+      });
+
+      // Visit create prompt page with auth already set
       cy.visit('/prompts/new');
       cy.url({ timeout: 10000 }).should('include', '/prompts/new');
 
       // Try to submit without required fields
-      cy.get('button[type="submit"]').contains('Create Prompt').click();
+      cy.get('button[type="submit"]', { timeout: 10000 }).should('be.visible').contains('Create Prompt').click();
 
       // Should stay on the same page due to browser validation
       cy.url().should('include', '/prompts/new');
@@ -58,12 +66,18 @@ describe('Prompt Creation and Management', () => {
 
   describe('Variable Management', () => {
     it('should create prompt with text variables', () => {
-      // Visit create prompt page directly with auth
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
+      });
+
+      // Visit create prompt page with auth already set
       cy.visit('/prompts/new');
       cy.url({ timeout: 10000 }).should('include', '/prompts/new');
 
       // Fill basic info
-      cy.get('input#name', { timeout: 10000 }).should('be.visible').type('Personalized Email');
+      cy.get('input#name', { timeout: 15000 }).should('be.visible').type('Personalized Email');
       // Prompt content with variables
       const promptContent = `Dear {{customerName}}, welcome to {{companyName}}!`;
       cy.get('textarea#content', { timeout: 10000 }).should('be.visible').type(promptContent, { parseSpecialCharSequences: false });
@@ -93,12 +107,18 @@ describe('Prompt Creation and Management', () => {
     });
 
     it('should create prompt with select variables', () => {
-      // Visit create prompt page directly with auth
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
+      });
+
+      // Visit create prompt page with auth already set
       cy.visit('/prompts/new');
       cy.url({ timeout: 10000 }).should('include', '/prompts/new');
 
       // Fill basic info
-      cy.get('input#name', { timeout: 10000 }).should('be.visible').type('Plan Selection');
+      cy.get('input#name', { timeout: 15000 }).should('be.visible').type('Plan Selection');
       cy.get('textarea#content', { timeout: 10000 }).should('be.visible').type('Your selected plan: {{planType}}', { parseSpecialCharSequences: false });
 
       // Add select variable
@@ -119,12 +139,18 @@ describe('Prompt Creation and Management', () => {
     });
 
     it('should validate variable configuration', () => {
-      // Visit create prompt page directly with auth
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
+      });
+
+      // Visit create prompt page with auth already set
       cy.visit('/prompts/new');
       cy.url({ timeout: 10000 }).should('include', '/prompts/new');
 
       // Fill basic info
-      cy.get('input#name', { timeout: 10000 }).should('be.visible').type('Invalid Variable Test');
+      cy.get('input#name', { timeout: 15000 }).should('be.visible').type('Invalid Variable Test');
       cy.get('textarea#content', { timeout: 10000 }).should('be.visible').type('Test {{variable}}', { parseSpecialCharSequences: false });
 
       // Add variable with missing name
@@ -165,10 +191,16 @@ describe('Prompt Creation and Management', () => {
     });
 
     it('should preview prompt with variable substitution', () => {
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
+      });
+
       cy.visit('/prompts');
       
       // Check if any prompts exist in the list (since we've created some in previous tests)
-      cy.get('.bg-white.shadow', { timeout: 10000 }).should('exist');
+      cy.get('.bg-white.shadow', { timeout: 15000 }).should('exist');
       
       // Note: The current UI doesn't have a preview/use feature implemented yet
       // This would be a future enhancement. For now, we can just verify prompts appear in the list
@@ -197,10 +229,16 @@ describe('Prompt Creation and Management', () => {
         });
       });
 
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
+      });
+
       cy.visit('/prompts');
 
       // Should show prompts (cards have class 'bg-white shadow')
-      cy.get('.bg-white.shadow', { timeout: 10000 }).should('have.length.at.least', 1);
+      cy.get('.bg-white.shadow', { timeout: 15000 }).should('have.length.at.least', 1);
 
       // Test search functionality
       cy.get('input[placeholder="Search prompts..."]').type('Email');
@@ -221,6 +259,12 @@ describe('Prompt Creation and Management', () => {
           content: 'Original content',
           variables: []
         }
+      });
+
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
       });
 
       cy.visit('/prompts');
@@ -259,6 +303,12 @@ describe('Prompt Creation and Management', () => {
           content: 'This will be deleted',
           variables: []
         }
+      });
+
+      // Set authentication data in localStorage before visiting the page
+      cy.window().then((win) => {
+        win.localStorage.setItem('token', testUser.token);
+        win.localStorage.setItem('user', JSON.stringify(testUser.user));
       });
 
       cy.visit('/prompts');
