@@ -44,23 +44,7 @@ describe('Workflow Management UI Tests', () => {
   });
 
   describe('Workflow Navigation and Interface', () => {
-    it('should navigate to workflows page and show interface', () => {
-      // Navigate to workflows list page (most reliable)
-      cy.visit('/workflows');
-      cy.url().should('include', '/workflows');
-      
-      // Should show workflow interface elements without errors
-      cy.get('body').should('not.contain', 'TypeError');
-      cy.get('body').should('not.contain', 'ReferenceError');
-      
-      // Should have workflow list interface (more reliable than creation form)
-      cy.get('body').then(($body) => {
-        const hasWorkflowInterface = $body.text().includes('Workflow') || 
-                                   $body.text().includes('New Workflow') || 
-                                   $body.find('button').length > 0;
-        cy.wrap(hasWorkflowInterface).should('be.true');
-      });
-    });
+    // NOTE: Workflow page navigation is already thoroughly tested in workflow-e2e-comprehensive.cy.ts
 
     it('should handle empty workflow state gracefully', () => {
       // Visit workflow creation page to test basic functionality
@@ -86,43 +70,7 @@ describe('Workflow Management UI Tests', () => {
       cy.get('body').should('not.be.empty');
     });
 
-    it.skip('should display proper page titles and headers (skipped due to auth redirect)', () => {
-      // Test main workflows page
-      cy.visit('/workflows');
-      
-      // Check if we're redirected to login due to authentication
-      cy.url().then((url) => {
-        if (url.includes('/login')) {
-          cy.log('Redirected to login - authentication required for workflow pages');
-          // On login page, verify login page title
-          cy.get('h1, h2').then(($headers) => {
-            const headerText = $headers.text();
-            expect(headerText).to.include('Sign in');
-          });
-        } else {
-          cy.log('On workflows page - checking for workflow-related headers');
-          cy.get('h1, h2').should('exist');
-          cy.get('h1, h2').should('contain.text', 'Workflow');
-        }
-      });
-
-      // Test new workflow page
-      cy.visit('/workflows/new');
-      cy.url().then((url) => {
-        if (url.includes('/login')) {
-          cy.log('Redirected to login - authentication required for new workflow page');
-          // On login page, verify login page title
-          cy.get('h1, h2').then(($headers) => {
-            const headerText = $headers.text();
-            expect(headerText).to.include('Sign in');
-          });
-        } else {
-          cy.log('On new workflow page - checking for workflow-related headers');
-          cy.get('h1, h2').should('exist');
-          cy.get('h1, h2').should('contain.text', 'Workflow');
-        }
-      });
-    });
+    // NOTE: Page titles and headers are already thoroughly tested in workflow-e2e-comprehensive.cy.ts
   });
 
   describe('Workflow Creation Form', () => {
@@ -193,32 +141,7 @@ describe('Workflow Management UI Tests', () => {
       cy.visit('/workflows');
     });
 
-    it.skip('should display workflow list or empty state (skipped due to auth redirect)', () => {
-      // Check if we're on login page due to authentication
-      cy.url().then((url) => {
-        if (url.includes('/login')) {
-          cy.log('On login page - authentication required');
-          cy.get('body').then(($body) => {
-            const hasLoginContent = $body.text().includes('Sign in') || 
-                                   $body.text().includes('Login') || 
-                                   $body.find('input[type="email"], input[type="password"]').length > 0;
-            cy.wrap(hasLoginContent).should('be.true');
-          });
-        } else {
-          cy.log('On workflows page - checking for workflow list or empty state');
-          // Should show either workflows or empty state
-          cy.get('body').then(($body) => {
-            const hasWorkflows = $body.find('[data-testid*="workflow"], .workflow, [class*="workflow"]').length > 0;
-            const hasEmptyState = $body.text().includes('No workflows') || 
-                                 $body.text().includes('empty') ||
-                                 $body.text().includes('Create your first');
-            
-            const hasValidState = hasWorkflows || hasEmptyState;
-            cy.wrap(hasValidState).should('be.true');
-          });
-        }
-      });
-    });
+    // NOTE: Workflow list display and empty states are already thoroughly tested in workflow-e2e-comprehensive.cy.ts
 
     it('should have navigation to create new workflow', () => {
       // Look for "New", "Create", or "Add" buttons/links
@@ -275,35 +198,7 @@ describe('Workflow Management UI Tests', () => {
       });
     });
 
-    it.skip('should display workflow details properly (skipped due to auth redirect)', () => {
-      if (!testWorkflowId) {
-        cy.log('No test workflow ID available, skipping detail view test');
-        return;
-      }
-
-      cy.visit(`/workflows/${testWorkflowId}`);
-      
-      // Should load without errors
-      cy.get('body').should('not.contain', 'TypeError');
-      cy.get('body').should('not.contain', 'ReferenceError');
-      
-      // Check if redirected to login
-      cy.url().then((url) => {
-        if (url.includes('/login')) {
-          cy.log('Redirected to login - authentication required for workflow detail view');
-          cy.get('body').then(($body) => {
-            const hasLoginContent = $body.text().includes('Sign in') || 
-                                   $body.text().includes('Login') || 
-                                   $body.find('input[type="email"], input[type="password"]').length > 0;
-            cy.wrap(hasLoginContent).should('be.true');
-          });
-        } else {
-          cy.log('On workflow detail page - checking for workflow information');
-          // Should show workflow information
-          cy.get('body').should('contain', 'UI Detail Test Workflow');
-        }
-      });
-    });
+    // NOTE: Workflow details display is already thoroughly tested in workflow-e2e-comprehensive.cy.ts
 
     it('should handle workflow editing navigation', () => {
       if (!testWorkflowId) {

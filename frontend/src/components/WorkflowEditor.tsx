@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { promptsAPI } from '../services/api';
+import { promptsAPI, workflowsAPI } from '../services/api';
 import type { Prompt } from '../types';
 
 interface WorkflowStep {
@@ -107,17 +107,14 @@ export default function WorkflowEditor() {
     
     try {
       setLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch workflow');
+      setError(null);
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
       }
 
-      const data = await response.json();
+      const data = await workflowsAPI.getWorkflow(id);
       setWorkflow({
         id: data.id,
         name: data.name,
@@ -127,7 +124,15 @@ export default function WorkflowEditor() {
       });
     } catch (err) {
       console.error('Error fetching workflow:', err);
-      setError('Failed to load workflow');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load workflow';
+      setError(errorMessage);
+      
+      // If authentication error, redirect to login
+      if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') || errorMessage.includes('authentication')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     } finally {
       setLoading(false);
     }
@@ -151,31 +156,20 @@ export default function WorkflowEditor() {
       setSaving(true);
       setError(null);
 
-      const url = isEditing 
-        ? `${import.meta.env.VITE_API_URL}/api/workflows/${id}`
-        : `${import.meta.env.VITE_API_URL}/api/workflows`;
-        
-      const method = isEditing ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          name: workflow.name,
-          description: workflow.description,
-          isActive: workflow.isActive
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save workflow');
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
       }
 
-      const savedWorkflow = await response.json();
+      const workflowData = {
+        name: workflow.name,
+        description: workflow.description,
+        isActive: workflow.isActive
+      };
+
+      const savedWorkflow = isEditing 
+        ? await workflowsAPI.updateWorkflow(id!, workflowData)
+        : await workflowsAPI.createWorkflow(workflowData);
 
       // For new workflows, we now have the ID and can save any pending steps
       if (!isEditing && workflow.steps.length > 0) {
@@ -194,34 +188,34 @@ export default function WorkflowEditor() {
       navigate('/workflows');
     } catch (err: unknown) {
       console.error('Error saving workflow:', err);
-      setError((err as Error).message || 'Failed to save workflow');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save workflow';
+      setError(errorMessage);
+      
+      // If authentication error, redirect to login
+      if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') || errorMessage.includes('authentication')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     } finally {
       setSaving(false);
     }
   };
 
   const saveStepToBackend = async (workflowId: string, step: WorkflowStep) => {
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${workflowId}/steps`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({
+    try {
+      const savedStep = await workflowsAPI.createStep(workflowId, {
         name: step.name,
         type: step.type,
         order: step.order,
         config: step.config,
         promptId: step.promptId
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to save step');
+      });
+      return savedStep;
+    } catch (error) {
+      console.error('Failed to save step to backend:', error);
+      throw error;
     }
-
-    return response.json();
   };
 
   const addStep = async () => {

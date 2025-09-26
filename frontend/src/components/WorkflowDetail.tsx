@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import { workflowsAPI } from '../services/api';
 import WorkflowTriggers from './WorkflowTriggers';
 
 interface WorkflowStep {
@@ -68,17 +69,7 @@ export default function WorkflowDetail() {
     
     try {
       setLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch workflow');
-      }
-
-      const data = await response.json();
+      const data = await workflowsAPI.getWorkflow(id);
       setWorkflow(data);
     } catch (err) {
       console.error('Error fetching workflow:', err);
@@ -101,21 +92,7 @@ export default function WorkflowDetail() {
         throw new Error('Invalid JSON in input field');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${id}/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ input })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to execute workflow');
-      }
-
-      const result = await response.json();
+      const result = await workflowsAPI.executeWorkflow(id, input);
       console.log('Workflow execution started:', result);
       
       // Refresh workflow data to show new execution

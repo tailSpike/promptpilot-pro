@@ -17,7 +17,7 @@ export default defineConfig({
     },
     env: {
       // Default for local development, can be overridden by CI environment
-      apiUrl: process.env.CYPRESS_apiUrl || 'http://localhost:5000'
+      apiUrl: process.env.CYPRESS_apiUrl || 'http://localhost:3001'
     }
   },
   component: {
