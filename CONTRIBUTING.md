@@ -6,8 +6,21 @@ Thank you for your interest in contributing to PromptPilot Pro! We welcome contr
 
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/promptpilot-pro.git`
-3. Install dependencies: `npm install`
-4. Create a feature branch: `git checkout -b feature/your-feature-name`
+3. Navigate to project: `cd promptpilot-pro`
+4. **Quick Start**: Run `.\start.ps1` (Windows) or `./scripts/start.sh` (Linux/macOS)
+5. Create a feature branch: `git checkout -b feature/your-feature-name`
+
+### Manual Setup (if needed)
+```bash
+# Install all dependencies
+npm run install:all
+
+# Setup database
+cd backend && npx prisma generate && npx prisma db push
+
+# Install git hooks
+npm run setup:hooks
+```
 
 ## Development Guidelines
 
@@ -17,10 +30,13 @@ Thank you for your interest in contributing to PromptPilot Pro! We welcome contr
 - Run `npm run lint` to check for style issues
 - Run `npm run format` to auto-format code
 
-### Testing
-- Write tests for new features
-- Run `npm test` to ensure all tests pass
-- Maintain or improve test coverage
+### Testing Requirements
+- **Write comprehensive tests** for new features (unit + integration + E2E)
+- **Backend**: Run `npm run test:all` (must pass all 66+ tests)
+- **Frontend**: Run `npm run test` + `npm run e2e` (79 E2E tests)
+- **Full Suite**: Run `npm run test:all` from root to test entire project
+- **Coverage**: Maintain or improve existing test coverage
+- **CI Validation**: All tests must pass in GitHub Actions pipeline
 
 ### Commit Messages
 - Use conventional commits format: `type(scope): description`
@@ -31,11 +47,32 @@ Thank you for your interest in contributing to PromptPilot Pro! We welcome contr
 
 ## Pull Request Process
 
-1. Ensure your code passes all tests and linting
-2. Update documentation if needed
-3. Create a pull request with a clear description
-4. Link any related issues
-5. Wait for code review and address feedback
+1. **Pre-flight Checks**:
+   - Run `npm run lint` (backend + frontend)
+   - Run `npm run test:all` (145+ tests must pass)
+   - Check `.\status.ps1` to ensure services are working
+   
+2. **Documentation Updates**:
+   - Update README.md if adding new features
+   - Update API documentation in `docs/API.md` for new endpoints
+   - Add examples to relevant components if UI changes
+
+3. **Pull Request Creation**:
+   - Create PR with clear, descriptive title
+   - Use conventional commit format in title
+   - Include detailed description of changes
+   - Link any related issues with `Fixes #issue-number`
+   - Add screenshots for UI changes
+
+4. **CI/CD Validation**:
+   - GitHub Actions must pass (all jobs green)
+   - Monitor with `gh run list` and `gh run view <run-id>`
+   - Address any CI failures promptly
+
+5. **Code Review**:
+   - Wait for maintainer review
+   - Address feedback constructively  
+   - Keep commits focused and atomic
 
 ## Reporting Issues
 

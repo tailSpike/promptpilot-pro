@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import { workflowsAPI } from '../services/api';
+import WorkflowTriggers from './WorkflowTriggers';
 
 interface WorkflowStep {
   id: string;
@@ -67,17 +69,7 @@ export default function WorkflowDetail() {
     
     try {
       setLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch workflow');
-      }
-
-      const data = await response.json();
+      const data = await workflowsAPI.getWorkflow(id);
       setWorkflow(data);
     } catch (err) {
       console.error('Error fetching workflow:', err);
@@ -100,21 +92,7 @@ export default function WorkflowDetail() {
         throw new Error('Invalid JSON in input field');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${id}/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ input })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to execute workflow');
-      }
-
-      const result = await response.json();
+      const result = await workflowsAPI.executeWorkflow(id, input);
       console.log('Workflow execution started:', result);
       
       // Refresh workflow data to show new execution
@@ -233,7 +211,17 @@ export default function WorkflowDetail() {
 
           {/* Workflow Steps */}
           <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Workflow Steps</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-medium text-gray-900">Workflow Steps</h2>
+              <Link
+                to={`/workflows/${workflow.id}/edit?openAddStep=1`}
+                data-testid="detail-add-step-button"
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200"
+                title="Add a new step to this workflow"
+              >
+                Add Step
+              </Link>
+            </div>
             
             {!workflow.steps || workflow.steps.length === 0 ? (
               <div className="text-center py-8">
@@ -242,8 +230,17 @@ export default function WorkflowDetail() {
                 </div>
                 <h3 className="text-sm font-medium text-gray-900">No steps configured</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Edit this workflow to add steps.
+                  Use the Add Step button to create your first step.
                 </p>
+                <div className="mt-4">
+                  <Link
+                    to={`/workflows/${workflow.id}/edit?openAddStep=1`}
+                    data-testid="detail-empty-add-step-button"
+                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
+                  >
+                    Add Step
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -273,6 +270,15 @@ export default function WorkflowDetail() {
               </div>
             )}
           </div>
+
+          {/* Workflow Triggers */}
+          <WorkflowTriggers 
+            workflowId={workflow.id} 
+            onTriggerExecuted={(triggerId) => {
+              console.log(`Trigger ${triggerId} executed - refreshing workflow data`);
+              fetchWorkflow(); // Refresh executions list
+            }}
+          />
         </div>
 
         {/* Sidebar */}

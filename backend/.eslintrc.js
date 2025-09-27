@@ -21,6 +21,9 @@ module.exports = {
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/no-namespace': 'off',
     '@typescript-eslint/no-require-imports': 'off',
+    // Turn off the problematic rule completely to resolve compatibility issue
+    '@typescript-eslint/no-unused-expressions': 'off',
+    'no-unused-expressions': 'off',
     'no-console': 'off',
   },
   ignorePatterns: ['dist/', 'node_modules/', '*.js', 'jest.config.js'],

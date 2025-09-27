@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import { workflowsAPI } from '../services/api';
 
 interface Workflow {
   id: string;
@@ -22,43 +23,48 @@ interface Workflow {
   };
 }
 
-interface WorkflowResponse {
-  workflows: Workflow[];
-  total: number;
-}
-
 export default function WorkflowList() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    fetchWorkflows();
-  }, []);
-
   const fetchWorkflows = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch workflows');
+      setError(null);
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
       }
 
-      const data: WorkflowResponse = await response.json();
-      setWorkflows(data.workflows);
+      const data = await workflowsAPI.getWorkflows({
+        search: search || undefined,
+        limit: 50,
+        offset: 0
+      });
+      
+      setWorkflows(data.workflows || []);
     } catch (err) {
       console.error('Error fetching workflows:', err);
-      setError('Failed to load workflows');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load workflows';
+      setError(errorMessage);
+      
+      // If authentication error, redirect to login
+      if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') || errorMessage.includes('authentication')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchWorkflows();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const deleteWorkflow = async (workflowId: string) => {
     if (!window.confirm('Are you sure you want to delete this workflow?')) {
@@ -66,17 +72,7 @@ export default function WorkflowList() {
     }
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${workflowId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete workflow');
-      }
-
+      await workflowsAPI.deleteWorkflow(workflowId);
       setWorkflows(workflows.filter(w => w.id !== workflowId));
     } catch (err) {
       console.error('Error deleting workflow:', err);

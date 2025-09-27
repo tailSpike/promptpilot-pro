@@ -224,3 +224,4 @@ Desktop.ini
 # Temporary files
 *.tmp
 *.temp
+.test-token

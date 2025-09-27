@@ -176,4 +176,100 @@ export const versionsAPI = {
   },
 };
 
+// Workflows API
+export const workflowsAPI = {
+  getWorkflows: async (params?: {
+    folderId?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const response = await api.get('/api/workflows', { params });
+    return response.data;
+  },
+
+  getWorkflow: async (id: string) => {
+    const response = await api.get(`/api/workflows/${id}`);
+    return response.data;
+  },
+
+  createWorkflow: async (data: {
+    name: string;
+    description?: string;
+    folderId?: string;
+    tags?: string[];
+    isActive?: boolean;
+  }) => {
+    const response = await api.post('/api/workflows', data);
+    return response.data;
+  },
+
+  updateWorkflow: async (id: string, data: {
+    name?: string;
+    description?: string;
+    folderId?: string;
+    tags?: string[];
+    isActive?: boolean;
+  }) => {
+    const response = await api.put(`/api/workflows/${id}`, data);
+    return response.data;
+  },
+
+  deleteWorkflow: async (id: string) => {
+    const response = await api.delete(`/api/workflows/${id}`);
+    return response.data;
+  },
+
+  executeWorkflow: async (id: string, variables?: Record<string, unknown>) => {
+    const response = await api.post(`/api/workflows/${id}/execute`, { variables });
+    return response.data;
+  },
+
+  getWorkflowExecutions: async (id: string, params?: {
+    limit?: number;
+    offset?: number;
+  }) => {
+    const response = await api.get(`/api/workflows/${id}/executions`, { params });
+    return response.data;
+  },
+
+  getWorkflowExecution: async (workflowId: string, executionId: string) => {
+    const response = await api.get(`/api/workflows/${workflowId}/executions/${executionId}`);
+    return response.data;
+  },
+
+  // Workflow Step Management
+  createStep: async (workflowId: string, stepData: {
+    name: string;
+    type: 'PROMPT' | 'CONDITION' | 'TRANSFORM' | 'DELAY' | 'WEBHOOK' | 'DECISION';
+    order: number;
+    config: Record<string, unknown>;
+    promptId?: string;
+  }) => {
+    const response = await api.post(`/api/workflows/${workflowId}/steps`, stepData);
+    return response.data;
+  },
+
+  updateStep: async (workflowId: string, stepId: string, stepData: {
+    name?: string;
+    type?: 'PROMPT' | 'CONDITION' | 'TRANSFORM' | 'DELAY' | 'WEBHOOK' | 'DECISION';
+    order?: number;
+    config?: Record<string, unknown>;
+    promptId?: string;
+  }) => {
+    const response = await api.put(`/api/workflows/${workflowId}/steps/${stepId}`, stepData);
+    return response.data;
+  },
+
+  deleteStep: async (workflowId: string, stepId: string) => {
+    const response = await api.delete(`/api/workflows/${workflowId}/steps/${stepId}`);
+    return response.data;
+  },
+
+  reorderSteps: async (workflowId: string, stepIds: string[]) => {
+    const response = await api.put(`/api/workflows/${workflowId}/steps/reorder`, { stepIds });
+    return response.data;
+  },
+};
+
 export default api;
