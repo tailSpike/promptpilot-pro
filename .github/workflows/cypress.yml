@@ -5,6 +5,7 @@ on:
     branches: [ main, develop, 'feature/**' ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
 
 jobs:
   cypress-run:
@@ -50,12 +51,16 @@ jobs:
           # Start servers from repository root (backend + Vite preview)
           start: npx concurrently "npm run start:backend" "npm run start:frontend"
           wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
+          wait-on-timeout: 120
           # Run Cypress pointing at the frontend project with pre-installed deps
           project: ./frontend
           install: false
           record: true
           parallel: true
         env:
+          # Ensure backend has DB and port set when started by the action
+          DATABASE_URL: file:./test.db
+          PORT: 3001
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CYPRESS_baseUrl: http://localhost:4173
@@ -68,12 +73,16 @@ jobs:
           # Start servers from repository root (backend + Vite preview)
           start: npx concurrently "npm run start:backend" "npm run start:frontend"
           wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
+          wait-on-timeout: 120
           # Run Cypress pointing at the frontend project with pre-installed deps
           project: ./frontend
           install: false
           record: false
           parallel: true
         env:
+          # Ensure backend has DB and port set when started by the action
+          DATABASE_URL: file:./test.db
+          PORT: 3001
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CYPRESS_baseUrl: http://localhost:4173
           CYPRESS_apiUrl: http://localhost:3001
