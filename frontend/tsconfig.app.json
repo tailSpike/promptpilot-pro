@@ -13,7 +13,7 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
+  "jsx": "react-jsx",
 
     /* Linting */
     "strict": true,
@@ -22,5 +22,12 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/**/__tests__/**", "src/**/*.test.*", "src/**/*.spec.*"]
+  "exclude": [
+    "src/**/__tests__/**",
+    "src/**/*.test.*",
+    "src/**/*.spec.*",
+    "src/test/**",
+    "cypress/**"
+  ],
+  "references": []
 }
