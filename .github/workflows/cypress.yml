@@ -21,6 +21,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
       - name: Setup Prisma DB
         working-directory: backend
         run: npx prisma db push
@@ -31,8 +35,12 @@ jobs:
       - name: Cypress run (parallel, recorded)
         uses: cypress-io/github-action@v6
         with:
+          # Start servers from repository root (backend + Vite preview)
           start: npm start
           wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
+          # Run Cypress pointing at the frontend project with pre-installed deps
+          project: ./frontend
+          install: false
           record: true
           parallel: true
         env:
