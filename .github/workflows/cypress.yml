@@ -8,10 +8,33 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Prep job determines if CYPRESS_RECORD_KEY is available and exposes it as an output
+  prep:
+    runs-on: ubuntu-latest
+    env:
+      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+    outputs:
+      has_record_key: ${{ steps.check.outputs.has_record_key }}
+    steps:
+      - name: Check for Cypress Record Key
+        id: check
+        shell: bash
+        run: |
+          if [ -n "$CYPRESS_RECORD_KEY" ]; then
+            echo "has_record_key=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_record_key=false" >> $GITHUB_OUTPUT
+          fi
+
   # Recorded run to Cypress Cloud with parallelization
   cypress-run-recorded:
-    if: ${{ secrets.CYPRESS_RECORD_KEY != '' }}
+    needs: prep
+    if: ${{ needs.prep.outputs.has_record_key == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      # Make secrets available to all steps in this job
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -61,14 +84,13 @@ jobs:
         env:
           DATABASE_URL: file:./test.db
           PORT: 3001
-          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CYPRESS_baseUrl: http://localhost:4173
           CYPRESS_apiUrl: http://localhost:3001
 
   # Unrecorded run (single container, no parallel)
   cypress-run-unrecorded:
-    if: ${{ secrets.CYPRESS_RECORD_KEY == '' }}
+    needs: prep
+    if: ${{ needs.prep.outputs.has_record_key != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

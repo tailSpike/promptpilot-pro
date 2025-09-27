@@ -53,18 +53,32 @@ try {
             foreach ($m in $feCritical) { if (-not (Test-Path $m)) { $feDepsOk = $false; break } }
         }
         if (-not $feDepsOk) {
-            Write-Host "? Installing frontend dependencies..." -ForegroundColor Blue
-            npm ci 2>$null
+            Write-Host "? Installing frontend dependencies (npm install)..." -ForegroundColor Blue
+            try {
+                npm install --no-audit --no-fund
+            } catch {
+                Write-Host " Warning: Frontend dependency install failed, continuing with existing modules (" -NoNewline -ForegroundColor Yellow; Write-Host $_.Exception.Message -ForegroundColor Yellow; Write-Host ")"
+            }
         } else {
             Write-Host " Frontend dependencies look OK" -ForegroundColor Green
         }
         
         # Quick type check (app)
         Write-Host "? Type checking..." -ForegroundColor Blue
+        $tsOk = $false
         if (Get-Command npm -ErrorAction SilentlyContinue) {
-            npm run type-check 2>$null
+            npm run type-check
+            if ($LASTEXITCODE -eq 0) { $tsOk = $true }
         }
-        if ($LASTEXITCODE -ne 0) {
+        if (-not $tsOk) {
+            # Fallback to npx TypeScript if local tsc is unavailable
+            Write-Host " Local tsc not found or failed; trying npx typescript..." -ForegroundColor Yellow
+            try {
+                npx -y -p typescript@5.8.3 tsc --noEmit -p tsconfig.app.json
+                if ($LASTEXITCODE -eq 0) { $tsOk = $true }
+            } catch { }
+        }
+        if (-not $tsOk) {
             Write-Host " TypeScript type checking issues found" -ForegroundColor Yellow
         } else {
             Write-Host " TypeScript type checking passed" -ForegroundColor Green
@@ -72,10 +86,19 @@ try {
 
         # Cypress spec type check
         Write-Host "? Cypress spec type checking..." -ForegroundColor Blue
+        $cypressTsOk = $false
         if (Get-Command npm -ErrorAction SilentlyContinue) {
-            npm run type-check:cypress 2>$null
+            npm run type-check:cypress
+            if ($LASTEXITCODE -eq 0) { $cypressTsOk = $true }
         }
-        if ($LASTEXITCODE -ne 0) {
+        if (-not $cypressTsOk) {
+            Write-Host " Local tsc not found or failed for Cypress; trying npx typescript..." -ForegroundColor Yellow
+            try {
+                npx -y -p typescript@5.8.3 tsc --noEmit -p cypress/tsconfig.json
+                if ($LASTEXITCODE -eq 0) { $cypressTsOk = $true }
+            } catch { }
+        }
+        if (-not $cypressTsOk) {
             Write-Host " Cypress spec TypeScript issues found" -ForegroundColor Red
             Set-Location ..
             exit 1
@@ -121,8 +144,8 @@ try {
         }
 
         if (-not $depsOk) {
-            Write-Host "? Installing backend dependencies..." -ForegroundColor Blue
-            npm ci 2>$null
+            Write-Host "? Installing backend dependencies (npm install)..." -ForegroundColor Blue
+            npm install --no-audit --no-fund 2>$null
             if ($LASTEXITCODE -ne 0) {
                 Write-Host " Backend dependency installation failed" -ForegroundColor Red
                 Set-Location ..
@@ -236,17 +259,22 @@ try {
             $FrontendProc = $null
             $frontendOutLog = Join-Path $env:TEMP "ppp-frontend-e2e.out.log"
             $frontendErrLog = Join-Path $env:TEMP "ppp-frontend-e2e.err.log"
+
+            # Always use cmd.exe to launch npm on Windows to avoid shim issues
+            $npmCmd = $env:ComSpec
+            $npmArgs = @("/c","npm","run","preview","--","--port","5173","--strictPort")
+
             if (Test-Path "frontend\dist\index.html") {
-                Write-Host "? Starting frontend (npm run preview -- --port 5173 --strictPort)..." -ForegroundColor Blue
+                Write-Host "? Starting frontend (vite preview on 5173)..." -ForegroundColor Blue
                 if (Test-Path $frontendOutLog) { Remove-Item $frontendOutLog -Force -ErrorAction SilentlyContinue }
                 if (Test-Path $frontendErrLog) { Remove-Item $frontendErrLog -Force -ErrorAction SilentlyContinue }
-                $FrontendProc = Start-Process -FilePath "npm" -ArgumentList "run","preview","--","--port","5173","--strictPort" -WorkingDirectory "$ProjectRoot\frontend" -PassThru -RedirectStandardOutput $frontendOutLog -RedirectStandardError $frontendErrLog
+                $FrontendProc = Start-Process -FilePath $npmCmd -ArgumentList $npmArgs -WorkingDirectory "$ProjectRoot\frontend" -PassThru -RedirectStandardOutput $frontendOutLog -RedirectStandardError $frontendErrLog
             } else {
                 Write-Host " Frontend dist not found; building..." -ForegroundColor Yellow
                 Push-Location frontend; npm run build 2>$null; Pop-Location
                 if (Test-Path $frontendOutLog) { Remove-Item $frontendOutLog -Force -ErrorAction SilentlyContinue }
                 if (Test-Path $frontendErrLog) { Remove-Item $frontendErrLog -Force -ErrorAction SilentlyContinue }
-                $FrontendProc = Start-Process -FilePath "npm" -ArgumentList "run","preview","--","--port","5173","--strictPort" -WorkingDirectory "$ProjectRoot\frontend" -PassThru -RedirectStandardOutput $frontendOutLog -RedirectStandardError $frontendErrLog
+                $FrontendProc = Start-Process -FilePath $npmCmd -ArgumentList $npmArgs -WorkingDirectory "$ProjectRoot\frontend" -PassThru -RedirectStandardOutput $frontendOutLog -RedirectStandardError $frontendErrLog
             }
 
             # Wait for services to be fully ready
@@ -312,13 +340,25 @@ try {
         Set-Location frontend
         Write-Host "? Running Cypress E2E tests (max 5 minutes)..." -ForegroundColor Blue
 
-        # Ensure Cypress is installed; if not, skip gracefully
-        $cypressBin = Join-Path (Get-Location) "node_modules/.bin/cypress"
-        if (-not (Test-Path $cypressBin)) {
-            Write-Host " Cypress not installed; skipping E2E (run 'npm ci' in frontend to enable)" -ForegroundColor Yellow
+        # Ensure Cypress is installed; consider Windows shims
+        $candidates = @(
+            "node_modules/.bin/cypress",
+            "node_modules/.bin/cypress.cmd",
+            "node_modules/.bin/cypress.ps1"
+        )
+        $hasCypress = $false
+        foreach ($cand in $candidates) { if (Test-Path $cand) { $hasCypress = $true; break } }
+        if (-not $hasCypress) {
+            Write-Host " Cypress not installed; attempting to run via npx..." -ForegroundColor Yellow
+            try {
+                npx cypress --version | Out-Null
+                if ($LASTEXITCODE -eq 0) { $hasCypress = $true }
+            } catch { $hasCypress = $false }
+        }
+        if (-not $hasCypress) {
+            Write-Host " Cypress still not available; skipping E2E (run 'npm ci' in frontend to enable)" -ForegroundColor Yellow
             Set-Location ..
             if ($ServicesStarted) { & ".\stop.ps1" }
-            # Do not fail the hook solely due to missing Cypress locally
             exit 0
         }
         

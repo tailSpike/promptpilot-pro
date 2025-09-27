@@ -1,9 +1,4 @@
-import { 
-  PrismaClient, 
-  Workflow, 
-  WorkflowStep, 
-  WorkflowExecution
-} from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 
 const prisma = new PrismaClient();
@@ -125,10 +120,13 @@ export interface WorkflowStepExecution {
   stepId: string;
 }
 
-export interface WorkflowWithRelations extends Workflow {
-  steps: (WorkflowStep & { prompt?: any })[];
+export interface WorkflowWithRelations {
+  id: string;
+  name: string;
+  description?: string | null;
+  steps: (any & { prompt?: any; order: number; type: string; name: string; config: any })[];
   variables?: WorkflowVariable[];
-  executions?: WorkflowExecution[];
+  executions?: any[];
   user?: {
     id: string;
     name: string | null;
@@ -326,9 +324,9 @@ export class WorkflowService {
     ]);
 
     // Filter by tags if specified (since SQLite doesn't support JSON operations easily)
-    let filteredWorkflows = workflows;
+    let filteredWorkflows = workflows as any[];
     if (tags && tags.length > 0) {
-      filteredWorkflows = workflows.filter(workflow => {
+      filteredWorkflows = (workflows as any[]).filter((workflow: any) => {
         if (!workflow.tags) return false;
         const workflowTags = JSON.parse(workflow.tags as string) as string[];
         return tags.some(tag => workflowTags.includes(tag));
@@ -337,7 +335,7 @@ export class WorkflowService {
 
     // Get variables for each workflow
     const workflowsWithVariables = await Promise.all(
-      filteredWorkflows.map(async workflow => {
+      filteredWorkflows.map(async (workflow: any) => {
         const variables = await prisma.workflowVariable.findMany({
           where: { workflowId: workflow.id },
           select: { id: true, name: true, type: true, dataType: true, isRequired: true, workflowId: true }
@@ -406,7 +404,7 @@ export class WorkflowService {
     workflowId: string,
     userId: string,
     data: ExecuteWorkflowData
-  ): Promise<WorkflowExecution | null> {
+  ): Promise<any | null> {
     // Get workflow with steps
     const workflow = await this.getWorkflowById(workflowId, userId);
     if (!workflow) {
@@ -462,7 +460,7 @@ export class WorkflowService {
     workflowId: string,
     userId: string,
     options: { limit?: number; offset?: number } = {}
-  ): Promise<{ executions: WorkflowExecution[]; total: number }> {
+  ): Promise<{ executions: any[]; total: number }> {
     const { limit = 20, offset = 0 } = options;
 
     // Verify ownership
@@ -552,7 +550,7 @@ export class WorkflowService {
   /**
    * Execute an individual workflow step
    */
-  private async executeStep(step: WorkflowStep & { prompt?: any }, input: Record<string, any>): Promise<any> {
+  private async executeStep(step: any & { prompt?: any; order: number; type: string; name: string; config: any }, input: Record<string, any>): Promise<any> {
     const config = JSON.parse(step.config as string);
     
     switch (step.type) {

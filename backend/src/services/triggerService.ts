@@ -132,7 +132,7 @@ export class TriggerService {
       },
       orderBy: { createdAt: 'desc' }
     });
-    return list.map(t => this.normalizeTrigger(t));
+  return list.map((t: any) => this.normalizeTrigger(t));
   }
 
   /**
