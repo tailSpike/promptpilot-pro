@@ -44,7 +44,7 @@ jobs:
       - name: Cypress run (recorded, parallel)
         uses: cypress-io/github-action@v6
         with:
-          start: npx concurrently "npm run start:backend" "npm run start:frontend"
+          start: npx concurrently "npm --prefix ../backend start" "npm run preview"
           wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
           wait-on-timeout: 120
           # run from the frontend package where Cypress is installed
@@ -92,7 +92,7 @@ jobs:
       - name: Cypress run (unrecorded)
         uses: cypress-io/github-action@v6
         with:
-          start: npx concurrently "npm run start:backend" "npm run start:frontend"
+          start: npx concurrently "npm --prefix ../backend start" "npm run preview"
           wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
           wait-on-timeout: 120
           working-directory: frontend
