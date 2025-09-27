@@ -11,7 +11,8 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "cypress:open": "cypress open",
-    "cypress:run": "cypress run",
+  "cypress:run": "cypress run",
+  "cypress:record": "cypress run --record",
     "e2e": "cypress run",
     "e2e:open": "cypress open"
   },

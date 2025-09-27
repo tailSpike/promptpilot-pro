@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { promptsAPI, workflowsAPI } from '../services/api';
 import type { Prompt } from '../types';
 
@@ -75,6 +75,7 @@ interface Workflow {
 export default function WorkflowEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isEditing = Boolean(id);
   
   const [workflow, setWorkflow] = useState<Workflow>({
@@ -89,6 +90,9 @@ export default function WorkflowEditor() {
   const [error, setError] = useState<string | null>(null);
   const [availablePrompts, setAvailablePrompts] = useState<Prompt[]>([]);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
+  const [showAddStepModal, setShowAddStepModal] = useState(false);
+  const [modalStepName, setModalStepName] = useState('');
+  const [modalStepType, setModalStepType] = useState<WorkflowStep['type']>('PROMPT');
 
   const fetchPrompts = useCallback(async () => {
     try {
@@ -143,12 +147,42 @@ export default function WorkflowEditor() {
       fetchWorkflow();
     }
     fetchPrompts();
-  }, [id, isEditing, fetchWorkflow, fetchPrompts]);
+    // Open Add Step modal if requested via query param
+    const params = new URLSearchParams(location.search);
+    if (params.get('openAddStep') === '1') {
+      setShowAddStepModal(true);
+    }
+  }, [id, isEditing, fetchWorkflow, fetchPrompts, location.search]);
+
+  const validateWorkflowSteps = () => {
+    const errors: string[] = [];
+    
+    workflow.steps.forEach((step, index) => {
+      if (step.type === 'PROMPT') {
+        // Check if step has either a selected prompt or inline content
+        const hasPromptId = !!step.promptId;
+        const hasInlineContent = !!(step.config.promptContent?.trim());
+        
+        if (!hasPromptId && !hasInlineContent) {
+          errors.push(`Step ${index + 1} (${step.name}): Please select an existing prompt or create inline prompt content`);
+        }
+      }
+    });
+    
+    return errors;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!workflow.name.trim()) {
       setError('Workflow name is required');
+      return;
+    }
+
+    // Validate workflow steps
+    const validationErrors = validateWorkflowSteps();
+    if (validationErrors.length > 0) {
+      setError(`Please fix the following issues:\n• ${validationErrors.join('\n• ')}`);
       return;
     }
 
@@ -220,8 +254,8 @@ export default function WorkflowEditor() {
 
   const addStep = async () => {
     const newStep: WorkflowStep = {
-      name: `Step ${workflow.steps.length + 1}`,
-      type: 'PROMPT',
+      name: modalStepName?.trim() || `Step ${workflow.steps.length + 1}`,
+      type: modalStepType || 'PROMPT',
       order: workflow.steps.length + 1,
       config: {
         description: ''
@@ -253,6 +287,15 @@ export default function WorkflowEditor() {
         steps: [...prev.steps, newStep]
       }));
     }
+    // Close modal and clear param
+    setShowAddStepModal(false);
+    setModalStepName('');
+    setModalStepType('PROMPT');
+    const params = new URLSearchParams(location.search);
+    if (params.get('openAddStep') === '1') {
+      params.delete('openAddStep');
+      navigate({ search: params.toString() }, { replace: true });
+    }
   };
 
   const removeStep = (index: number) => {
@@ -265,13 +308,34 @@ export default function WorkflowEditor() {
     }));
   };
 
-  const updateStep = (index: number, updates: Partial<WorkflowStep>) => {
+  const updateStep = async (index: number, updates: Partial<WorkflowStep>) => {
+    const step = workflow.steps[index];
+    
+    // Update local state first for immediate UI feedback
     setWorkflow(prev => ({
       ...prev,
       steps: prev.steps.map((step, i) => 
         i === index ? { ...step, ...updates } : step
       )
     }));
+
+    // For existing workflows with saved steps, persist changes to backend
+    if (isEditing && id && step.id) {
+      try {
+        const updatedStep = { ...step, ...updates };
+        await workflowsAPI.updateStep(id, step.id, {
+          name: updatedStep.name,
+          type: updatedStep.type,
+          order: updatedStep.order,
+          config: updatedStep.config,
+          promptId: updatedStep.promptId
+        });
+      } catch (error) {
+        console.error('Failed to save step update:', error);
+        // Optionally show user feedback about the error
+        setError('Failed to save step changes. Please try again.');
+      }
+    }
   };
 
   if (loading) {
@@ -309,7 +373,7 @@ export default function WorkflowEditor() {
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Error</h3>
               <div className="mt-2 text-sm text-red-700">
-                <p>{error}</p>
+                <pre className="whitespace-pre-wrap font-sans">{error}</pre>
               </div>
             </div>
           </div>
@@ -1008,6 +1072,88 @@ export default function WorkflowEditor() {
             </div>
           )}
         </div>
+
+        {/* Add Step Modal */}
+        {showAddStepModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30" data-testid="add-step-modal">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Add Workflow Step</h3>
+                <button
+                  aria-label="Close"
+                  className="text-gray-500 hover:text-gray-700"
+                  onClick={() => {
+                    setShowAddStepModal(false);
+                    const params = new URLSearchParams(location.search);
+                    if (params.get('openAddStep') === '1') {
+                      params.delete('openAddStep');
+                      navigate({ search: params.toString() }, { replace: true });
+                    }
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="modal-step-name">Step Name</label>
+                  <input
+                    id="modal-step-name"
+                    type="text"
+                    value={modalStepName}
+                    onChange={(e) => setModalStepName(e.target.value)}
+                    className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                    placeholder={`Step ${workflow.steps.length + 1}`}
+                    data-testid="modal-step-name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="modal-step-type">Step Type</label>
+                  <select
+                    id="modal-step-type"
+                    value={modalStepType}
+                    onChange={(e) => setModalStepType(e.target.value as WorkflowStep['type'])}
+                    className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                    data-testid="modal-step-type"
+                  >
+                    <option value="PROMPT">Prompt</option>
+                    <option value="CONDITION">Condition</option>
+                    <option value="TRANSFORM">Transform</option>
+                    <option value="DELAY">Delay</option>
+                    <option value="WEBHOOK">Webhook</option>
+                    <option value="DECISION">Decision</option>
+                  </select>
+                </div>
+                <div className="flex justify-end space-x-2 pt-2">
+                  <button
+                    type="button"
+                    className="px-4 py-2 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                    onClick={() => {
+                      setShowAddStepModal(false);
+                      const params = new URLSearchParams(location.search);
+                      if (params.get('openAddStep') === '1') {
+                        params.delete('openAddStep');
+                        navigate({ search: params.toString() }, { replace: true });
+                      }
+                    }}
+                    data-testid="modal-cancel"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2 text-sm rounded-md text-white bg-purple-600 hover:bg-purple-700"
+                    onClick={addStep}
+                    disabled={savingStep}
+                    data-testid="modal-add-step"
+                  >
+                    {savingStep ? 'Adding...' : 'Add Step'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center justify-end space-x-4">

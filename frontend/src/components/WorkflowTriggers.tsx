@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, Zap, Globe, Key, Calendar, Play, Pause, Trash2, Plus, X, Info, HelpCircle } from 'lucide-react';
+import { Clock, Zap, Globe, Key, Calendar, Play, Pause, Trash2, Plus, X, Info, HelpCircle, Edit2 } from 'lucide-react';
 
 interface TriggerConfig {
   cron?: string;
@@ -35,14 +35,27 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingTrigger, setEditingTrigger] = useState<WorkflowTrigger | null>(null);
   const [createFormData, setCreateFormData] = useState({
+    name: '',
+    type: 'MANUAL' as WorkflowTrigger['type'],
+    config: {} as TriggerConfig
+  });
+  const [editFormData, setEditFormData] = useState({
     name: '',
     type: 'MANUAL' as WorkflowTrigger['type'],
     config: {} as TriggerConfig
   });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [scheduleMode, setScheduleMode] = useState<'simple' | 'advanced'>('simple');
+  const [editScheduleMode, setEditScheduleMode] = useState<'simple' | 'advanced'>('simple');
   const [simpleSchedule, setSimpleSchedule] = useState({
+    date: '',
+    time: '',
+    frequency: 'once' as 'once' | 'daily' | 'weekly' | 'monthly'
+  });
+  const [editSimpleSchedule, setEditSimpleSchedule] = useState({
     date: '',
     time: '',
     frequency: 'once' as 'once' | 'daily' | 'weekly' | 'monthly'
@@ -181,7 +194,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
   const fetchTriggers = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${workflowId}/triggers`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${apiUrl}/api/workflows/${workflowId}/triggers`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -207,13 +221,36 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
   const createTrigger = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workflows/${workflowId}/triggers`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      // Build final payload ensuring cron is present for scheduled-simple
+      let finalFormData = { ...createFormData };
+      if (finalFormData.type === 'SCHEDULED') {
+        if (scheduleMode === 'simple') {
+          const generatedCron = generateCronFromSimple();
+          if (!generatedCron) {
+            showToast('error', 'Please select a valid date/time to generate a schedule');
+            return;
+          }
+          finalFormData = {
+            ...finalFormData,
+            config: { ...finalFormData.config, cron: generatedCron },
+          };
+        } else {
+          // Advanced mode must provide cron
+          if (!finalFormData.config.cron) {
+            showToast('error', 'Cron expression is required for scheduled triggers');
+            return;
+          }
+        }
+      }
+
+      const response = await fetch(`${apiUrl}/api/workflows/${workflowId}/triggers`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(createFormData)
+        body: JSON.stringify(finalFormData)
       });
 
       if (response.ok) {
@@ -222,8 +259,15 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
         setCreateFormData({ name: '', type: 'MANUAL', config: {} });
         fetchTriggers(); // Refresh the list
       } else {
-        const error = await response.json();
-        showToast('error', error.error || 'Failed to create trigger');
+        let errorMessage = 'Failed to create trigger';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        showToast('error', errorMessage);
       }
     } catch (error) {
       console.error('Error creating trigger:', error);
@@ -235,7 +279,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
   const executeTrigger = async (triggerId: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/triggers/${triggerId}/execute`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${apiUrl}/api/triggers/${triggerId}/execute`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -248,8 +293,15 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
         onTriggerExecuted?.(triggerId);
         fetchTriggers(); // Refresh to update last triggered time
       } else {
-        const error = await response.json();
-        showToast('error', error.error || 'Failed to execute trigger');
+        let errorMessage = 'Failed to execute trigger';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        showToast('error', errorMessage);
       }
     } catch (error) {
       console.error('Error executing trigger:', error);
@@ -261,7 +313,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
   const toggleTrigger = async (triggerId: string, isActive: boolean) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/triggers/${triggerId}`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${apiUrl}/api/triggers/${triggerId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -274,8 +327,15 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
         showToast('success', `Trigger ${!isActive ? 'activated' : 'deactivated'}`);
         fetchTriggers(); // Refresh the list
       } else {
-        const error = await response.json();
-        showToast('error', error.error || 'Failed to update trigger');
+        let errorMessage = 'Failed to update trigger';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        showToast('error', errorMessage);
       }
     } catch (error) {
       console.error('Error updating trigger:', error);
@@ -289,7 +349,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/triggers/${triggerId}`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${apiUrl}/api/triggers/${triggerId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -301,12 +362,137 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
         showToast('success', 'Trigger deleted successfully');
         fetchTriggers(); // Refresh the list
       } else {
-        const error = await response.json();
-        showToast('error', error.error || 'Failed to delete trigger');
+        let errorMessage = 'Failed to delete trigger';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        showToast('error', errorMessage);
       }
     } catch (error) {
       console.error('Error deleting trigger:', error);
       showToast('error', 'Error deleting trigger');
+    }
+  };
+
+  // Start editing a trigger
+  const startEditTrigger = (trigger: WorkflowTrigger) => {
+    setEditingTrigger(trigger);
+    setEditFormData({
+      name: trigger.name,
+      type: trigger.type,
+      config: trigger.config || {}
+    });
+    
+    // Set up edit schedule mode based on existing config
+    if (trigger.type === 'SCHEDULED' && trigger.config?.cron) {
+      // Try to parse existing cron into simple schedule
+      const cron = trigger.config.cron;
+      const parsed = parseCronToSimple(cron);
+      if (parsed) {
+        setEditScheduleMode('simple');
+        setEditSimpleSchedule(parsed);
+      } else {
+        setEditScheduleMode('advanced');
+      }
+    }
+    
+    setShowEditDialog(true);
+  };
+
+  // Update a trigger
+  const updateTrigger = async () => {
+    if (!editingTrigger) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      
+      // Handle scheduled trigger cron generation for edit
+      const finalFormData = { ...editFormData };
+      if (editFormData.type === 'SCHEDULED' && editScheduleMode === 'simple') {
+        const generatedCron = generateCronFromEditSimple();
+        if (generatedCron) {
+          finalFormData.config = { ...finalFormData.config, cron: generatedCron };
+        }
+      }
+
+      const response = await fetch(`${apiUrl}/api/triggers/${editingTrigger.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(finalFormData)
+      });
+
+      if (response.ok) {
+        showToast('success', 'Trigger updated successfully');
+        setShowEditDialog(false);
+        setEditingTrigger(null);
+        setEditFormData({ name: '', type: 'MANUAL', config: {} });
+        fetchTriggers(); // Refresh the list
+      } else {
+        let errorMessage = 'Failed to update trigger';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        showToast('error', errorMessage);
+      }
+    } catch (error) {
+      console.error('Error updating trigger:', error);
+      showToast('error', 'Error updating trigger');
+    }
+  };
+
+  // Helper function to parse cron to simple schedule
+  const parseCronToSimple = (cron: string) => {
+    // This is a basic parser for common cron patterns
+    // Returns null if pattern is too complex for simple mode
+    const parts = cron.split(' ');
+    if (parts.length !== 5) return null;
+
+    const [minute, hour, day, month, weekday] = parts;
+
+    // Daily at specific time
+    if (day === '*' && month === '*' && weekday === '*' && minute !== '*' && hour !== '*') {
+      return {
+        frequency: 'daily' as const,
+        time: `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`,
+        date: ''
+      };
+    }
+
+    return null; // Complex pattern, use advanced mode
+  };
+
+  // Helper function to generate cron from edit simple schedule
+  const generateCronFromEditSimple = () => {
+    if (!editSimpleSchedule.time) return null;
+
+    const [hour, minute] = editSimpleSchedule.time.split(':');
+
+    switch (editSimpleSchedule.frequency) {
+      case 'once': {
+        if (!editSimpleSchedule.date) return null;
+        const date = new Date(editSimpleSchedule.date);
+        return `${minute} ${hour} ${date.getDate()} ${date.getMonth() + 1} *`;
+      }
+      case 'daily':
+        return `${minute} ${hour} * * *`;
+      case 'weekly':
+        return `${minute} ${hour} * * 0`; // Sunday
+      case 'monthly':
+        return `${minute} ${hour} 1 * *`; // First of month
+      default:
+        return null;
     }
   };
 
@@ -357,7 +543,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
   }
 
   return (
-    <div className="bg-white shadow rounded-lg">
+    <div className="bg-white shadow rounded-lg" data-testid="workflow-triggers">
       {/* Toast notifications */}
       <div className="fixed top-4 right-4 z-50 space-y-2">
         {toasts.map((toast) => (
@@ -489,6 +675,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                       <button
                         onClick={() => executeTrigger(trigger.id)}
                         disabled={!trigger.isActive}
+                        data-testid="trigger-run"
                         className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
                       >
                         <Play className="h-3 w-3 mr-1" />
@@ -497,6 +684,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                     )}
                     <button
                       onClick={() => toggleTrigger(trigger.id, trigger.isActive)}
+                      data-testid="trigger-toggle"
                       className="inline-flex items-center p-1.5 border border-gray-300 shadow-sm rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                     >
                       {trigger.isActive ? (
@@ -506,7 +694,15 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                       )}
                     </button>
                     <button
+                      onClick={() => startEditTrigger(trigger)}
+                      data-testid="trigger-edit"
+                      className="inline-flex items-center p-1.5 border border-gray-300 shadow-sm rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </button>
+                    <button
                       onClick={() => deleteTrigger(trigger.id)}
+                      data-testid="trigger-delete"
                       className="inline-flex items-center p-1.5 border border-gray-300 shadow-sm rounded text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -527,7 +723,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <p className="text-xs text-gray-600">
                       Webhook URL: <code className="bg-gray-100 px-1 rounded text-xs">
-                        {import.meta.env.VITE_API_URL}/api/webhooks/{trigger.id}
+                        {import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/webhooks/{trigger.id}
                       </code>
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -539,7 +735,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <p className="text-xs text-gray-600">
                       API Endpoint: <code className="bg-gray-100 px-1 rounded text-xs">
-                        POST {import.meta.env.VITE_API_URL}/api/triggers/{trigger.id}/execute
+                        POST {import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/triggers/{trigger.id}/execute
                       </code>
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -569,7 +765,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
 
       {/* Create Trigger Modal */}
       {showCreateDialog && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-40">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-40" data-testid="create-trigger-modal">
           <div className="relative top-10 mx-auto p-5 border max-w-4xl shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex items-center justify-between mb-4">
@@ -605,6 +801,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                     </label>
                     <select
                       id="trigger-type"
+                      data-testid="trigger-type"
                       value={createFormData.type}
                       onChange={(e) => setCreateFormData(prev => ({ 
                         ...prev, 
@@ -870,6 +1067,192 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                 >
                   Create Trigger
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Trigger Modal */}
+      {showEditDialog && editingTrigger && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-40" data-testid="edit-trigger-modal">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 xl:w-2/5 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Edit Trigger</h3>
+                <button
+                  onClick={() => setShowEditDialog(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Trigger Name */}
+                <div>
+                  <label htmlFor="edit-trigger-name" className="block text-sm font-medium text-gray-700">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    id="edit-trigger-name"
+                    value={editFormData.name}
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                    placeholder="Enter trigger name"
+                  />
+                </div>
+
+                {/* Trigger Type */}
+                <div>
+                  <label htmlFor="edit-trigger-type" className="block text-sm font-medium text-gray-700">
+                    Type
+                  </label>
+                  <select
+                    id="edit-trigger-type"
+                    data-testid="edit-trigger-type"
+                    value={editFormData.type}
+                    onChange={(e) => setEditFormData({ ...editFormData, type: e.target.value as WorkflowTrigger['type'], config: {} })}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                  >
+                    <option value="MANUAL">Manual - Execute instantly</option>
+                    <option value="SCHEDULED">Scheduled - Time-based automation</option>
+                    <option value="WEBHOOK">Webhook - HTTP request triggers</option>
+                    <option value="API">API - Programmatic execution</option>
+                    <option value="EVENT">Event - System event triggers</option>
+                  </select>
+                </div>
+
+                {/* Type-specific configuration for Edit */}
+                {editFormData.type === 'SCHEDULED' && (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center space-x-4 mb-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Schedule Configuration
+                        </label>
+                        <div className="flex bg-gray-100 rounded-md p-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditScheduleMode('simple')}
+                            className={`px-3 py-1 text-xs rounded ${
+                              editScheduleMode === 'simple' 
+                                ? 'bg-white shadow text-gray-900' 
+                                : 'text-gray-600'
+                            }`}
+                          >
+                            Simple
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditScheduleMode('advanced')}
+                            className={`px-3 py-1 text-xs rounded ${
+                              editScheduleMode === 'advanced' 
+                                ? 'bg-white shadow text-gray-900' 
+                                : 'text-gray-600'
+                            }`}
+                          >
+                            Advanced
+                          </button>
+                        </div>
+                      </div>
+
+                      {editScheduleMode === 'simple' ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Frequency
+                              </label>
+                              <select
+                                value={editSimpleSchedule.frequency}
+                                onChange={(e) => setEditSimpleSchedule({ ...editSimpleSchedule, frequency: e.target.value as 'once' | 'daily' | 'weekly' | 'monthly' })}
+                                className="w-full text-sm border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                              >
+                                <option value="once">Once</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Time
+                              </label>
+                              <input
+                                type="time"
+                                value={editSimpleSchedule.time}
+                                onChange={(e) => setEditSimpleSchedule({ ...editSimpleSchedule, time: e.target.value })}
+                                className="w-full text-sm border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                              />
+                            </div>
+                          </div>
+                          {editSimpleSchedule.frequency === 'once' && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Date
+                              </label>
+                              <input
+                                type="date"
+                                value={editSimpleSchedule.date}
+                                onChange={(e) => setEditSimpleSchedule({ ...editSimpleSchedule, date: e.target.value })}
+                                className="w-full text-sm border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Cron Expression
+                          </label>
+                          <input
+                            type="text"
+                            value={editFormData.config.cron || ''}
+                            onChange={(e) => setEditFormData({ 
+                              ...editFormData, 
+                              config: { ...editFormData.config, cron: e.target.value } 
+                            })}
+                            className="w-full font-mono text-sm border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                            placeholder="0 9 * * *"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">
+                            Format: minute hour day month weekday
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    onClick={() => setShowEditDialog(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (editFormData.type === 'SCHEDULED' && editScheduleMode === 'simple') {
+                        const generatedCron = generateCronFromEditSimple();
+                        if (generatedCron) {
+                          setEditFormData(prev => ({
+                            ...prev,
+                            config: { ...prev.config, cron: generatedCron }
+                          }));
+                        }
+                      }
+                      updateTrigger();
+                    }}
+                    disabled={!editFormData.name.trim()}
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                  >
+                    Update Trigger
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 /// <reference types="cypress" />
 
-describe('User Authentication and Prompt Management', () => {
+// Largely covered by dedicated auth and prompt specs; keep skipped to reduce runtime
+describe.skip('User Authentication and Prompt Management', () => {
   let testUser: { token: string; user: { id: string; email: string; name: string } };
 
   beforeEach(() => {

@@ -31,6 +31,7 @@ export const CreateTriggerSchema = z.object({
 export const UpdateTriggerSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   isActive: z.boolean().optional(),
+  type: z.enum(['MANUAL', 'SCHEDULED', 'WEBHOOK', 'API', 'EVENT']).optional(),
   config: z.record(z.string(), z.any()).optional(),
 });
 
@@ -39,6 +40,19 @@ export const UpdateTriggerSchema = z.object({
  */
 export class TriggerService {
   private scheduledTasks = new Map<string, cron.ScheduledTask>();
+  
+  private normalizeTrigger<T>(trigger: T): T {
+    if (!trigger) return trigger;
+    try {
+      const cfgRaw = (trigger as any).config;
+      if (cfgRaw && typeof cfgRaw === 'string') {
+        (trigger as any).config = JSON.parse(cfgRaw);
+      }
+    } catch {
+      // leave as-is if parse fails
+    }
+    return trigger;
+  }
 
   /**
    * Create a new workflow trigger
@@ -76,7 +90,7 @@ export class TriggerService {
       await this.setupScheduledTask(trigger);
     }
 
-    return trigger;
+    return this.normalizeTrigger(trigger);
   }
 
   /**
@@ -97,14 +111,14 @@ export class TriggerService {
       }
     });
 
-    return trigger;
+    return this.normalizeTrigger(trigger);
   }
 
   /**
    * List triggers for a workflow
    */
   async getWorkflowTriggers(workflowId: string, userId: string) {
-    return await prisma.workflowTrigger.findMany({
+    const list = await prisma.workflowTrigger.findMany({
       where: {
         workflowId,
         workflow: { userId }
@@ -118,6 +132,7 @@ export class TriggerService {
       },
       orderBy: { createdAt: 'desc' }
     });
+    return list.map(t => this.normalizeTrigger(t));
   }
 
   /**
@@ -132,7 +147,7 @@ export class TriggerService {
       throw new Error('Trigger not found or access denied');
     }
 
-    // Stop existing scheduled task if needed
+    // Stop existing scheduled task early if we will change schedule or type
     if (existingTrigger.type === 'SCHEDULED') {
       this.stopScheduledTask(triggerId);
     }
@@ -140,10 +155,31 @@ export class TriggerService {
     const updateData: any = {};
     if (validated.name) updateData.name = validated.name;
     if (validated.isActive !== undefined) updateData.isActive = validated.isActive;
-    if (validated.config) {
-      // Merge with existing config
-      const existingConfig = JSON.parse(existingTrigger.config as string);
-      updateData.config = JSON.stringify({ ...existingConfig, ...validated.config });
+    const typeChanged = validated.type && validated.type !== existingTrigger.type;
+    if (validated.type) {
+      updateData.type = validated.type;
+    }
+
+    // Prepare new config depending on whether type changed
+    const existingConfig = (() => {
+      try { return JSON.parse(existingTrigger.config as string) || {}; } catch { return {}; }
+    })();
+    let nextConfig: Record<string, any> | undefined = undefined;
+    if (validated.config || typeChanged) {
+      if (typeChanged) {
+        // Replace config when changing type to avoid stale fields
+        nextConfig = { ...(validated.config || {}) };
+      } else {
+        nextConfig = { ...existingConfig, ...(validated.config || {}) };
+      }
+    }
+
+    // Validate and auto-fill config based on final target type
+    const targetType = (validated.type || existingTrigger.type) as string;
+    if (nextConfig) {
+      // validateTriggerConfig may add fields (e.g., secret/apiKey)
+      await this.validateTriggerConfig(targetType, nextConfig);
+      updateData.config = JSON.stringify(nextConfig);
     }
 
     const updatedTrigger = await prisma.workflowTrigger.update({
@@ -159,7 +195,7 @@ export class TriggerService {
       await this.setupScheduledTask(updatedTrigger);
     }
 
-    return updatedTrigger;
+    return this.normalizeTrigger(updatedTrigger);
   }
 
   /**

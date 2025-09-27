@@ -13,7 +13,8 @@
  * Strategy: Focus on UI interactions and user experience
  * API functionality is tested in separate workflow-management.cy.ts file
  */
-describe('Workflow Management UI Tests', () => {
+// Largely covered by split UI specs; keep skipped to avoid redundancy
+describe.skip('Workflow Management UI Tests', () => {
   let testUser: { token: string; name: string; email: string };
 
   before(() => {

@@ -130,6 +130,7 @@ app.use('/api/folders', folderRoutes);
 app.use('/api', versionRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/workflows', triggerRoutes);
+app.use('/api', triggerRoutes);
 
 // CORS test endpoint
 app.get('/api/cors-test', (req, res) => {

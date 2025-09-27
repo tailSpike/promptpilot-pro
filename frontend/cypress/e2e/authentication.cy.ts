@@ -1,5 +1,6 @@
 /// <reference types="cypress" />
 
+// Keep core API auth tests enabled for quick regression coverage
 describe('Authentication Flow', () => {
   beforeEach(() => {
     cy.clearLocalStorage();

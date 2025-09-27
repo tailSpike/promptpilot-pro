@@ -66,12 +66,35 @@ This guide outlines best practices for contributing to PromptPilot Pro.
 
 ## 🧪 Testing Strategy
 
+### ⚠️ Feature Completion Requirements
+
+**ALL features must have comprehensive test coverage before being considered complete:**
+
+#### 📋 Required Test Types per Feature
+1. **Unit Tests**: Business logic, utilities, pure functions
+2. **Component Tests**: React components in isolation (if applicable)
+3. **Integration Tests**: API endpoints with real database operations
+4. **End-to-End Tests**: At least one complete user workflow verification
+
+#### ✅ Definition of Done for Features
+- **Backend**: Service layer unit tests + API integration tests with real database
+- **Frontend**: Component tests + E2E test covering complete user journey
+- **Database**: Integration tests with actual SQLite operations (no mocking)
+- **User Experience**: Successful E2E verification of user success paths
+
 ### Comprehensive Test Coverage (145+ total tests)
 - **Backend Unit Tests (41)**: Pure business logic without database calls
 - **Backend Integration Tests (25+)**: Real SQLite database operations  
-- **Frontend E2E Tests (79)**: Complete user journeys with Cypress
+- **Frontend E2E Tests (79+)**: Complete user journeys with Cypress
 - **Service Layer Testing**: Business logic isolated from HTTP handlers
 - **Real Database Testing**: No ORM mocking for integration tests
+
+#### 🚧 Current Test Coverage Status
+- ✅ **Authentication**: Complete coverage (Unit + Integration + E2E)
+- ✅ **Prompt Management**: Complete coverage (Unit + Integration + E2E)
+- ✅ **Folder Organization**: Complete coverage (Unit + Integration + E2E)
+- ✅ **Workflow Engine**: Complete coverage (Unit + Integration + E2E)
+- 🚧 **Workflow Triggers**: Partial coverage (9/14 E2E tests failing - blocking completion)
 
 ### Testing Commands
 ```bash
@@ -95,6 +118,69 @@ npm run e2e:open          # Interactive Cypress
 - **Multi-Node CI**: Tests run on Node.js 18.x and 20.x
 - **Full Pipeline**: Backend CI + Frontend CI + Security + E2E + Quality Gates
 - **100% Success Rate**: Comprehensive GitHub Actions validation
+
+---
+
+## 📋 Testing TODO for Feature Completion
+
+### 🚨 Critical Priority: Workflow Triggers (Epic 2 Completion Blocker)
+
+#### Immediate Actions Required:
+1. **Fix Trigger UI E2E Tests** (5/14 tests failing)
+   - Issue: "Trigger created successfully" toast not appearing in tests
+   - Impact: Cannot verify trigger creation workflow
+   - Files: `frontend/cypress/e2e/enhanced-workflow-triggers.cy.ts`
+   - Status: 🚧 In Progress
+
+2. **Backend Trigger API Debugging**
+   - Verify trigger creation API is working correctly
+   - Check if WorkflowTrigger database table exists
+   - Validate trigger service responses
+   - Status: 🔍 Investigation needed
+
+3. **Add Missing Component Tests**
+   - `WorkflowTriggers.tsx` component testing
+   - `TriggerModal` component testing  
+   - `TriggerList` component testing
+   - Status: ❌ Not started
+
+#### Test Coverage Requirements for Trigger Completion:
+- ✅ Unit Tests: Complete (service layer)
+- ✅ Integration Tests: Complete (API endpoints)
+- 🚧 E2E Tests: 9/14 passing (needs 100% pass rate)
+- ❌ Component Tests: Missing (required for completion)
+
+### 📋 Post-Epic 2 Testing Enhancements:
+1. **Performance Testing**: Large workflow handling, concurrent execution
+2. **Error Boundary Testing**: UI resilience and error recovery
+3. **Security Testing**: Authentication, authorization, input validation
+4. **Cross-browser Testing**: Chrome, Firefox, Safari, Edge compatibility
+
+---
+
+## 🎯 Feature Completion Checklist
+
+Use this checklist for every new feature:
+
+### Backend Requirements:
+- [ ] Unit tests for all service layer functions
+- [ ] Integration tests for all API endpoints  
+- [ ] Error handling and edge case testing
+- [ ] Database schema validation
+
+### Frontend Requirements:
+- [ ] Component unit tests (if applicable)
+- [ ] Integration tests for API calls
+- [ ] E2E test covering complete user workflow
+- [ ] Responsive design testing
+
+### Documentation Requirements:
+- [ ] API endpoint documentation
+- [ ] Component documentation
+- [ ] User guide updates
+- [ ] Developer guide updates
+
+**⚠️ No feature is considered complete without ALL boxes checked.**
 
 ---
 

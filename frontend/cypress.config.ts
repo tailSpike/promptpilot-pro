@@ -1,6 +1,8 @@
 import { defineConfig } from 'cypress'
 
 export default defineConfig({
+  // Cypress Cloud project for Dashboard recordings
+  projectId: 'r9d8f3',
   e2e: {
     // Environment-aware baseUrl - defaults to dev server, but CI can override
     baseUrl: process.env.CYPRESS_baseUrl || 'http://localhost:5173',

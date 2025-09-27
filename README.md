@@ -158,7 +158,23 @@ npm run lint:frontend          # Frontend linting + type checking
 
 ## 🧪 Testing
 
-The project features a comprehensive testing architecture:
+The project features a comprehensive testing architecture with strict coverage requirements:
+
+### 📋 Testing Requirements for Feature Completion
+
+**All completed features MUST have comprehensive test coverage across all layers:**
+
+#### 🎯 Required Test Coverage per Feature
+1. **Unit Tests**: Business logic, utilities, pure functions
+2. **Component Tests**: React components in isolation  
+3. **Integration Tests**: API endpoints with real database
+4. **End-to-End Tests**: Complete user workflows from UI perspective
+
+#### ✅ Feature Completion Criteria
+- **Backend**: Service layer unit tests + API integration tests
+- **Frontend**: Component tests + at least one E2E test per functional flow
+- **Database**: Integration tests with real SQLite operations
+- **User Flows**: Complete E2E verification of user journey success paths
 
 ### 🧪 Comprehensive Testing Suite
 
@@ -206,11 +222,49 @@ npm run lint              # ESLint + type checking
 
 ### 🏗️ Testing Architecture
 - **66+ Backend Tests**: 41 unit + 25+ integration tests with real database
-- **79 E2E Tests**: Complete user journey testing with Cypress
+- **79+ E2E Tests**: Complete user journey testing with Cypress
 - **Service Layer Testing**: Business logic separated from HTTP handlers
 - **Real Database Integration**: No ORM mocking for integration tests
 - **CI/CD Integration**: Full test suite runs on every push/PR
 - **100% CI Success Rate**: Comprehensive GitHub Actions pipeline
+
+### 🎯 Current Test Coverage Status
+
+#### ✅ Fully Covered Features
+- **User Authentication**: Unit + Integration + E2E complete
+- **Prompt Management**: Unit + Integration + E2E complete
+- **Folder Organization**: Unit + Integration + E2E complete
+- **Workflow Engine**: Unit + Integration + E2E complete
+
+#### 🚧 Partial Coverage (In Progress)
+- **Workflow Triggers**: 
+  - ✅ Unit Tests: Complete (service layer)
+  - ✅ Integration Tests: Complete (API endpoints)
+  - 🚧 E2E Tests: 9/14 passing (64% pass rate - trigger UI functionality)
+  - ❌ Component Tests: Missing (WorkflowTriggers.tsx component testing)
+  - ❌ **BLOCKING**: Trigger creation/management E2E flow needs completion
+
+#### 📋 Testing TODO for Epic 2 Completion
+
+**🚨 CRITICAL BLOCKERS:**
+1. **Fix Trigger UI E2E Tests** (5/14 failing - 64% pass rate)
+   - ❌ Trigger creation success toast detection issues
+   - ❌ Modal close detection after trigger operations
+   - ❌ Trigger list refresh verification after CRUD operations
+   - ❌ Trigger execution feedback validation
+   - ❌ Trigger deletion confirmation workflow
+
+2. **Add Missing Component Tests** (0/3 components covered)
+   - ❌ WorkflowTriggers.tsx component unit tests
+   - ❌ TriggerModal component unit tests
+   - ❌ TriggerList component unit tests
+
+**📋 COMPLETION CRITERIA:**
+- **E2E Tests**: Must achieve 14/14 passing (100% pass rate)
+- **Component Tests**: Must cover all 3 trigger-related components
+- **User Flow Verification**: Complete trigger lifecycle (create → execute → manage → delete)
+
+**⚠️ Epic 2 Story 2 Status**: **BLOCKED** - Cannot be marked complete until all tests pass
 
 ## 🚀 API Overview
 
@@ -349,11 +403,20 @@ Detailed documentation available in `/docs`:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Pre-flight checks**:
+3. **Pre-flight checks & Test Coverage Requirements**:
    ```bash
    npm run test:all    # Must pass all 145+ tests
    npm run lint        # Fix any linting issues
    ```
+   
+   **⚠️ Feature Completion Requirements:**
+   - All new features MUST have comprehensive test coverage:
+     - **Unit Tests**: Business logic and utility functions
+     - **Component Tests**: React components (if applicable)
+     - **Integration Tests**: API endpoints with real database
+     - **E2E Tests**: At least one complete user flow verification
+   - All existing E2E tests must pass (currently 9/14 trigger tests failing)
+   - New features cannot be considered complete without full test coverage
 4. Commit changes (`git commit -m 'feat: add amazing feature'`)
 5. Push to branch (`git push origin feature/amazing-feature`)
 6. **Monitor CI success**:

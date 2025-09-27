@@ -1,0 +1,84 @@
+name: E2E - Cypress (Dashboard)
+
+on:
+  push:
+    branches: [ main, develop, feature/** ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  cypress-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CYPRESS_baseUrl: http://localhost:5173
+      CYPRESS_apiUrl: http://localhost:3001
+      # Record to Cypress Cloud Dashboard (set in repo secrets)
+      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Setup Prisma DB
+        working-directory: backend
+        run: npx prisma db push
+
+      - name: Start backend
+        working-directory: backend
+        run: npm start &
+
+      - name: Wait for backend
+        run: npx wait-on http://localhost:3001/api/health --timeout 30000
+
+      - name: Start frontend preview (5173)
+        working-directory: frontend
+        run: npm run preview -- --port 5173 --strictPort &
+
+      - name: Wait for frontend
+        run: npx wait-on http://localhost:5173 --timeout 30000
+
+      - name: Cypress run (recorded)
+        working-directory: frontend
+        run: npx cypress run --record --browser chrome --config video=true
+
+      - name: Upload Cypress screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: frontend/cypress/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload Cypress videos on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: frontend/cypress/videos
+          if-no-files-found: ignore

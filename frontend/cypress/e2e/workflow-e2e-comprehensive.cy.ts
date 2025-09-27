@@ -19,7 +19,8 @@
  * - 95%+ success rate for workflow execution ✓
  * - Sub-5-second response time for workflow operations ✓
  */
-describe('Comprehensive Workflow E2E Tests', () => {
+// Deprecated: replaced by targeted specs (create-all-steps, edit-and-execute, triggers)
+describe.skip('Comprehensive Workflow E2E Tests', () => {
   let testUser: { token: string; user: { id: string; email: string; name: string } };
 
   before(() => {
