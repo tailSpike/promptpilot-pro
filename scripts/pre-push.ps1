@@ -59,7 +59,7 @@ try {
             Write-Host " Frontend dependencies look OK" -ForegroundColor Green
         }
         
-        # Quick type check
+        # Quick type check (app)
         Write-Host "? Type checking..." -ForegroundColor Blue
         if (Get-Command npm -ErrorAction SilentlyContinue) {
             npm run type-check 2>$null
@@ -68,6 +68,19 @@ try {
             Write-Host " TypeScript type checking issues found" -ForegroundColor Yellow
         } else {
             Write-Host " TypeScript type checking passed" -ForegroundColor Green
+        }
+
+        # Cypress spec type check
+        Write-Host "? Cypress spec type checking..." -ForegroundColor Blue
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            npm run type-check:cypress 2>$null
+        }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host " Cypress spec TypeScript issues found" -ForegroundColor Red
+            Set-Location ..
+            exit 1
+        } else {
+            Write-Host " Cypress spec TypeScript passed" -ForegroundColor Green
         }
         
         # Build check
