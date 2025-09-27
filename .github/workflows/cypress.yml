@@ -32,6 +32,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
       - name: Setup Prisma DB
         working-directory: backend
         run: npx prisma db push
@@ -44,7 +48,9 @@ jobs:
       - name: Cypress run (recorded, parallel)
         uses: cypress-io/github-action@v6
         with:
-          start: npx concurrently "npm --prefix ../backend start" "npm run preview"
+          start: |
+            npm --prefix ../backend start
+            npm run preview
           wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
           wait-on-timeout: 120
           # run from the frontend package where Cypress is installed
@@ -80,6 +86,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
       - name: Setup Prisma DB
         working-directory: backend
         run: npx prisma db push
@@ -92,7 +102,9 @@ jobs:
       - name: Cypress run (unrecorded)
         uses: cypress-io/github-action@v6
         with:
-          start: npx concurrently "npm --prefix ../backend start" "npm run preview"
+          start: |
+            npm --prefix ../backend start
+            npm run preview
           wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
           wait-on-timeout: 120
           working-directory: frontend
