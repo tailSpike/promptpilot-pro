@@ -1,6 +1,10 @@
 name: Cypress Tests
 
-on: [push]
+on:
+  push:
+    branches: [ main, develop, 'feature/**' ]
+  pull_request:
+    branches: [ main, develop ]
 
 jobs:
   cypress-run:
@@ -28,6 +32,8 @@ jobs:
       - name: Setup Prisma DB
         working-directory: backend
         run: npx prisma db push
+        env:
+          DATABASE_URL: 'file:./test.db'
 
       - name: Build apps
         run: npm run build
