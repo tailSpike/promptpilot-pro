@@ -72,7 +72,7 @@ jobs:
 
       - name: Check TypeScript compilation
         working-directory: ./frontend
-        run: npx tsc --noEmit --skipLibCheck
+        run: npm run type-check:all
 
       - name: Build frontend
         working-directory: ./frontend
