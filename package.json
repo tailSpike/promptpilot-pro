@@ -41,7 +41,7 @@
     "db:studio": "cd backend && npm run db:studio",
     "setup": "npm run install:all && npm run db:setup && npm run setup:hooks",
     "setup:hooks": "bash scripts/setup-hooks.sh || powershell -ExecutionPolicy Bypass -File scripts/setup-hooks.ps1",
-    "precommit": "lint-staged",
+    "precommit": "npm run lint && npm run test:unit",
     "prepush": "npm run lint && npm run test",
     "ci": "npm run lint && npm run build && npm run test:all",
     "clean": "npm run clean:backend && npm run clean:frontend && npm run clean:deps",
@@ -67,16 +67,6 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "lint-staged": "^16.2.1"
-  },
-  "lint-staged": {
-    "backend/src/**/*.{js,jsx,ts,tsx}": [
-      "eslint --fix",
-      "jest --findRelatedTests"
-    ],
-    "frontend/src/**/*.{js,jsx,ts,tsx}": [
-      "eslint --fix",
-      "vitest related"
-    ]
   },
   "engines": {
     "node": ">=18.0.0",
