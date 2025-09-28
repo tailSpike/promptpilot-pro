@@ -23,7 +23,7 @@ describe('User authentication and prompt management', () => {
     cy.url({ timeout: 15000 }).should('include', '/dashboard');
 
     cy.contains(/prompts/i).click();
-    cy.contains(/create.*prompt/i).click();
+  cy.contains(/create.*prompt/i).click();
 
     cy.get('input#name', { timeout: 15000 }).type('Welcome Prompt');
     cy.get('textarea#description').type('Prompt created via regression suite');
@@ -32,13 +32,15 @@ describe('User authentication and prompt management', () => {
     });
 
     cy.contains('+ Add').click();
-    cy.get('[placeholder="variableName"]').type('name');
-    cy.get('select').first().select('text');
+    cy.get('[placeholder="variableName"]').first().type('name');
+    cy.get('[placeholder="variableName"]').first().parents('div.border').within(() => {
+      cy.get('select').select('Text');
+    });
 
     cy.contains('+ Add').click();
     cy.get('[placeholder="variableName"]').eq(1).type('company');
 
-    cy.contains(/create.*prompt/i).click();
-    cy.contains(/prompt created successfully/i, { timeout: 15000 }).should('be.visible');
+    cy.get('button[type="submit"]').contains(/create.*prompt/i).click();
+    cy.get('.bg-green-50', { timeout: 15000 }).should('be.visible').and('contain', 'Prompt created successfully');
   });
 });

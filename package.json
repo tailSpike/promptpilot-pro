@@ -17,6 +17,7 @@
     "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "start:backend": "cd backend && npm start",
     "start:frontend": "cd frontend && npm run preview",
+  "start:test": "cd backend && npm run start:test",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
@@ -33,7 +34,9 @@
     "test:unit:backend": "cd backend && npm run test:unit",
     "test:unit:frontend": "cd frontend && npm run test",
     "test:integration": "cd backend && npm run test:integration",
-    "test:e2e": "cd frontend && npm run e2e",
+  "cypress:run": "cd frontend && cross-env CYPRESS_baseUrl=http://localhost:4173 CYPRESS_apiUrl=http://localhost:3001 npm run cypress:run",
+  "prepare:e2e": "cd backend && npm run db:reset:test",
+  "test:e2e": "npm run build && npm run prepare:e2e && start-server-and-test start:test http://localhost:3001/api/health start:frontend http://localhost:4173 cypress:run",
     "test:e2e:open": "cd frontend && npm run e2e:open",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
     "db:setup": "cd backend && npm run db:generate && npm run db:push",
@@ -42,7 +45,7 @@
     "setup": "npm run install:all && npm run db:setup && npm run setup:hooks",
     "setup:hooks": "bash scripts/setup-hooks.sh || powershell -ExecutionPolicy Bypass -File scripts/setup-hooks.ps1",
     "precommit": "npm run lint && npm run test:unit",
-    "prepush": "npm run lint && npm run test",
+    "prepush": "npm run lint && npm run test && npm run test:e2e",
     "ci": "npm run lint && npm run build && npm run test:all",
     "clean": "npm run clean:backend && npm run clean:frontend && npm run clean:deps",
     "clean:backend": "cd backend && rm -rf dist node_modules || rmdir /s /q dist node_modules",
@@ -66,7 +69,9 @@
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "lint-staged": "^16.2.1"
+    "cross-env": "^7.0.3",
+    "lint-staged": "^16.2.1",
+    "start-server-and-test": "^2.0.10"
   },
   "engines": {
     "node": ">=18.0.0",
