@@ -1,5 +1,13 @@
 {
+  "compilerOptions": {
+    "types": []
+  },
   "files": [],
+  "exclude": [
+    "cypress",
+    "cypress.config.ts",
+    "cypress.d.ts"
+  ],
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
