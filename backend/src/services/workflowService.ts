@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 
 // Define step types as constants (since SQLite doesn't support enums natively)
 export const StepTypes = {

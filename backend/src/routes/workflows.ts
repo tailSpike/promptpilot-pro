@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { z } from 'zod';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Validation schemas
 const CreateWorkflowSchema = z.object({
