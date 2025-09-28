@@ -158,7 +158,17 @@ try {
         # Ensure Prisma client is generated (safe no-op if already present)
         if (Test-Path "node_modules/.bin/prisma") {
             Write-Host "? Generating Prisma client..." -ForegroundColor Blue
-            npx prisma generate 2>$null
+            $previousSkipAutoInstall = $env:PRISMA_GENERATE_SKIP_AUTOINSTALL
+            $env:PRISMA_GENERATE_SKIP_AUTOINSTALL = "1"
+            try {
+                npx prisma generate 2>$null
+            } finally {
+                if ($null -ne $previousSkipAutoInstall) {
+                    $env:PRISMA_GENERATE_SKIP_AUTOINSTALL = $previousSkipAutoInstall
+                } else {
+                    Remove-Item env:PRISMA_GENERATE_SKIP_AUTOINSTALL -ErrorAction SilentlyContinue
+                }
+            }
         }
         
         # Build check

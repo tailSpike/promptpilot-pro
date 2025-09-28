@@ -16,7 +16,7 @@ Thank you for your interest in contributing to PromptPilot Pro! We welcome contr
 npm run install:all
 
 # Setup database
-cd backend && npx prisma generate && npx prisma db push
+cd backend && npm run db:generate && npm run db:push
 
 # Install git hooks
 npm run setup:hooks

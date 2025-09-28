@@ -31,7 +31,7 @@ jobs:
 
       - name: Generate Prisma client
         working-directory: ./backend
-        run: npx prisma generate
+        run: PRISMA_GENERATE_SKIP_AUTOINSTALL=1 npx prisma generate
 
       - name: Setup test database
         working-directory: ./backend

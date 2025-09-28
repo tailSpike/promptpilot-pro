@@ -169,7 +169,7 @@ print_status "Setting up test database..."
 cd backend
 # Try Prisma generate with retry for Windows file permission issues
 for i in {1..3}; do
-  if npx prisma generate > /dev/null 2>&1; then
+  if PRISMA_GENERATE_SKIP_AUTOINSTALL=1 npx prisma generate > /dev/null 2>&1; then
     break
   elif [ $i -eq 3 ]; then
     print_error "Failed to generate Prisma client after 3 attempts"
