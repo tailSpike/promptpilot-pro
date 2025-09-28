@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
+import prisma from './lib/prisma';
 
 // Import routes
 import promptRoutes from './routes/prompts';
@@ -15,8 +15,8 @@ import triggerRoutes from './routes/triggers';
 // Load environment variables
 dotenv.config();
 
-// Initialize Prisma Client
-export const prisma = new PrismaClient();
+// Re-export Prisma Client singleton
+export { prisma };
 
 // Create Express app
 export const app = express();
@@ -159,7 +159,9 @@ app.use((req, res) => {
 });
 
 // Start server
-async function startServer() {
+let serverInstance: ReturnType<typeof app.listen> | null = null;
+
+export async function startServer() {
   try {
     // Connect to database
     await prisma.$connect();
@@ -175,13 +177,42 @@ async function startServer() {
     }
 
     // Start listening
-    app.listen(PORT, () => {
+    serverInstance = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
+  }
+}
+
+export async function stopServer() {
+  try {
+    if (serverInstance) {
+      await new Promise<void>((resolve, reject) => {
+        serverInstance?.close((err) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+      serverInstance = null;
+    }
+
+    try {
+      const { triggerService } = await import('./services/triggerService');
+      await triggerService.stopAllScheduledTriggers();
+      console.log('✅ Trigger service stopped');
+    } catch (error) {
+      console.warn('⚠️  Warning: Failed to stop trigger service during shutdown:', error);
+    }
+
+    await prisma.$disconnect();
+  } catch (error) {
+    console.error('❌ Failed to stop server cleanly:', error);
   }
 }
 
@@ -218,4 +249,6 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-startServer();
+if (process.env.NODE_ENV !== 'test' && !process.env.JEST_WORKER_ID) {
+  startServer();
+}

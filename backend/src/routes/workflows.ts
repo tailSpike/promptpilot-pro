@@ -574,7 +574,7 @@ router.post('/:id/execute', authenticate, async (req, res) => {
     res.status(201).json({
       ...execution,
       executionId: execution.id,
-      status: execution.status.toLowerCase()
+      status: execution.status
     });
 
   } catch (error) {

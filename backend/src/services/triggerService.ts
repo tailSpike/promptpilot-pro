@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import * as cron from 'node-cron';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 
 // Validation schemas for trigger operations
 export const CreateTriggerSchema = z.object({

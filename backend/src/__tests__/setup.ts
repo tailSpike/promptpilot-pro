@@ -1,3 +1,6 @@
+import prisma from '../lib/prisma';
+import { triggerService } from '../services/triggerService';
+
 // Test setup for PromptPilot Pro Backend
 // This file configures the global test environment
 
@@ -33,6 +36,17 @@ beforeAll(() => {
   };
 });
 
-afterAll(() => {
+afterAll(async () => {
   console.error = originalConsoleError;
+  try {
+    await triggerService.stopAllScheduledTriggers();
+  } catch (error) {
+    console.warn('⚠️  Warning: Failed to stop trigger service during test teardown:', error);
+  }
+
+  try {
+    await prisma.$disconnect();
+  } catch (error) {
+    console.warn('⚠️  Warning: Failed to disconnect Prisma during test teardown:', error);
+  }
 });
