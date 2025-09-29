@@ -1,11 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client"
+  engineType = "client"
+  output     = "../src/generated/prisma"
 }
 
 datasource db {
@@ -13,315 +9,292 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User model for authentication and ownership
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
+  id             String          @id @default(cuid())
+  email          String          @unique
+  name           String?
+  password       String
+  role           Role            @default(USER)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  folders        Folder[]
+  promptBranches PromptBranch[]
+  promptVersions PromptVersion[]
   prompts        Prompt[]
   workflows      Workflow[]
-  folders        Folder[]
-  promptVersions PromptVersion[]
-  promptBranches PromptBranch[]
 
   @@map("users")
 }
 
-// Folder model for organizing prompts hierarchically
 model Folder {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   name        String
   description String?
-  color       String?  // Optional color for visual organization
-  sortOrder   Int      @default(0) // Order within parent folder
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Self-referencing for folder hierarchy
-  parentId String?
-  parent   Folder? @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children Folder[] @relation("FolderHierarchy")
-
-  // Relations
-  userId  String
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  prompts Prompt[]
-  workflows Workflow[]
+  color       String?
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  parentId    String?
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      Folder?    @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[]   @relation("FolderHierarchy")
+  prompts     Prompt[]
+  workflows   Workflow[]
 
   @@map("folders")
 }
 
-// Prompt model for structured prompts with variables
 model Prompt {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  content     String   // The actual prompt template
-  variables   Json     // Array of variable definitions
-  metadata    Json?    // Additional metadata (tags, categories, etc.)
-  version     String   @default("1.0.0") // Current semantic version
-  isPublic    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  userId         String
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folderId       String?
-  folder         Folder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  executions     PromptExecution[]
-  workflowSteps  WorkflowStep[]
-  versions       PromptVersion[]
-  branches       PromptBranch[]
-  
-  // Current version tracking
-  currentVersionId String? @unique
-  currentVersion   PromptVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+  id               String            @id @default(cuid())
+  name             String
+  description      String?
+  content          String
+  variables        Json
+  metadata         Json?
+  version          String            @default("1.0.0")
+  isPublic         Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  userId           String
+  folderId         String?
+  currentVersionId String?           @unique
+  branches         PromptBranch[]
+  executions       PromptExecution[]
+  versions         PromptVersion[]
+  currentVersion   PromptVersion?    @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+  folder           Folder?           @relation(fields: [folderId], references: [id])
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflowSteps    WorkflowStep[]
 
   @@map("prompts")
 }
 
-// Workflow model for chaining prompts with comprehensive metadata
 model Workflow {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  version     String   @default("1.0.0") // Semantic versioning for workflows
-  isActive    Boolean  @default(true)
-  isTemplate  Boolean  @default(false) // Whether this is a reusable template
-  tags        Json?    // Array of tags for categorization
-  metadata    Json?    // Additional metadata (colors, icons, etc.)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  userId String
-  user   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folderId String?           // Optional folder organization
-  folder   Folder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  steps    WorkflowStep[]
-  variables WorkflowVariable[]
-  executions WorkflowExecution[]
-  templates  WorkflowTemplate[] @relation("TemplateSource")
-  createdFromTemplate WorkflowTemplate? @relation("TemplateInstances", fields: [templateId], references: [id])
-  templateId String?
+  id                  String              @id @default(cuid())
+  name                String
+  description         String?
+  version             String              @default("1.0.0")
+  isActive            Boolean             @default(true)
+  isTemplate          Boolean             @default(false)
+  tags                Json?
+  metadata            Json?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  userId              String
+  folderId            String?
+  templateId          String?
+  executions          WorkflowExecution[]
+  steps               WorkflowStep[]
+  templates           WorkflowTemplate[]  @relation("TemplateSource")
+  triggers            WorkflowTrigger[]
+  variables           WorkflowVariable[]
+  createdFromTemplate WorkflowTemplate?   @relation("TemplateInstances", fields: [templateId], references: [id])
+  folder              Folder?             @relation(fields: [folderId], references: [id])
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("workflows")
 }
 
-// Workflow variables for input/output definitions
 model WorkflowVariable {
-  id          String @id @default(cuid())
-  name        String
-  type        String // 'input', 'output', 'intermediate'
-  dataType    String // 'string', 'number', 'boolean', 'array', 'object'
-  description String?
+  id           String   @id @default(cuid())
+  name         String
+  type         String
+  dataType     String
+  description  String?
   defaultValue Json?
-  isRequired  Boolean @default(false)
-  validation  Json?  // Validation rules (min, max, regex, etc.)
-  
-  // Relations
-  workflowId String
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  isRequired   Boolean  @default(false)
+  validation   Json?
+  workflowId   String
+  workflow     Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
-  @@map("workflow_variables")
   @@unique([workflowId, name])
+  @@map("workflow_variables")
 }
 
-// Enhanced workflow step model with multiple step types
 model WorkflowStep {
-  id       String @id @default(cuid())
-  name     String
-  type     StepType @default(PROMPT) // Type of step
-  order    Int    // Execution order
-  position Json?  // UI position for visual builder {x, y}
-  config   Json   // Step-specific configuration
-  inputs   Json?  // Input variable mappings
-  outputs  Json?  // Output variable mappings
-  conditions Json? // Conditional execution rules
-  retryConfig Json? // Retry configuration for failed steps
-  
-  // Relations
-  workflowId String
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  promptId   String?
-  prompt     Prompt?   @relation(fields: [promptId], references: [id], onDelete: SetNull)
-  
-  // Execution tracking
+  id             String                  @id @default(cuid())
+  name           String
+  type           StepType                @default(PROMPT)
+  order          Int
+  position       Json?
+  config         Json
+  inputs         Json?
+  outputs        Json?
+  conditions     Json?
+  retryConfig    Json?
+  workflowId     String
+  promptId       String?
   stepExecutions WorkflowStepExecution[]
+  prompt         Prompt?                 @relation(fields: [promptId], references: [id])
+  workflow       Workflow                @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
-  @@map("workflow_steps")
   @@unique([workflowId, order])
+  @@map("workflow_steps")
 }
 
-// Workflow templates for reusable workflows
 model WorkflowTemplate {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  category    String?  // Template category
-  difficulty  String?  // 'beginner', 'intermediate', 'advanced'
-  isPublic    Boolean  @default(false)
-  usageCount  Int      @default(0)
-  rating      Float?   // Average user rating
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relations
+  id               String     @id @default(cuid())
+  name             String
+  description      String?
+  category         String?
+  difficulty       String?
+  isPublic         Boolean    @default(false)
+  usageCount       Int        @default(0)
+  rating           Float?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
   sourceWorkflowId String
-  sourceWorkflow   Workflow @relation("TemplateSource", fields: [sourceWorkflowId], references: [id])
+  sourceWorkflow   Workflow   @relation("TemplateSource", fields: [sourceWorkflowId], references: [id])
   instances        Workflow[] @relation("TemplateInstances")
 
   @@map("workflow_templates")
 }
 
-// Enhanced workflow execution with detailed tracking
+model WorkflowTrigger {
+  id              String              @id @default(cuid())
+  name            String
+  type            TriggerType
+  isActive        Boolean             @default(true)
+  config          Json
+  lastTriggeredAt DateTime?
+  nextRunAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  workflowId      String
+  executions      WorkflowExecution[]
+  workflow        Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_triggers")
+}
+
 model WorkflowExecution {
-  id         String   @id @default(cuid())
-  input      Json     // Initial input variables
-  output     Json?    // Final output (null if not completed)
-  status     ExecutionStatus @default(PENDING)
-  startedAt  DateTime @default(now())
-  completedAt DateTime?
-  error      Json?    // Error details if failed
-  metadata   Json?    // Execution metadata (duration, resource usage)
-  triggerType String  @default("manual") // 'manual', 'scheduled', 'webhook'
-  
-  // Relations
-  workflowId String
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  id             String                  @id @default(cuid())
+  input          Json
+  output         Json?
+  status         ExecutionStatus         @default(PENDING)
+  startedAt      DateTime                @default(now())
+  completedAt    DateTime?
+  error          Json?
+  metadata       Json?
+  triggerType    String                  @default("manual")
+  workflowId     String
+  triggerId      String?
+  trigger        WorkflowTrigger?        @relation(fields: [triggerId], references: [id])
+  workflow       Workflow                @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   stepExecutions WorkflowStepExecution[]
 
   @@map("workflow_executions")
 }
 
-// Individual step execution tracking
 model WorkflowStepExecution {
-  id          String   @id @default(cuid())
-  stepOrder   Int      // Order of the step in workflow
-  input       Json?    // Input to this step
-  output      Json?    // Output from this step
-  status      ExecutionStatus @default(PENDING)
-  startedAt   DateTime @default(now())
+  id          String            @id @default(cuid())
+  stepOrder   Int
+  input       Json?
+  output      Json?
+  status      ExecutionStatus   @default(PENDING)
+  startedAt   DateTime          @default(now())
   completedAt DateTime?
-  duration    Int?     // Execution duration in milliseconds
-  error       Json?    // Error details if failed
-  retryCount  Int      @default(0)
-  
-  // Relations
+  duration    Int?
+  error       Json?
+  retryCount  Int               @default(0)
   executionId String
-  execution   WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
   stepId      String
-  step        WorkflowStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  step        WorkflowStep      @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  execution   WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@map("workflow_step_executions")
 }
 
-// Version control for prompts
 model PromptVersion {
-  id            String   @id @default(cuid())
-  versionNumber String   // Semantic version (e.g., "1.0.0")
-  majorVersion  Int      @default(1)
-  minorVersion  Int      @default(0)
-  patchVersion  Int      @default(0)
-  
-  // Content snapshot
-  name          String
-  description   String?
-  content       String   // The prompt template at this version
-  variables     Json     // Variable definitions at this version
-  metadata      Json?    // Metadata at this version
-  folderId      String?  // Folder assignment at this version
-  
-  // Version metadata
-  commitMessage String?  // Optional commit message
-  changeType    VersionChangeType @default(PATCH)
-  changesSummary Json?   // Summary of what changed
-  tags          Json?    // Version tags (e.g., "production", "experimental")
-  
-  // Timestamps and author
-  createdAt     DateTime @default(now())
-  createdBy     String   // User ID who created this version
-  
-  // Relations
-  promptId      String
-  prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
-  createdByUser User     @relation(fields: [createdBy], references: [id])
-  
-  // Parent version for tracking changes
-  parentVersionId String?
-  parentVersion   PromptVersion? @relation("VersionHistory", fields: [parentVersionId], references: [id])
-  childVersions   PromptVersion[] @relation("VersionHistory")
-  
-  // Current version relations
-  currentForPrompt Prompt? @relation("CurrentVersion")
-  
-  // Branch relations
-  branchBase PromptBranch[] @relation("BranchBase")
-  branchHead PromptBranch[] @relation("BranchHead")
-  
-  // Execution tracking
-  executions PromptExecution[]
+  id               String            @id @default(cuid())
+  versionNumber    String
+  majorVersion     Int               @default(1)
+  minorVersion     Int               @default(0)
+  patchVersion     Int               @default(0)
+  name             String
+  description      String?
+  content          String
+  variables        Json
+  metadata         Json?
+  folderId         String?
+  commitMessage    String?
+  changeType       VersionChangeType @default(PATCH)
+  changesSummary   Json?
+  tags             Json?
+  createdAt        DateTime          @default(now())
+  createdBy        String
+  promptId         String
+  parentVersionId  String?
+  branchHead       PromptBranch[]    @relation("BranchHead")
+  branchBase       PromptBranch[]    @relation("BranchBase")
+  executions       PromptExecution[]
+  parentVersion    PromptVersion?    @relation("VersionHistory", fields: [parentVersionId], references: [id])
+  childVersions    PromptVersion[]   @relation("VersionHistory")
+  createdByUser    User              @relation(fields: [createdBy], references: [id])
+  prompt           Prompt            @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  currentForPrompt Prompt?           @relation("CurrentVersion")
 
-  @@map("prompt_versions")
   @@unique([promptId, versionNumber])
   @@index([promptId, createdAt])
+  @@map("prompt_versions")
 }
 
-// Branches for experimental prompt versions
 model PromptBranch {
-  id          String   @id @default(cuid())
-  name        String   // Branch name (e.g., "experiment-tone", "client-specific")
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relations
+  id               String         @id @default(cuid())
+  name             String
+  description      String?
+  isActive         Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   promptId         String
-  prompt           Prompt        @relation(fields: [promptId], references: [id], onDelete: Cascade)
-  baseVersionId    String        // The version this branch was created from
-  baseVersion      PromptVersion @relation("BranchBase", fields: [baseVersionId], references: [id])
-  currentVersionId String?       // Current head version of this branch
-  currentVersion   PromptVersion? @relation("BranchHead", fields: [currentVersionId], references: [id])
-  
+  baseVersionId    String
+  currentVersionId String?
   createdBy        String
-  createdByUser    User          @relation(fields: [createdBy], references: [id])
+  createdByUser    User           @relation(fields: [createdBy], references: [id])
+  currentVersion   PromptVersion? @relation("BranchHead", fields: [currentVersionId], references: [id])
+  baseVersion      PromptVersion  @relation("BranchBase", fields: [baseVersionId], references: [id])
+  prompt           Prompt         @relation(fields: [promptId], references: [id], onDelete: Cascade)
 
-  @@map("prompt_branches")
   @@unique([promptId, name])
+  @@map("prompt_branches")
 }
 
-// Execution logs for prompts
 model PromptExecution {
-  id        String   @id @default(cuid())
-  input     Json     // Input variables and values
-  output    String   // Generated output
-  model     String   // AI model used
-  metadata  Json?    // Additional execution metadata
-  createdAt DateTime @default(now())
-
-  // Relations
-  promptId String
-  prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
-  
-  // Optional version tracking
+  id        String         @id @default(cuid())
+  input     Json
+  output    String
+  model     String
+  metadata  Json?
+  createdAt DateTime       @default(now())
+  promptId  String
   versionId String?
   version   PromptVersion? @relation(fields: [versionId], references: [id])
+  prompt    Prompt         @relation(fields: [promptId], references: [id], onDelete: Cascade)
 
   @@map("prompt_executions")
 }
 
-// Enums
 enum Role {
   USER
   ADMIN
+}
+
+enum TriggerType {
+  MANUAL
+  SCHEDULED
+  WEBHOOK
+  API
+  EVENT
+}
+
+enum StepType {
+  PROMPT
+  CONDITION
+  TRANSFORM
+  DELAY
+  WEBHOOK
+  DECISION
 }
 
 enum ExecutionStatus {
@@ -333,16 +306,7 @@ enum ExecutionStatus {
 }
 
 enum VersionChangeType {
-  PATCH  // Bug fixes, minor tweaks
-  MINOR  // New features, significant improvements
-  MAJOR  // Breaking changes, complete rewrites
-}
-
-enum StepType {
-  PROMPT      // Execute a prompt with variables
-  CONDITION   // Conditional branching
-  TRANSFORM   // Data transformation step
-  DELAY       // Wait/delay step
-  WEBHOOK     // External API call
-  DECISION    // User decision point
+  PATCH
+  MINOR
+  MAJOR
 }

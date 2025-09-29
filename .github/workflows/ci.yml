@@ -2,124 +2,161 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop, 'feature/*' ]
+    branches: [ main, develop, 'feature/**' ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main, develop ]
 
 jobs:
   backend-ci:
     runs-on: ubuntu-latest
     name: Backend CI
-    
     env:
       DATABASE_URL: 'file:./test.db'
       JWT_SECRET: 'test-jwt-secret-key-for-ci'
       NODE_ENV: 'test'
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: backend/package-lock.json
-    
-    - name: Install backend dependencies
-      working-directory: ./backend
-      run: npm ci
-    
-    - name: Setup test database
-      working-directory: ./backend
-      run: |
-        npx prisma generate
-        npx prisma db push --force-reset
-    
-    - name: Run backend linter
-      working-directory: ./backend
-      run: npm run lint --if-present
-    
-    - name: Run backend tests (unit + integration)
-      working-directory: ./backend
-      run: npm run test:all
-    
-    - name: Build backend
-      working-directory: ./backend
-      run: npm run build --if-present
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: ./backend
+        run: PRISMA_GENERATE_SKIP_AUTOINSTALL=1 npx prisma generate
+
+      - name: Setup test database
+        working-directory: ./backend
+        run: npx prisma db push --force-reset
+
+      - name: Lint backend
+        working-directory: ./backend
+        run: npm run lint --if-present
+
+      - name: Run backend tests (unit + integration)
+        working-directory: ./backend
+        run: npm run test:all
+
+      - name: Build backend
+        working-directory: ./backend
+        run: npm run build --if-present
 
   frontend-ci:
     runs-on: ubuntu-latest
     name: Frontend CI
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-
+    env:
+      NPM_CONFIG_PRODUCTION: 'false'
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-    
-    - name: Install frontend dependencies
-      working-directory: ./frontend
-      run: npm ci
-    
-    - name: Run frontend linter
-      working-directory: ./frontend
-      run: npm run lint --if-present
-    
-    - name: Build frontend
-      working-directory: ./frontend
-      run: npm run build
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci --include=dev
+
+      - name: Run frontend linter
+        working-directory: ./frontend
+        run: npm run lint --if-present
+
+      - name: Check TypeScript compilation
+        working-directory: ./frontend
+        run: npm run type-check:all
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Run frontend unit tests
+        working-directory: ./frontend
+        run: npm run test -- --run
+
+  cypress-e2e:
+    name: Cypress E2E
+    uses: ./.github/workflows/cypress.yml
+    secrets: inherit
 
   backend-security-audit:
     runs-on: ubuntu-latest
     name: Backend Security Audit
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        cache-dependency-path: backend/package-lock.json
-    
-    - name: Install backend dependencies
-      working-directory: ./backend
-      run: npm ci
-    
-    - name: Run backend security audit
-      working-directory: ./backend
-      run: npm audit --audit-level high
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run backend security audit
+        working-directory: ./backend
+        run: npm audit --audit-level high
 
   frontend-security-audit:
     runs-on: ubuntu-latest
     name: Frontend Security Audit
+    env:
+      NPM_CONFIG_PRODUCTION: 'false'
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-    
-    - name: Install frontend dependencies
-      working-directory: ./frontend
-      run: npm ci
-    
-    - name: Run frontend security audit
-      working-directory: ./frontend
-      run: npm audit --audit-level high
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci --include=dev
+
+      - name: Run frontend security audit
+        working-directory: ./frontend
+        run: npm audit --audit-level high
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    name: Quality Gate
+    needs: [backend-ci, frontend-ci, cypress-e2e, backend-security-audit, frontend-security-audit]
+    if: always()
+    steps:
+      - name: Check all jobs status
+        run: |
+          echo "Backend CI: ${{ needs.backend-ci.result }}"
+          echo "Frontend CI: ${{ needs.frontend-ci.result }}"
+          echo "Cypress E2E: ${{ needs.cypress-e2e.result }}"
+          echo "Backend Security: ${{ needs.backend-security-audit.result }}"
+          echo "Frontend Security: ${{ needs.frontend-security-audit.result }}"
+          
+          if [ "${{ needs.backend-ci.result }}" != "success" ] || \
+             [ "${{ needs.frontend-ci.result }}" != "success" ] || \
+             [ "${{ needs.cypress-e2e.result }}" != "success" ] || \
+             [ "${{ needs.backend-security-audit.result }}" != "success" ] || \
+             [ "${{ needs.frontend-security-audit.result }}" != "success" ]; then
+            echo "❌ Quality gate failed - one or more jobs failed"
+            exit 1
+          else
+            echo "✅ Quality gate passed - all jobs succeeded"
+          fi

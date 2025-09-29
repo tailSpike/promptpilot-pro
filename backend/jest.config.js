@@ -25,6 +25,7 @@ module.exports = {
     }
   },
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
+  globalSetup: '<rootDir>/src/__tests__/globalSetup.ts',
   testTimeout: 10000,
   // Suppress console output during tests for cleaner output
   silent: false,

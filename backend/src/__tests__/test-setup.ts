@@ -1,7 +1,7 @@
 // Mock Prisma Client to prevent actual database calls during tests
-jest.mock('@prisma/client');
+jest.mock('../generated/prisma/client');
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../generated/prisma/client';
 
 // Create a mocked prisma instance for use in tests
 const prisma = new PrismaClient();

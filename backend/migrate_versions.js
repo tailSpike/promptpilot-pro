@@ -1,7 +1,7 @@
-const { PrismaClient } = require('@prisma/client');
+const { createPrismaClient } = require('./dist/lib/prisma');
 const { VersionService } = require('./dist/services/versionService');
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function migrateExistingVersions() {
   try {

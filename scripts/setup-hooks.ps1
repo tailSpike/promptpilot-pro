@@ -1,0 +1,88 @@
+# Setup Git hooks for PromptPilot Pro (PowerShell version)
+Write-Host "Setting up Git hooks for PromptPilot Pro..." -ForegroundColor Cyan
+
+# Change to project root
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptRoot
+Set-Location $ProjectRoot
+
+# Check if we're in a git repository
+$null = git rev-parse --git-dir 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Git repository detected" -ForegroundColor Green
+} else {
+    Write-Host "Not in a git repository. Please run 'git init' first." -ForegroundColor Red
+    exit 1
+}
+
+$HooksDir = ".git\hooks"
+
+# Make sure hooks directory exists
+if (-not (Test-Path $HooksDir)) {
+    New-Item -ItemType Directory -Path $HooksDir -Force | Out-Null
+    Write-Host "Created hooks directory" -ForegroundColor Green
+}
+
+# Check and confirm hooks exist
+$PreCommitPath = Join-Path $HooksDir "pre-commit"
+$PrePushPath = Join-Path $HooksDir "pre-push"
+
+if (Test-Path $PreCommitPath) {
+    Write-Host "Pre-commit hook found and ready" -ForegroundColor Green
+} else {
+    Write-Host "Pre-commit hook not found; creating a new one" -ForegroundColor Yellow
+    @(
+        "#!/bin/sh",
+        "# Pre-commit: run lint and quick unit tests",
+        "if command -v powershell >/dev/null 2>&1; then",
+        "  echo 'Running pre-commit via npm scripts'",
+        "else",
+        "  echo 'Running pre-commit via npm scripts'",
+        "fi",
+        "npm run precommit || exit 1",
+        "exit 0"
+    ) | Set-Content -NoNewline -Path $PreCommitPath -Encoding ascii
+}
+
+if (Test-Path $PrePushPath) {
+    Write-Host "Pre-push hook found and ready" -ForegroundColor Green
+} else {
+    Write-Host "Pre-push hook not found; creating a new one" -ForegroundColor Yellow
+    @(
+        "#!/bin/sh",
+        "# Pre-push: prefer PowerShell script on Windows; fallback to npm scripts",
+        "if command -v powershell >/dev/null 2>&1; then",
+        "  powershell -ExecutionPolicy Bypass -File scripts/pre-push.ps1 || exit 1",
+        "else",
+        "  echo 'PowerShell not available; running basic checks'",
+        "  npm run lint && npm test || exit 1",
+        "fi",
+        "exit 0"
+    ) | Set-Content -NoNewline -Path $PrePushPath -Encoding ascii
+}
+
+# Check if PowerShell pre-push script exists
+$PowerShellPrePush = "scripts\pre-push.ps1"
+if (Test-Path $PowerShellPrePush) {
+    Write-Host "✓ PowerShell pre-push script ready for enhanced Windows support" -ForegroundColor Green
+} else {
+    Write-Host "⚠ PowerShell pre-push script not found - using basic bash fallback" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "Git hooks setup completed!" -ForegroundColor Green
+Write-Host ""
+Write-Host "The following hooks are now active:" -ForegroundColor Cyan
+Write-Host "  • pre-commit: Runs linting and quick tests before each commit"
+Write-Host "  • pre-push: Enhanced with PowerShell support for comprehensive testing"
+Write-Host ""
+Write-Host "PowerShell Integration:" -ForegroundColor Cyan
+Write-Host "  • Windows users automatically get enhanced PowerShell-based pre-push checks"
+Write-Host "  • Leverages start.ps1, stop.ps1, and status.ps1 for reliable service management"
+Write-Host "  • Non-Windows systems fall back to bash implementation"
+Write-Host ""
+Write-Host "To skip hooks temporarily, use:" -ForegroundColor Cyan
+Write-Host "  • git commit --no-verify"
+Write-Host "  • git push --no-verify"
+Write-Host ""
+Write-Host "Happy coding!" -ForegroundColor Green

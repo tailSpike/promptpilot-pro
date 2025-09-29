@@ -1,9 +1,9 @@
 import request from 'supertest';
 import { app } from '../../index';
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../lib/prisma';
 import jwt from 'jsonwebtoken';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 describe('Workflow API', () => {
   let authToken: string;

@@ -1,0 +1,10 @@
+name: DEPRECATED - Cypress E2E (Dashboard)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "This workflow is deprecated. Use 'Cypress Tests' workflow instead."

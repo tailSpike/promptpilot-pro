@@ -7,7 +7,8 @@
  * This test shows the pattern that should be followed once that refactoring is complete.
  */
 
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../generated/prisma/client';
+import { createPrismaClient } from '../../lib/prisma';
 import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -32,13 +33,7 @@ describe('Authentication Integration Tests (Real Database)', () => {
     });
     
     // Initialize Prisma client for test database
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: testDatabaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient(testDatabaseUrl);
     
     await prisma.$connect();
   });

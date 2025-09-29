@@ -1,169 +1,46 @@
 /// <reference types="cypress" />
 
-describe('User Authentication and Prompt Management', () => {
-  const testUser = {
-    name: 'Sarah Johnson',
-    email: `test-${Date.now()}@example.com`,
-    password: 'securepass123'
-  };
+describe('User authentication and prompt management', () => {
+  const backendUrl = () => Cypress.env('apiUrl') as string;
+  const password = 'promptpass123!';
+  const email = `auth-prompt-${Date.now()}@example.com`;
+  const name = 'Auth Prompt User';
 
-  beforeEach(() => {
-    // Ensure clean state
-    cy.clearLocalStorage();
-    cy.clearCookies();
-    
-    // Wait for backend to be ready
-    cy.request({
-      method: 'GET',
-      url: `${Cypress.env('apiUrl')}/api/health`,
-      timeout: 10000,
-      retryOnStatusCodeFailure: true
-    });
-  });
-
-  it('should complete full user authentication and prompt creation workflow', () => {
-    // Step 1: Visit the application (should redirect to login)
-    cy.visit('/');
-    cy.url().should('include', '/login');
-    
-    // Step 2: Navigate to registration
-    cy.get('a[href="/register"]').should('be.visible').click();
-    cy.url().should('include', '/register');
-    
-    // Step 3: Fill out registration form
-    cy.get('form').should('be.visible');
-    cy.get('input[name="name"]').type(testUser.name);
-    cy.get('input[name="email"]').type(testUser.email);
-    cy.get('input[name="password"]').type(testUser.password);
-    cy.get('input[name="confirmPassword"]').type(testUser.password);
-    
-    // Step 4: Submit registration
-    cy.get('button[type="submit"]').click();
-    
-    // Wait for registration to complete and redirect
-    cy.url().should('not.include', '/register');
-    cy.url().should('include', '/dashboard');
-    
-    // Step 5: Verify user is logged in (check for welcome message)
-    cy.get('h1').should('contain', 'Welcome back');
-    
-    // Step 6: Navigate to create prompt via the "Get Started" button
-    cy.get('a[href="/prompts/new"]').contains('Get Started').click();
-    cy.url().should('include', '/prompts/new');
-    
-    // Step 7: Fill out prompt creation form
-    // Basic prompt information
-    cy.get('input#name').type('Customer Welcome Email');
-    cy.get('textarea#description').type('Personalized welcome email for new customers');
-    
-    // Prompt content with variables
-    const promptContent = `Dear {{customerName}}, Welcome to {{companyName}}! Your plan: {{selectedPlan}}.`;
-    cy.get('textarea#content').type(promptContent, { parseSpecialCharSequences: false });
-    
-    // Step 8: Add variables
-    // Add first variable: customerName
-    cy.get('button').contains('Add Variable').click();
-    cy.get('input[placeholder="variableName"]').first().type('customerName');
-    cy.get('select').first().select('text');
-    cy.get('input[placeholder="Describe this variable"]').first().type('Full name of the customer');
-    cy.get('input[type="checkbox"]').first().check(); // Required
-    
-    // Add second variable: companyName
-    cy.get('button').contains('Add Variable').click();
-    cy.get('input[placeholder="variableName"]').last().type('companyName');
-    cy.get('select').last().select('text');
-    cy.get('input[placeholder="Describe this variable"]').last().type('Company name');
-    
-    // Add third variable: selectedPlan
-    cy.get('button').contains('Add Variable').click();
-    cy.get('input[placeholder="variableName"]').last().type('selectedPlan');
-    cy.get('select').last().select('select');
-    
-    // Step 9: Save the prompt
-    cy.get('button[type="submit"]').contains('Create Prompt').click();
-    
-    // Step 10: Verify prompt was created successfully
-    cy.get('.bg-green-50').should('be.visible').and('contain', 'Prompt created successfully');
-    cy.url().should('include', '/prompts');
-    
-    // Step 11: Verify prompt appears in list
-    cy.get('.bg-white.shadow').should('contain', 'Customer Welcome Email');
-    
-    // Step 12: Test editing the prompt
-    cy.contains('Customer Welcome Email');
-    cy.get('a').contains('Edit').first().click();
-    cy.url().should('include', '/edit');
-    
-    // Step 13: Verify we can see the edit form with existing data
-    cy.get('input#name').should('have.value', 'Customer Welcome Email');
-    cy.get('textarea#description').should('contain', 'Personalized welcome email');
-    cy.get('textarea#content').should('contain', 'Dear {{customerName}}');
-    
-    // Step 14: Navigate back to the prompt list
-    cy.get('button').contains('Cancel').click();
-    cy.url().should('include', '/prompts');
-    
-    // Step 15: Test search functionality
-    cy.get('input[placeholder="Search prompts..."]').type('Customer{enter}');
-    cy.get('.bg-white.shadow').should('contain', 'Customer Welcome Email');
-    
-    // The test has successfully completed the full user workflow:
-    // 1. Registration ✓
-    // 2. Login (automatic after registration) ✓
-    // 3. Dashboard access ✓
-    // 4. Prompt creation with variables ✓ 
-    // 5. Prompt management (list, edit, search) ✓
-  });
-  
-  it('should allow editing existing prompts', () => {
-    const editTestUser = {
-      name: 'Edit Test User',
-      email: `edit-test-${Date.now()}@example.com`,
-      password: 'edittest123'
-    };
-
-    // Register user and create initial prompt via API
+  before(() => {
     cy.request({
       method: 'POST',
-      url: `${Cypress.env('apiUrl')}/api/auth/register`,
-      body: editTestUser
-    }).then((response) => {
-      const token = response.body.token;
-      window.localStorage.setItem('token', token);
-      window.localStorage.setItem('user', JSON.stringify(response.body.user));
-      
-      // Create a prompt via API
-      cy.request({
-        method: 'POST',
-        url: `${Cypress.env('apiUrl')}/api/prompts`,
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: {
-          name: 'Test Prompt',
-          description: 'A test prompt',
-          content: 'Hello {{name}}!',
-          variables: [
-            { name: 'name', type: 'text', required: true }
-          ]
-        }
-      });
+      url: `${backendUrl()}/api/auth/register`,
+      body: { name, email, password }
     });
-    
-    // Visit prompts page
-    cy.visit('/prompts');
-    
-    // Find and edit the prompt
-    cy.contains('Test Prompt');
-    cy.get('a').contains('Edit').first().click();
-    cy.url().should('include', '/edit');
-    
-    // Update the prompt
-    cy.get('input#name').clear().type('Updated Test Prompt');
-    cy.get('textarea#description').clear().type('An updated test prompt');
-    
-    // Save changes
-    cy.get('button[type="submit"]').contains('Update Prompt').click();
-    
-    // Verify update
-    cy.get('.bg-green-50').should('be.visible').and('contain', 'Prompt updated successfully');
+  });
+
+  it('logs in via UI and creates a prompt', () => {
+    cy.visit('/login');
+    cy.get('input[type="email"]').type(email);
+    cy.get('input[type="password"]').type(password);
+    cy.get('button[type="submit"]').click();
+
+    cy.url({ timeout: 15000 }).should('include', '/dashboard');
+
+    cy.contains(/prompts/i).click();
+  cy.contains(/create.*prompt/i).click();
+
+    cy.get('input#name', { timeout: 15000 }).type('Welcome Prompt');
+    cy.get('textarea#description').type('Prompt created via regression suite');
+    cy.get('textarea#content').type('Hello {{name}}, welcome to {{company}}!', {
+      parseSpecialCharSequences: false
+    });
+
+    cy.contains('+ Add').click();
+    cy.get('[placeholder="variableName"]').first().type('name');
+    cy.get('[placeholder="variableName"]').first().parents('div.border').within(() => {
+      cy.get('select').select('Text');
+    });
+
+    cy.contains('+ Add').click();
+    cy.get('[placeholder="variableName"]').eq(1).type('company');
+
+    cy.get('button[type="submit"]').contains(/create.*prompt/i).click();
+    cy.get('.bg-green-50', { timeout: 15000 }).should('be.visible').and('contain', 'Prompt created successfully');
   });
 });

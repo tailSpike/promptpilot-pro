@@ -1,5 +1,4 @@
 import prisma from '../lib/prisma';
-import type { Folder } from '@prisma/client';
 
 export interface CreateFolderData {
   name: string;
@@ -17,7 +16,8 @@ export interface UpdateFolderData {
   sortOrder?: number;
 }
 
-export interface FolderWithChildren extends Folder {
+export interface FolderWithChildren {
+  [key: string]: any;
   children: FolderWithChildren[];
   _count: {
     prompts: number;
@@ -29,7 +29,7 @@ export class FolderService {
   /**
    * Create a new folder
    */
-  static async createFolder(userId: string, data: CreateFolderData): Promise<Folder> {
+  static async createFolder(userId: string, data: CreateFolderData): Promise<any> {
     // Validate parent folder exists and belongs to user if parentId is provided
     if (data.parentId) {
       const parentFolder = await prisma.folder.findFirst({
@@ -156,7 +156,7 @@ export class FolderService {
   /**
    * Update a folder
    */
-  static async updateFolder(userId: string, folderId: string, data: UpdateFolderData): Promise<Folder> {
+  static async updateFolder(userId: string, folderId: string, data: UpdateFolderData): Promise<any> {
     // Check if folder exists and belongs to user
     const existingFolder = await prisma.folder.findFirst({
       where: {
@@ -301,12 +301,12 @@ export class FolderService {
   /**
    * Build hierarchical folder structure
    */
-  private static buildFolderHierarchy(folders: Array<Folder & { _count: { prompts: number; children: number } }>): FolderWithChildren[] {
+  private static buildFolderHierarchy(folders: Array<any & { _count: { prompts: number; children: number } }>): FolderWithChildren[] {
     const folderMap = new Map<string, FolderWithChildren>();
     const rootFolders: FolderWithChildren[] = [];
 
     // Create folder objects with children arrays
-    folders.forEach(folder => {
+  folders.forEach((folder: any & { _count: { prompts: number; children: number } }) => {
       folderMap.set(folder.id, {
         ...folder,
         children: []
@@ -314,7 +314,7 @@ export class FolderService {
     });
 
     // Build hierarchy
-    folders.forEach(folder => {
+  folders.forEach((folder: any & { _count: { prompts: number; children: number } }) => {
       const folderWithChildren = folderMap.get(folder.id)!;
       
       if (folder.parentId) {
@@ -393,7 +393,7 @@ export class FolderService {
     position: number
   ): Promise<void> {
     // Get all sibling folders in the target parent
-    const siblings = await prisma.folder.findMany({
+  const siblings = await prisma.folder.findMany({
       where: {
         userId,
         parentId: targetParentId
@@ -402,7 +402,7 @@ export class FolderService {
     });
 
     // Remove the folder being moved from its current position if it's already in this parent
-    const existingIndex = siblings.findIndex(f => f.id === folderId);
+  const existingIndex = siblings.findIndex((f: any) => f.id === folderId);
     if (existingIndex !== -1) {
       siblings.splice(existingIndex, 1);
     }
@@ -425,7 +425,7 @@ export class FolderService {
     );
 
     // Update sort orders for siblings that come after the insertion point
-    siblings.forEach((sibling, index) => {
+  siblings.forEach((sibling: any, index: number) => {
       const newSortOrder = index >= targetPosition ? index + 1 : index;
       if (sibling.sortOrder !== newSortOrder) {
         updates.push(

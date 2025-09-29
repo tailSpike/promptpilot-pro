@@ -1,0 +1,136 @@
+name: Cypress Tests
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  # Prep job determines if CYPRESS_RECORD_KEY is available and exposes it as an output
+  prep:
+    runs-on: ubuntu-latest
+    env:
+      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+    outputs:
+      has_record_key: ${{ steps.check.outputs.has_record_key }}
+    steps:
+      - name: Check for Cypress Record Key
+        id: check
+        shell: bash
+        run: |
+          if [ -n "$CYPRESS_RECORD_KEY" ]; then
+            echo "has_record_key=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_record_key=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Recorded run to Cypress Cloud with parallelization
+  cypress-run-recorded:
+    needs: prep
+    if: ${{ needs.prep.outputs.has_record_key == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      # Make secrets available to all steps in this job
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+      NPM_CONFIG_PRODUCTION: 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        containers: [1, 2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspace dependencies
+        run: npm ci --workspaces --include-workspace-root --include=dev
+
+      - name: Prepare E2E database
+        run: npm run prepare:e2e
+
+      - name: Build apps
+        run: npm run build
+
+      - name: Cypress run (recorded, parallel)
+        uses: cypress-io/github-action@v6
+        with:
+          start: |
+            npm --prefix ../backend run start:test
+            npm run preview
+          wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
+          wait-on-timeout: 120
+          # run from the frontend package where Cypress is installed
+          working-directory: frontend
+          install: false
+          record: true
+          parallel: true
+        env:
+          DATABASE_URL: file:./prisma/test.db
+          PRISMA_SQLITE_BASE_DIR: ./prisma
+          PORT: 3001
+          CYPRESS_baseUrl: http://localhost:4173
+          CYPRESS_apiUrl: http://localhost:3001
+
+  # Unrecorded run (single container, no parallel)
+  cypress-run-unrecorded:
+    needs: prep
+    if: ${{ needs.prep.outputs.has_record_key != 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      NPM_CONFIG_PRODUCTION: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspace dependencies
+        run: npm ci --workspaces --include-workspace-root --include=dev
+
+      - name: Prepare E2E database
+        run: npm run prepare:e2e
+
+      - name: Build apps
+        run: npm run build
+
+      - name: Cypress run (unrecorded)
+        uses: cypress-io/github-action@v6
+        with:
+          start: |
+            npm --prefix ../backend run start:test
+            npm run preview
+          wait-on: 'http://localhost:3001/api/health,http://localhost:4173'
+          wait-on-timeout: 120
+          working-directory: frontend
+          install: false
+          record: false
+        env:
+          DATABASE_URL: file:./prisma/test.db
+          PRISMA_SQLITE_BASE_DIR: ./prisma
+          PORT: 3001
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CYPRESS_baseUrl: http://localhost:4173
+          CYPRESS_apiUrl: http://localhost:3001
+
+      - name: Upload Cypress screenshots (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: frontend/cypress/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload Cypress videos (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: frontend/cypress/videos
+          if-no-files-found: ignore
