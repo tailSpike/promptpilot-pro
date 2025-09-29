@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { workflowsAPI } from '../services/api';
 import WorkflowTriggers from './WorkflowTriggers';
+import WorkflowPreviewResults, { type WorkflowPreviewResult } from './WorkflowPreviewResults';
 
 interface WorkflowStep {
   id: string;
@@ -27,6 +28,16 @@ interface WorkflowExecution {
   output?: Record<string, unknown>;
 }
 
+interface WorkflowVariable {
+  id: string;
+  name: string;
+  type: string;
+  dataType: string;
+  isRequired: boolean;
+  defaultValue?: unknown;
+  description?: string | null;
+}
+
 interface Workflow {
   id: string;
   name: string;
@@ -45,6 +56,7 @@ interface Workflow {
     name: string;
     email: string;
   };
+  variables?: WorkflowVariable[];
 }
 
 export default function WorkflowDetail() {
@@ -56,6 +68,70 @@ export default function WorkflowDetail() {
 
   const [executing, setExecuting] = useState(false);
   const [executionInput, setExecutionInput] = useState('{}');
+  const [useSampleData, setUseSampleData] = useState(true);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<WorkflowPreviewResult | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const parseDefaultValue = (value: unknown): unknown => {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    }
+
+    return value;
+  };
+
+  const generatePlaceholderValue = (dataType: string, variableName: string): unknown => {
+    switch (dataType) {
+      case 'number':
+        return 1;
+      case 'boolean':
+        return false;
+      case 'array':
+        return [];
+      case 'object':
+        return { example: `${variableName}Value` };
+      default:
+        return `Sample ${variableName}`;
+    }
+  };
+
+  const buildSampleInput = (variables?: WorkflowVariable[]): Record<string, unknown> => {
+    if (!variables) {
+      return {};
+    }
+
+    return variables
+      .filter((variable) => variable.type === 'input')
+      .reduce<Record<string, unknown>>((acc, variable) => {
+        const defaultValue = parseDefaultValue(variable.defaultValue);
+        acc[variable.name] = defaultValue !== undefined
+          ? defaultValue
+          : generatePlaceholderValue(variable.dataType, variable.name);
+        return acc;
+      }, {});
+  };
+
+  const handleGenerateSampleInput = () => {
+    if (!workflow?.variables) {
+      return;
+    }
+
+    const sample = buildSampleInput(workflow.variables);
+    if (Object.keys(sample).length > 0) {
+      setExecutionInput(JSON.stringify(sample, null, 2));
+      setPreviewResult(null);
+      setPreviewError(null);
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -71,6 +147,14 @@ export default function WorkflowDetail() {
       setLoading(true);
       const data = await workflowsAPI.getWorkflow(id);
       setWorkflow(data);
+
+      if ((executionInput.trim() === '{}' || executionInput.trim() === '') && data?.variables?.length) {
+        const sample = buildSampleInput(data.variables);
+        if (Object.keys(sample).length > 0) {
+          setExecutionInput(JSON.stringify(sample, null, 2));
+          setUseSampleData(true);
+        }
+      }
     } catch (err) {
       console.error('Error fetching workflow:', err);
       setError('Failed to load workflow');
@@ -84,6 +168,7 @@ export default function WorkflowDetail() {
     
     try {
       setExecuting(true);
+      setError(null);
       
       let input: Record<string, unknown> = {};
       try {
@@ -92,7 +177,11 @@ export default function WorkflowDetail() {
         throw new Error('Invalid JSON in input field');
       }
 
-      const result = await workflowsAPI.executeWorkflow(id, input);
+      if (Array.isArray(input) || typeof input !== 'object') {
+        throw new Error('Input must be a JSON object.');
+      }
+
+      const result = await workflowsAPI.executeWorkflow(id, input, 'manual');
       console.log('Workflow execution started:', result);
       
       // Refresh workflow data to show new execution
@@ -104,6 +193,53 @@ export default function WorkflowDetail() {
     } finally {
       setExecuting(false);
     }
+  };
+
+  const runPreview = async () => {
+    if (!id || !workflow) return;
+
+    try {
+      setPreviewing(true);
+      setPreviewError(null);
+
+      let parsedInput: Record<string, unknown> | undefined;
+      if (executionInput.trim()) {
+        try {
+          parsedInput = JSON.parse(executionInput);
+        } catch {
+          throw new Error('Invalid JSON in input field');
+        }
+      }
+
+      const payload: {
+        input?: Record<string, unknown>;
+        useSampleData?: boolean;
+      } = {};
+
+      if (parsedInput && (Array.isArray(parsedInput) || typeof parsedInput !== 'object')) {
+        throw new Error('Input must be a JSON object.');
+      }
+
+      if (parsedInput && Object.keys(parsedInput).length > 0) {
+        payload.input = parsedInput;
+      }
+
+      payload.useSampleData = useSampleData || !payload.input;
+
+      const preview = await workflowsAPI.previewWorkflow(id, payload);
+      setPreviewResult(preview);
+    } catch (err) {
+      console.error('Error previewing workflow:', err);
+      setPreviewError((err as Error).message || 'Failed to preview workflow');
+      setPreviewResult(null);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const clearPreview = () => {
+    setPreviewResult(null);
+    setPreviewError(null);
   };
 
   if (loading) {
@@ -301,22 +437,61 @@ export default function WorkflowDetail() {
                   placeholder='{"key": "value"}'
                 />
               </div>
-              
-              <button
-                onClick={executeWorkflow}
-                disabled={executing || !workflow.isActive}
-                className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {executing ? 'Executing...' : 'Execute Workflow'}
-              </button>
-              
+              <div className="flex items-center justify-between gap-4">
+                <label className="flex items-center text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 text-purple-600 border-gray-300 rounded"
+                    checked={useSampleData}
+                    onChange={(event) => setUseSampleData(event.target.checked)}
+                  />
+                  <span className="ml-2">Auto-fill missing inputs with sample data</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleGenerateSampleInput}
+                  className="text-sm font-medium text-purple-600 hover:text-purple-800"
+                >
+                  Insert sample input
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={runPreview}
+                  disabled={previewing}
+                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-100 hover:bg-purple-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {previewing ? 'Previewing...' : 'Preview Workflow'}
+                </button>
+                <button
+                  type="button"
+                  onClick={executeWorkflow}
+                  disabled={executing || !workflow.isActive}
+                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {executing ? 'Executing...' : 'Execute Workflow'}
+                </button>
+              </div>
+
               {!workflow.isActive && (
                 <p className="text-xs text-gray-500">
                   This workflow is inactive and cannot be executed.
                 </p>
               )}
+
+              {previewError && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                  {previewError}
+                </div>
+              )}
             </div>
           </div>
+
+          {previewResult && (
+            <WorkflowPreviewResults preview={previewResult} onClear={clearPreview} />
+          )}
 
           {/* Recent Executions */}
           <div className="bg-white shadow rounded-lg p-6">

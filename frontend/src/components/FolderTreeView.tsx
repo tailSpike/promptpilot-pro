@@ -107,14 +107,14 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    const currentDropPosition = dropPosition;
+  const currentDropPosition = dropPosition ?? 'inside';
     setDropPosition(null);
     
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       
       if (data.type === 'prompt' && data.promptId) {
-        // For prompts, only allow dropping inside folders
+        // For prompts, default to dropping inside folders
         if (currentDropPosition === 'inside') {
           onMovePromptToFolder?.(data.promptId, folder.id);
         }

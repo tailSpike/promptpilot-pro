@@ -213,6 +213,54 @@ describe('Workflow API', () => {
     });
   });
 
+  describe('POST /api/workflows/:id/preview', () => {
+    beforeAll(async () => {
+      await prisma.workflowVariable.deleteMany({ where: { workflowId: testWorkflowId } });
+      if (testWorkflowId) {
+        await prisma.workflowVariable.create({
+          data: {
+            workflowId: testWorkflowId,
+            name: 'input',
+            type: 'input',
+            dataType: 'string',
+            defaultValue: 'sample payload',
+            isRequired: true,
+          }
+        });
+      }
+    });
+
+    afterAll(async () => {
+      await prisma.workflowVariable.deleteMany({ where: { workflowId: testWorkflowId } });
+    });
+
+    it('should preview a workflow using generated sample data', async () => {
+      const response = await request(app)
+        .post(`/api/workflows/${testWorkflowId}/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ useSampleData: true })
+        .expect(200);
+
+      expect(response.body.workflowId).toBe(testWorkflowId);
+      expect(response.body.status).toBe('COMPLETED');
+      expect(response.body.usedSampleData).toBe(true);
+      expect(response.body.stepResults).toBeInstanceOf(Array);
+      expect(response.body.stepResults.length).toBeGreaterThan(0);
+      expect(response.body.stepResults[0].durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should surface validation errors when inputs are missing', async () => {
+      const response = await request(app)
+        .post(`/api/workflows/${testWorkflowId}/preview`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ useSampleData: false, input: {} })
+        .expect(400);
+
+      expect(response.body.error).toContain('Preview failed');
+      expect(response.body.error).toContain('Required variable');
+    });
+  });
+
   describe('POST /api/workflows/:id/execute', () => {
     it('should execute a workflow', async () => {
       const executionData = {

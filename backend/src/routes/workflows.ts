@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import prisma from '../lib/prisma';
 import { z } from 'zod';
+import { workflowService } from '../services/workflowService';
 
 const router = Router();
 
@@ -90,7 +91,17 @@ const CreateStepSchema = z.object({
 });
 
 const ExecuteWorkflowSchema = z.object({
-  input: z.record(z.string(), z.any()),
+  input: z.record(z.string(), z.any()).optional(),
+  variables: z.record(z.string(), z.any()).optional(),
+  triggerType: z.string().optional(),
+}).refine((data) => data.input || data.variables, {
+  message: 'Input payload is required',
+  path: ['input'],
+});
+
+const PreviewWorkflowSchema = z.object({
+  input: z.record(z.string(), z.any()).optional(),
+  useSampleData: z.boolean().optional(),
   triggerType: z.string().optional(),
 });
 
@@ -199,6 +210,17 @@ router.get('/:id', authenticate, async (req, res) => {
             startedAt: true,
             input: true,
             output: true
+          }
+        },
+        variables: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            dataType: true,
+            isRequired: true,
+            defaultValue: true,
+            description: true,
           }
         }
       }
@@ -501,6 +523,7 @@ router.post('/:id/execute', authenticate, async (req, res) => {
 
     const { id } = req.params;
     const validatedData = ExecuteWorkflowSchema.parse(req.body);
+    const normalizedInput = validatedData.input ?? validatedData.variables ?? {};
 
     // Check if workflow exists and belongs to user
     const workflow = await prisma.workflow.findFirst({
@@ -525,7 +548,7 @@ router.post('/:id/execute', authenticate, async (req, res) => {
     const execution = await prisma.workflowExecution.create({
       data: {
         workflowId: workflow.id,
-        input: JSON.stringify(validatedData.input),
+        input: JSON.stringify(normalizedInput),
         output: JSON.stringify({}), // Initialize with empty output
         status: 'PENDING',
         metadata: JSON.stringify({
@@ -554,7 +577,7 @@ router.post('/:id/execute', authenticate, async (req, res) => {
               output: JSON.stringify({
                 message: 'Workflow completed successfully',
                 steps: workflow.steps.length,
-                finalResult: validatedData.input
+                finalResult: normalizedInput
               })
             }
           });
@@ -582,6 +605,37 @@ router.post('/:id/execute', authenticate, async (req, res) => {
     }
     console.error('Error executing workflow:', error);
     res.status(500).json({ error: 'Failed to execute workflow' });
+  }
+});
+
+// POST /api/workflows/:id/preview - Preview workflow execution without persisting results
+router.post('/:id/preview', authenticate, async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const userId = req.user.id;
+    const { id } = req.params;
+    const validatedData = PreviewWorkflowSchema.parse(req.body ?? {});
+
+    const result = await workflowService.previewWorkflow(id, userId, validatedData);
+    if (!result) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    res.json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.issues });
+    }
+
+    if (error instanceof Error) {
+      return res.status(400).json({ error: `Preview failed: ${error.message}` });
+    }
+
+    console.error('Error previewing workflow:', error);
+    res.status(500).json({ error: 'Failed to preview workflow' });
   }
 });
 

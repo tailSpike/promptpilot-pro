@@ -220,8 +220,17 @@ export const workflowsAPI = {
     return response.data;
   },
 
-  executeWorkflow: async (id: string, variables?: Record<string, unknown>) => {
-    const response = await api.post(`/api/workflows/${id}/execute`, { variables });
+  executeWorkflow: async (id: string, input: Record<string, unknown> = {}, triggerType = 'manual') => {
+    const response = await api.post(`/api/workflows/${id}/execute`, { input, triggerType });
+    return response.data;
+  },
+
+  previewWorkflow: async (id: string, body: {
+    input?: Record<string, unknown>;
+    useSampleData?: boolean;
+    triggerType?: string;
+  } = {}) => {
+    const response = await api.post(`/api/workflows/${id}/preview`, body);
     return response.data;
   },
 
