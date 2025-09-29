@@ -6,7 +6,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import PromptList from '../../components/PromptList';
 import * as promptsAPI from '../../services/api';
 
-vi.mock('../../contexts/FeatureFlagsContext', () => ({
+vi.mock('../../hooks/useFeatureFlags', () => ({
   useFeatureFlags: () => ({
     flags: { 'collaboration.sharing': true },
     loading: false,

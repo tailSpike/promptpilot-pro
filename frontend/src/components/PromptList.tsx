@@ -5,7 +5,7 @@ import type { Folder, Prompt, SharedLibrarySummary } from '../types';
 import FolderTreeView, { type FolderTreeViewRef } from './FolderTreeView';
 import FolderModal from './FolderModal';
 import ShareLibraryModal from './ShareLibraryModal';
-import { useFeatureFlags } from '../contexts/FeatureFlagsContext';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
 
 type ViewMode = 'mine' | 'shared';
 

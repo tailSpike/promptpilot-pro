@@ -6,7 +6,7 @@ import { BrowserRouter } from 'react-router-dom';
 import PromptList from '../../components/PromptList';
 import * as api from '../../services/api';
 
-vi.mock('../../contexts/FeatureFlagsContext', () => ({
+vi.mock('../../hooks/useFeatureFlags', () => ({
   useFeatureFlags: () => ({
     flags: { 'collaboration.sharing': true },
     loading: false,
