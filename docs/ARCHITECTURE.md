@@ -5,56 +5,99 @@ Here you go, Rodney—here’s a full scaffold of the remaining optional documen
 ## 📄 `/docs/ARCHITECTURE.md`
 
 ```markdown
-# 🏗️ Architecture Overview — PromptPilot Pro
+# 🏗️ PromptPilot Pro — Architecture Overview
 
-This document outlines the technical architecture of PromptPilot Pro, including service boundaries, data flow, and deployment strategy.
-
----
-
-## 🔧 System Components
-
-- **Frontend**: React + Tailwind (Vite)
-- **Backend**: Node.js + TypeScript + Express
-- **Database**: PostgreSQL + Prisma
-- **Cache**: Redis
-- **Model Integrator**: GPT-4, Claude, Gemini
-- **Execution Engine**: Queue-based (RabbitMQ or SQS)
-- **Storage**: S3 or Blob for logs and outputs
+PromptPilot Pro is delivered as a TypeScript monorepo composed of a backend API, a frontend SPA, and shared tooling. The platform currently ships as a modular monolith with clear service boundaries, making it easy to evolve toward service extraction if scale demands it.
 
 ---
 
-## 🧱 Layered Architecture
-
+## 1. High-level topology
 ```
-[Client UI]
-   ↓
-[API Gateway]
-   ↓
-[Services]
- ├─ Prompt Service
- ├─ Workflow Service
- ├─ Execution Engine
- ├─ Feedback & Analytics
- └─ Auth & Access Control
-   ↓
-[Database + External APIs]
+[React SPA]
+   │  HTTPS (fetch)
+   ▼
+[Express API Gateway]
+   │  service calls
+   ├── Auth Service
+   ├── Prompt Service
+   ├── Workflow Service
+   └── Trigger Service (scheduler)
+   │
+   ▼
+[Prisma ORM]
+   │  SQL
+   ▼
+[SQLite dev/test] ⇢ [PostgreSQL production]
 ```
 
----
-
-## 🚀 Deployment Strategy
-
-- Local: Docker Compose
-- Staging: Railway / Vercel
-- Production: VPS or Kubernetes (TBD)
+- **Frontend (`frontend/`)** — React + Vite SPA served separately during development and via Vite preview in production. It communicates exclusively through the authenticated REST API.
+- **Backend (`backend/`)** — Express application exposing REST endpoints under `/api`. Business logic is implemented via service classes (e.g., `TriggerService`, `WorkflowService`) to keep controllers thin.
+- **Scheduler** — The backend hosts a singleton cron scheduler managed by `TriggerService`. Scheduled triggers are restored at startup, tracked in-memory, and persisted to the `workflow_triggers` table.
+- **Shared resources** — Prisma schema, Zod validators, and TypeScript types provide a shared contract between layers.
 
 ---
 
-## 📊 Monitoring & Logging
+## 2. Backend architecture
 
-- Logs stored per execution
-- Health checks for services
-- Metrics dashboard (future)
+### Entry points
+- `src/index.ts` configures Express, wires middleware, mounts route modules, initializes cron triggers, and exposes graceful shutdown handlers.
+- Route modules live in `src/routes/`. Each route authenticates requests, validates payloads with Zod, then delegates to a service.
+
+### Services & responsibilities
+| Service | Key responsibilities |
+|---------|----------------------|
+| `AuthService` | User login/registration, JWT issuing, password hashing |
+| `PromptService` | Prompt CRUD, versioning, execution history |
+| `WorkflowService` | Workflow CRUD, step management, execution metadata |
+| `TriggerService` | Trigger CRUD, config validation, cron lifecycle, API key/secret generation |
+
+### Persistence
+- Prisma manages migrations and provides a typed client (`src/generated/prisma`).
+- SQLite is the default dev/test database. Switching to PostgreSQL is a `DATABASE_URL` change.
+- All JSON columns (`config`, `metadata`, etc.) are serialized/deserialized in the services to keep route payloads ergonomic.
+
+### Scheduling lifecycle
+1. On boot, `TriggerService.initializeScheduledTriggers()` fetches active `SCHEDULED` triggers, parses configs, and registers node-cron tasks.
+2. Updates or deletes stop and restart affected cron jobs immediately.
+3. Shutdown hooks call `stopAllScheduledTriggers()` to avoid orphaned jobs.
+4. Cron callbacks currently log execution intent; wiring into `WorkflowService` is the next milestone.
+
+---
+
+## 3. Frontend architecture
+- **Framework**: React 19 + TypeScript compiled with Vite.
+- **Styling**: Tailwind CSS utility classes plus light custom components.
+- **State management**: Local component state with derived selectors; API calls centralised in `src/services/api.ts` using Axios.
+- **Routing**: React Router 7.
+- **Trigger UI**: `WorkflowTriggers.tsx` owns scheduling forms, cron helpers, and preview cards.
+- **Testing**: Vitest + Testing Library for unit/component specs; Cypress for end-to-end flows.
+
+---
+
+## 4. Cross-cutting concerns
+- **Authentication**: JWT bearer tokens issued by the backend and verified by middleware (`src/middleware/auth.ts`).
+- **Validation**: Zod schemas applied at route boundaries, shared between create/update operations.
+- **Error handling**: Central Express error middleware normalises responses and hides stack traces outside development.
+- **Logging**: Console-level logging today; adapters are abstracted to support structured logging later.
+- **Configuration**: `.env` drives environment-specific values (ports, database URL, CORS, frontend origin).
+
+---
+
+## 5. Deployment considerations
+- **Single container**: The backend can be containerised with Node 20 LTS, running `npm run start`. Vite preview serves the frontend bundle.
+- **Static hosting**: Alternatively, deploy the frontend bundle separately (e.g., Vercel/S3) and point it to the hosted API via `VITE_API_URL`.
+- **Database**: Use PostgreSQL in production; run migrations via `npm run db:migrate` before the first boot.
+- **Scheduler**: Ensure only one instance of the backend handles cron jobs or add distributed locking if scaling horizontally.
+
+---
+
+## 6. Future evolution
+- Replace cron logging with end-to-end workflow execution in the scheduler path.
+- Introduce a queue/worker tier when concurrency requirements exceed single-node cron feasibility.
+- Expand the `EVENT` trigger type to listen to internal domain events or external bus messages.
+- Add structured logging/observability (OpenTelemetry) and centralised secrets management.
+
+For deeper implementation details, see [`docs/SYSTEM_DESIGN.md`](SYSTEM_DESIGN.md) and [`docs/WORKFLOW_ENGINE.md`](WORKFLOW_ENGINE.md).
 ```
 
 ---

@@ -1,164 +1,124 @@
-# 🧬 DATA MODELS — PromptPilot Pro
+# 🧬 Data Models — PromptPilot Pro
 
-This document defines the core entities used in PromptPilot Pro, a modular AI workflow platform. These models support prompt creation, workflow orchestration, execution logging, feedback, and user management.
+The platform's entities are defined in `backend/prisma/schema.prisma`. This document highlights the most important models and how they relate to each other.
 
 ---
 
-## 📄 Prompt
+## Users & organisation
 
-Represents a reusable, structured AI prompt with variables and metadata.
+### `User`
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | `String` (cuid) | Primary key |
+| `email` | `String` | Unique login identifier |
+| `password` | `String` | Bcrypt-hashed |
+| `role` | `Role` enum (`USER` \| `ADMIN`) | Access level |
+| `createdAt`, `updatedAt` | `DateTime` | Audit timestamps |
 
-```ts
-Prompt {
-  id: string
-  name: string
-  content: string // e.g. "Summarize the following notes: {{notes}}"
-  variables: string[] // e.g. ["notes"]
-  metadata: {
-    category: string
-    tags: string[]
-  }
-  version: string // semantic versioning
-  createdBy: User.id
-  createdAt: Date
-  updatedAt: Date
-}
+Users own folders, prompts, and workflows. Cascading deletes ensure user cleanup removes dependent records.
+
+### `Folder`
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | `String` (cuid) |
+| `name` | `String` |
+| `color` | `String?` | Optional hex swatch |
+| `parentId` | `String?` | Self-referential for hierarchy |
+| `userId` | `String` | Owner |
+
+Folders group prompts and workflows. The `FolderHierarchy` relation models nested structures.
+
+---
+
+## Prompt catalogue
+
+### `Prompt`
+| Field | Type | Notes |
+|-------|------|-------|
+| `variables` | `Json` | Array of variable descriptors consumed by the UI |
+| `metadata` | `Json?` | Category/tags/notes |
+| `version` | `String` | Semantic version string |
+| `currentVersionId` | `String?` | Points to the active `PromptVersion` |
+
+Each prompt can live inside a folder, expose current version metadata, and back prompt executions.
+
+### `PromptVersion`
+Captures immutable snapshots with semantic versioning (`majorVersion`, `minorVersion`, `patchVersion`). Branch metadata (`PromptBranch`) links experimental work to base versions.
+
+### `PromptExecution`
+Stores historical executions with raw input/output payloads and optional `versionId` linkage.
+
+---
+
+## Workflow engine
+
+### `Workflow`
+| Field | Type | Notes |
+|-------|------|-------|
+| `isActive` | `Boolean` | Soft enable/disable for execution |
+| `tags`, `metadata` | `Json?` | Arbitrary categorisation |
+| `templateId` | `String?` | Links to `WorkflowTemplate` for clones |
+
+### `WorkflowStep`
+| Field | Type | Notes |
+|-------|------|-------|
+| `type` | `StepType` enum (`PROMPT`, `CONDITION`, `TRANSFORM`, `DELAY`, `WEBHOOK`, `DECISION`) |
+| `order` | `Int` | Unique per workflow |
+| `config` | `Json` | Step-specific configuration payload |
+
+### `WorkflowVariable`
+Per-workflow input schema describing variable names, datatypes, defaults, and validation rules.
+
+### `WorkflowExecution`
+| Field | Type | Notes |
+|-------|------|-------|
+| `status` | `ExecutionStatus` enum (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`) |
+| `input`, `output` | `Json` | Captured payloads |
+| `triggerType` | `String` | e.g. `MANUAL`, `SCHEDULED` |
+| `triggerId` | `String?` | Links back to the originating `WorkflowTrigger` |
+
+### `WorkflowStepExecution`
+Stores per-step execution data (input/output, retries, duration) tied to a parent execution.
+
+---
+
+## Triggering & scheduling
+
+### `WorkflowTrigger`
+| Field | Type | Notes |
+|-------|------|-------|
+| `type` | `TriggerType` enum (`MANUAL`, `SCHEDULED`, `WEBHOOK`, `API`, `EVENT`) |
+| `isActive` | `Boolean` | Enables/disables runtime scheduling |
+| `config` | `Json` | Trigger-specific settings (cron, timezone, secret, apiKey, etc.) |
+| `lastTriggeredAt`, `nextRunAt` | `DateTime?` | Populated by scheduler callbacks |
+
+The config schema is validated within `TriggerService`. Secrets/API keys are generated automatically when absent.
+
+### `WorkflowTemplate`
+Represents reusable workflow blueprints. Instances reference the source template via `templateId`.
+
+---
+
+## Enums
+- `Role` — user roles.
+- `TriggerType` — trigger variants.
+- `StepType` — workflow step categories.
+- `ExecutionStatus` — execution lifecycle states.
+- `VersionChangeType` — semantic change classification for prompt versions.
+
+---
+
+## Diagram
+Simplified relationship view:
+```
+User ─┬─< Folder ─┬─< Prompt ─┬─< PromptVersion
+      │          │           └─< PromptExecution
+      │          └─< Workflow ─┬─< WorkflowStep ─┬─< WorkflowStepExecution
+      │                        │                 └─ WorkflowVariable
+      │                        └─< WorkflowTrigger ─┬─< WorkflowExecution
+      │                                             └─ (manual/webhook/API events)
+      └─< PromptBranch
 ```
 
----
-
-## 🔗 Workflow
-
-Represents a chain of prompts with logic, triggers, and model settings.
-
-```ts
-Workflow {
-  id: string
-  name: string
-  steps: WorkflowStep[]
-  triggers: Trigger[] // e.g. manual, scheduled, webhook
-  owner: User.id
-  status: "draft" | "published" | "archived"
-  createdAt: Date
-  updatedAt: Date
-}
-```
-
----
-
-## 🔧 WorkflowStep
-
-Represents a single step in a workflow.
-
-```ts
-WorkflowStep {
-  id: string
-  promptId: Prompt.id
-  model: ModelProfile.id
-  inputMapping: Record<string, string> // maps workflow inputs to prompt variables
-  outputKey: string // key to store output for downstream steps
-  order: number
-}
-```
-
----
-
-## 📊 ExecutionLog
-
-Captures the result of a workflow or prompt execution.
-
-```ts
-ExecutionLog {
-  id: string
-  workflowId: Workflow.id
-  stepId: WorkflowStep.id
-  promptId: Prompt.id
-  input: Record<string, any>
-  output: string
-  modelUsed: string
-  status: "success" | "error" | "timeout"
-  timestamp: Date
-  durationMs: number
-}
-```
-
----
-
-## 🧠 Feedback
-
-Stores user ratings and annotations on prompt outputs.
-
-```ts
-Feedback {
-  id: string
-  executionId: ExecutionLog.id
-  userId: User.id
-  rating: number // 1–5
-  comment: string
-  tags: string[]
-  createdAt: Date
-}
-```
-
----
-
-## 👤 User
-
-Represents an authenticated user with role and preferences.
-
-```ts
-User {
-  id: string
-  email: string
-  name: string
-  role: "admin" | "architect" | "collaborator" | "viewer"
-  preferences: {
-    defaultModel: string
-    theme: "light" | "dark"
-  }
-  createdAt: Date
-  lastLogin: Date
-}
-```
-
----
-
-## 🧩 ModelProfile
-
-Defines model-specific settings and credentials.
-
-```ts
-ModelProfile {
-  id: string
-  name: string // e.g. "GPT-4", "Claude 2"
-  provider: string // e.g. "OpenAI", "Anthropic"
-  apiKey: string // stored securely
-  parameters: {
-    temperature: number
-    maxTokens: number
-    topP?: number
-  }
-  createdBy: User.id
-  createdAt: Date
-}
-```
-
----
-
-## 🌐 IntegrationHook
-
-Represents external triggers or delivery endpoints.
-
-```ts
-IntegrationHook {
-  id: string
-  type: "webhook" | "slack" | "email"
-  targetUrl: string
-  authToken?: string
-  linkedWorkflowId: Workflow.id
-  createdAt: Date
-}
-```
-
----
+For the authoritative definition, inspect [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma).
 

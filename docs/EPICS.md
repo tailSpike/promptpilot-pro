@@ -123,7 +123,12 @@ Epic 1 focuses on the core prompt management capabilities that form the foundati
 - Graceful error handling and user feedback
 - Automatic cleanup of scheduled tasks on server restart
 
-**Status:** ✅ **COMPLETE** - Production-ready trigger automation with enhanced UX
+**Follow-ups:**
+- Wire scheduler callbacks into `WorkflowService.executeWorkflow`
+- Finalise webhook signature verification & payload mapping
+- Stabilise Cypress trigger E2E suite and add component tests for trigger UI
+
+**Status:** ✅ **COMPLETE (Phase 1)** — Trigger management and UX shipped; execution integration tracked as follow-up
 
 ### Story 3: Testing & Preview System 📋 PLANNED
 **User Story:** As a user, I want to preview and test flows before deploying them.

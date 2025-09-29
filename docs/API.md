@@ -1,246 +1,251 @@
 ## 📄 `/docs/API.md`
 
 ```markdown
-# 🔌 API Contracts — PromptPilot Pro
+# 🔌 API Reference — PromptPilot Pro
 
-This document defines the core RESTful endpoints for PromptPilot Pro. These APIs support prompt creation, workflow execution, feedback submission, and model integration.
-
----
-
-## 🧾 Authentication
-
-- JWT-based sessions  
-- Role-based access control (RBAC)  
-- Token passed via `Authorization: Bearer <token>`
+All endpoints are prefixed with `/api`. Unless noted, endpoints require a valid JWT bearer token obtained from the authentication APIs.
 
 ---
 
-## � Folder Endpoints
+## 1. Authentication & health
 
-### `POST /folders`
-Create a new folder  
-**Body:**
+### POST `/api/auth/register`
+Registers a new user.
 ```json
 {
-  "name": "My Folder",
-  "description": "Optional description",
+  "email": "user@example.com",
+  "password": "strong-password",
+  "name": "Aviator"
+}
+```
+**Response**
+```json
+{
+  "token": "JWT",
+  "user": {
+    "id": "user_cuid",
+    "email": "user@example.com",
+    "name": "Aviator"
+  }
+}
+```
+
+### POST `/api/auth/login`
+Authenticates an existing user. Response matches registration.
+
+### GET `/api/health`
+Public health check that returns `{ "status": "ok" }` when the backend is alive.
+
+---
+
+## 2. Folders
+
+### GET `/api/folders`
+Returns the folder hierarchy for the authenticated user. Each node includes `_count` metadata for prompts and children.
+
+### POST `/api/folders`
+Create a folder.
+```json
+{
+  "name": "Campaigns",
+  "description": "Marketing workflows",
   "color": "#3B82F6",
-  "parentId": "optional-parent-folder-id"
+  "parentId": null
 }
 ```
 
-### `GET /folders`
-Retrieve all folders in hierarchical structure
-**Response:**
-```json
-{
-  "message": "Folders retrieved successfully",
-  "folders": [
-    {
-      "id": "folder_123",
-      "name": "My Folder",
-      "description": "A sample folder",
-      "color": "#3B82F6",
-      "parentId": null,
-      "children": [
-        {
-          "id": "folder_456",
-          "name": "Subfolder",
-          "parentId": "folder_123",
-          "children": [],
-          "_count": { "prompts": 5, "children": 0 }
-        }
-      ],
-      "_count": { "prompts": 10, "children": 1 }
-    }
-  ]
-}
-```
+### GET `/api/folders/:id`
+Fetch folder details.
 
-### `GET /folders/:id`
-Retrieve folder details with contents
+### PUT `/api/folders/:id`
+Update folder metadata.
 
-### `PUT /folders/:id`
-Update folder properties
-**Body:**
-```json
-{
-  "name": "Updated Name",
-  "description": "Updated description",
-  "color": "#EF4444",
-  "parentId": "new-parent-id"
-}
-```
-
-### `DELETE /folders/:id`
-Delete folder and optionally move contents
-**Query Parameters:**
-- `moveToFolderId` (optional): ID of folder to move contents to
+### DELETE `/api/folders/:id`
+Delete the folder. Include optional `moveToFolderId` query param to re-parent contents before deletion.
 
 ---
 
-## �📘 Prompt Endpoints
+## 3. Prompts
 
-### `POST /prompts`
-Create a new prompt  
-**Body:**
+### GET `/api/prompts`
+List prompts with optional query parameters (`folderId`, `search`, pagination).
+
+### POST `/api/prompts`
+Create a prompt.
 ```json
 {
-  "name": "Summarize Notes",
-  "content": "Summarize the following notes: {{notes}}",
-  "variables": ["notes"],
-  "metadata": {
-    "category": "summarization",
-    "tags": ["meeting", "summary"]
-  },
-  "folderId": "optional-folder-id",
+  "name": "Summarise Notes",
+  "content": "Summarise the following notes: {{notes}}",
+  "variables": [
+    { "name": "notes", "type": "text", "description": "Raw meeting notes" }
+  ],
+  "metadata": { "category": "reporting" },
+  "folderId": null,
   "isPublic": false
 }
 ```
 
-### `GET /prompts/:id`
-Retrieve prompt details
+### GET `/api/prompts/:id`
+Retrieve prompt details including current version and execution count.
 
-### `PUT /prompts/:id`
-Update prompt content or metadata
+### PUT `/api/prompts/:id`
+Update prompt metadata, content, or variables. Supports semantic version change types via `changeType` and `commitMessage`.
 
-### `DELETE /prompts/:id`
-Archive or delete prompt
+### DELETE `/api/prompts/:id`
+Remove a prompt.
 
----
-
-## 🔗 Workflow Endpoints
-
-### `POST /workflows`
-Create a new workflow  
-**Body:**
+### POST `/api/prompts/:id/execute`
+Execute a prompt with runtime variables.
 ```json
 {
-  "name": "Weekly Report Generator",
-  "steps": [
-    {
-      "promptId": "prompt_123",
-      "model": "gpt-4",
-      "inputMapping": { "notes": "weeklyNotes" },
-      "outputKey": "summary"
-    }
-  ],
-  "triggers": ["manual"]
-}
-```
-
-### `GET /workflows/:id`
-Retrieve workflow details
-
-### `POST /workflows/:id/execute`
-Run a workflow with input payload  
-**Body:**
-```json
-{
-  "inputs": {
-    "weeklyNotes": "Here are the notes from this week..."
+  "variables": {
+    "notes": "Weekly highlights..."
   }
 }
 ```
 
 ---
 
-## 📊 Execution & Feedback
+## 4. Workflows
 
-### `GET /logs/:id`
-Fetch execution log and output
+### GET `/api/workflows`
+List workflows owned by the user. Supports `folderId`, `search`, `limit`, `offset` query params.
 
-### `POST /feedback`
-Submit feedback on a prompt output  
-**Body:**
+### POST `/api/workflows`
+Create a workflow.
 ```json
 {
-  "executionId": "exec_456",
-  "rating": 4,
-  "comment": "Good summary, but missed key point",
-  "tags": ["clarity", "coverage"]
+  "name": "Weekly Report",
+  "description": "Summarise notes and mail them",
+  "folderId": null,
+  "tags": ["weekly", "report"],
+  "isActive": true
+}
+```
+
+### GET `/api/workflows/:id`
+Return workflow details including steps, recent executions, and owner metadata.
+
+### PUT `/api/workflows/:id`
+Update workflow metadata (`name`, `description`, `isActive`).
+
+### DELETE `/api/workflows/:id`
+Delete a workflow and its dependent entities.
+
+---
+
+## 5. Workflow steps
+
+### POST `/api/workflows/:id/steps`
+Create a step. `type` determines which config fields are required.
+```json
+{
+  "name": "Draft summary",
+  "type": "PROMPT",
+  "order": 0,
+  "promptId": "prompt_cuid",
+  "config": {
+    "variables": {
+      "notes": "workflowInput.weeklyNotes"
+    },
+    "modelSettings": {
+      "model": "gpt-4",
+      "temperature": 0.6
+    }
+  }
+}
+```
+
+### PUT `/api/workflows/:id/steps/:stepId`
+Update step name, order, prompt, or config payload.
+
+### DELETE `/api/workflows/:id/steps/:stepId`
+Remove a step.
+
+### POST `/api/workflows/:id/execute`
+Kick off a workflow execution. Currently returns an acknowledgement payload while the execution engine is integrated.
+```json
+{
+  "input": {
+    "weeklyNotes": "Highlights from the week"
+  },
+  "triggerType": "MANUAL"
 }
 ```
 
 ---
 
-## 🧠 Model Integration
+## 6. Triggers & scheduling
 
-### `GET /models`
-List available AI models
+### GET `/api/workflows/:workflowId/triggers`
+List triggers for the workflow with recent execution summaries.
 
-### `POST /models/test`
-Send a test prompt to a selected model  
-**Body:**
+### POST `/api/workflows/:workflowId/triggers`
+Create a trigger. Config requirements vary by `type`.
 ```json
 {
-  "model": "claude-2",
-  "prompt": "Summarize this: {{text}}",
-  "variables": { "text": "Here are the meeting notes..." }
+  "name": "Every weekday at 8am",
+  "type": "SCHEDULED",
+  "config": {
+    "cron": "0 8 * * 1-5",
+    "timezone": "America/New_York"
+  }
+}
+```
+- Scheduled triggers require a valid cron expression.
+- Webhook triggers auto-generate `secret` if omitted.
+- API triggers auto-generate `apiKey` if omitted.
+
+### GET `/api/triggers/:id`
+Fetch trigger details with the latest executions.
+
+### PUT `/api/triggers/:id`
+Update trigger metadata or config. Changing the type resets config to avoid stale fields.
+
+### DELETE `/api/triggers/:id`
+Delete a trigger and stop any scheduled jobs.
+
+### POST `/api/triggers/:id/execute`
+Manual/API trigger execution endpoint. Currently returns an acknowledgement payload while execution wiring is finalised.
+```json
+{
+  "message": "Trigger execution requested",
+  "triggerId": "trigger_cuid",
+  "status": "pending"
 }
 ```
 
+### POST `/api/webhooks/:triggerId`
+Webhook entry point. Returns 200 after basic validation. Future work will validate HMAC signatures using `config.secret`.
+
 ---
 
-## 🛡️ Admin & Access
-
-### `POST /auth/login`
-Authenticate user and return JWT
-
-### `GET /users/me`
-Retrieve current user profile
-
-### `POST /users/invite`
-Invite a team member to workspace
-
+## 7. Error handling
+Errors follow a consistent shape:
+```json
+{
+  "error": "Invalid input",
+  "details": [
+    {
+      "path": ["config", "cron"],
+      "message": "Cron expression is required"
+    }
+  ]
+}
 ```
+- `400` for validation failures (Zod errors).
+- `401` for missing/invalid authentication.
+- `403` reserved for future multi-tenant features.
+- `404` when resources are not found or not owned by the user.
+- `500` for unexpected server errors.
 
 ---
 
-## 📄 `/docs/MVP_SCOPE.md`
+## 8. Rate limiting & security
+- JWT secret configured via `JWT_SECRET`; rotate regularly in production.
+- Webhook and API triggers generate random 256-bit secrets that should be stored securely by clients.
+- Add reverse proxies (Nginx/Cloudflare) for rate limiting and TLS termination in production.
 
-```markdown
-# 🚀 MVP Scope — PromptPilot Pro
-
-This document outlines the minimum viable product (MVP) for PromptPilot Pro. The goal is to deliver a usable, scalable foundation for prompt creation and workflow automation.
-
----
-
-## ✅ Included in MVP
-
-### Core Features
-- Prompt Composer with variables and metadata
-- Workflow Builder with linear chaining
-- Execution Engine for single-model flows
-- OpenAI GPT-4 integration
-- Execution logging and feedback submission
-- User authentication and workspace management
-
-### Developer Experience
-- Walking skeleton with README and DEV_GUIDE
-- CI pipeline with linting and basic tests
-- Docker-based local setup
-- Modular folder structure and clear data models
-
----
-
-## ❌ Excluded from MVP (Post-MVP Roadmap)
-
-- Multi-model switching within workflows
-- Conditional branching and loop logic
-- Prompt marketplace and monetization
-- Plugin SDK for external integrations
-- Advanced analytics (A/B testing, heatmaps)
-- Team collaboration features (comments, suggestions)
-
----
-
-## 📈 Success Metrics
-
-- Can create and run a workflow end-to-end
-- Can view execution logs and submit feedback
-- Can onboard a new user and share a prompt
-- CI passes with no errors on every commit
-- App deploys to staging with working flows
-
-```
+Refer to [`docs/WORKFLOW_ENGINE.md`](WORKFLOW_ENGINE.md) for trigger lifecycle details and [`docs/DEV_GUIDE.md`](DEV_GUIDE.md) for testing expectations.
+````
+This is the final rewritten file, incorporating the suggested code change. The document has been updated to reflect the current backend routes and payloads for PromptPilot Pro. All sections have been carefully revised to ensure accuracy and completeness.
