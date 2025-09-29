@@ -1,3 +1,4 @@
+import { performance } from 'perf_hooks';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
 
@@ -88,6 +89,38 @@ export interface CreateWorkflowVariableData {
 export interface ExecuteWorkflowData {
   input: Record<string, any>;
   triggerType?: string;
+}
+
+export interface WorkflowPreviewStepResult {
+  stepId: string;
+  name: string;
+  type: string;
+  order: number;
+  startedAt: string;
+  durationMs: number;
+  inputSnapshot: Record<string, any>;
+  output?: Record<string, any> | null;
+  error?: {
+    message: string;
+    stack?: string;
+  };
+  warnings: string[];
+  tokensUsed?: number;
+}
+
+export interface WorkflowPreviewResult {
+  workflowId: string;
+  status: 'COMPLETED' | 'FAILED';
+  usedSampleData: boolean;
+  input: Record<string, any>;
+  finalOutput: Record<string, any> | null;
+  totalDurationMs: number;
+  stepResults: WorkflowPreviewStepResult[];
+  stats: {
+    stepsExecuted: number;
+    tokensUsed: number;
+  };
+  warnings: string[];
 }
 
 // Since the Prisma generated types aren't available yet, we'll define them manually
@@ -345,6 +378,140 @@ export class WorkflowService {
     return {
       workflows: workflowsWithVariables as WorkflowWithRelations[],
       total: tags && tags.length > 0 ? filteredWorkflows.length : total
+    };
+  }
+
+  async previewWorkflow(
+    workflowId: string,
+    userId: string,
+    options: {
+      input?: Record<string, any>;
+      useSampleData?: boolean;
+      triggerType?: string;
+    } = {}
+  ): Promise<WorkflowPreviewResult | null> {
+    const workflow = await this.getWorkflowById(workflowId, userId);
+    if (!workflow) {
+      return null;
+    }
+
+    const inputVariables = (workflow.variables || []).filter(v => v.type === 'input');
+    const baseInput = options.input ? { ...options.input } : {};
+    const warnings: string[] = [];
+
+    let usedSampleData = false;
+    let preparedInput = { ...baseInput };
+    const inputProvided = Object.keys(preparedInput).length > 0;
+    const shouldAutoSample = options.useSampleData === true || (!inputProvided && options.useSampleData === undefined);
+
+    if (shouldAutoSample) {
+      const { sample, warnings: sampleWarnings } = this.buildSampleInput(inputVariables, preparedInput);
+      preparedInput = sample;
+      warnings.push(...sampleWarnings);
+      usedSampleData = true;
+    } else if (!inputProvided && options.useSampleData === false) {
+      const requiredVariables = inputVariables.filter(variable => variable.isRequired).map(variable => variable.name);
+      if (requiredVariables.length > 0) {
+        warnings.push(`Missing required inputs: ${requiredVariables.join(', ')}`);
+      }
+    }
+
+    const validationError = this.validateWorkflowInput(preparedInput, inputVariables);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    const stepResults: WorkflowPreviewStepResult[] = [];
+    let currentInput = this.cloneData(preparedInput);
+    let tokensUsed = 0;
+    let overallStatus: 'COMPLETED' | 'FAILED' = 'COMPLETED';
+    const previewStart = performance.now();
+
+    for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
+      const stepWarnings: string[] = [];
+      const inputSnapshot = this.cloneData(currentInput);
+      const stepStartedAt = new Date();
+      const stepStartPerf = performance.now();
+
+      let rawOutput: any;
+      let normalizedOutput: Record<string, any> | null = null;
+      let errorPayload: { message: string; stack?: string } | undefined;
+      let stepTokens = 0;
+
+      try {
+        rawOutput = await this.executeStep(step, currentInput);
+        normalizedOutput = this.normalizePreviewOutput(rawOutput);
+
+        if (!normalizedOutput || Object.keys(normalizedOutput).length === 0) {
+          stepWarnings.push('Step returned no output payload.');
+        }
+
+        if (rawOutput && typeof rawOutput === 'object' && 'tokens' in rawOutput) {
+          const tokenValue = Number((rawOutput as any).tokens);
+          if (!Number.isNaN(tokenValue)) {
+            stepTokens = tokenValue;
+            tokensUsed += tokenValue;
+            if (tokenValue > 1500) {
+              stepWarnings.push('High token usage detected for this step.');
+            }
+          }
+        }
+
+        if (step.type === StepTypes.CONDITION && rawOutput && typeof rawOutput === 'object' && 'branch' in rawOutput) {
+          stepWarnings.push(`Condition evaluated branch "${(rawOutput as any).branch}".`);
+        }
+
+        if (rawOutput && typeof rawOutput === 'object') {
+          currentInput = { ...currentInput, ...rawOutput };
+        }
+      } catch (error: any) {
+        overallStatus = 'FAILED';
+        const message = error?.message || 'Unknown error occurred during step execution';
+        errorPayload = {
+          message,
+          stack: process.env.NODE_ENV === 'test' ? undefined : error?.stack,
+        };
+        stepWarnings.push('Step execution failed. Preview halted at this step.');
+      }
+
+      const durationMs = performance.now() - stepStartPerf;
+
+      stepResults.push({
+        stepId: step.id,
+        name: step.name,
+        type: step.type,
+        order: step.order,
+        startedAt: stepStartedAt.toISOString(),
+        durationMs,
+        inputSnapshot,
+        output: normalizedOutput,
+        error: errorPayload,
+        warnings: stepWarnings,
+        tokensUsed: stepTokens || undefined,
+      });
+
+      warnings.push(...stepWarnings);
+
+      if (errorPayload) {
+        break;
+      }
+    }
+
+    const totalDurationMs = performance.now() - previewStart;
+
+    return {
+      workflowId,
+      status: overallStatus,
+      usedSampleData,
+      input: this.cloneData(preparedInput),
+      finalOutput: overallStatus === 'COMPLETED' ? this.cloneData(currentInput) : null,
+      totalDurationMs,
+      stepResults,
+      stats: {
+        stepsExecuted: stepResults.length,
+        tokensUsed,
+      },
+      warnings,
     };
   }
 
@@ -739,6 +906,89 @@ export class WorkflowService {
     }
 
     return null;
+  }
+
+  private buildSampleInput(
+    inputVariables: WorkflowVariable[],
+    overrides: Record<string, any> = {}
+  ): { sample: Record<string, any>; warnings: string[] } {
+    const sample: Record<string, any> = { ...overrides };
+    const warnings: string[] = [];
+
+    for (const variable of inputVariables) {
+      if (sample[variable.name] !== undefined) {
+        continue;
+      }
+
+      const defaultValue = this.parseJsonField(variable.defaultValue);
+
+      if (defaultValue !== undefined) {
+        sample[variable.name] = defaultValue;
+        continue;
+      }
+
+      sample[variable.name] = this.generatePlaceholderValue(variable.dataType, variable.name);
+      warnings.push(`Generated placeholder value for input '${variable.name}'.`);
+    }
+
+    return { sample, warnings };
+  }
+
+  private parseJsonField(value: any): any {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    }
+
+    return value;
+  }
+
+  private generatePlaceholderValue(dataType: string, variableName: string): any {
+    switch (dataType) {
+      case 'number':
+        return 1;
+      case 'boolean':
+        return false;
+      case 'array':
+        return [];
+      case 'object':
+        return { example: `${variableName}Value` };
+      default:
+        return `Sample ${variableName}`;
+    }
+  }
+
+  private normalizePreviewOutput(value: any): Record<string, any> | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value === 'object') {
+      if (Array.isArray(value)) {
+        return { items: this.cloneData(value) };
+      }
+      return this.cloneData(value);
+    }
+
+    return { value };
+  }
+
+  private cloneData<T>(value: T): T {
+    try {
+      if (typeof (globalThis as any).structuredClone === 'function') {
+        return (globalThis as any).structuredClone(value);
+      }
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return value;
+    }
   }
 }
 

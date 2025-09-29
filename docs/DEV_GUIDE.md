@@ -53,7 +53,7 @@ scripts/   # Cross-platform helper scripts
 | Backend unit | `npm run test:unit:backend` | Runs against in-memory SQLite |
 | Backend integration | `npm run test:integration` | Exercises REST routes + Prisma |
 | Frontend unit/component | `npm run test:frontend` | Vitest + Testing Library |
-| E2E | `npm run test:e2e` | Builds, resets DB, starts servers, runs Cypress headless |
+| E2E | `npm run test:e2e` | Builds, resets DB, starts servers, runs Cypress headless (workflow preview + trigger suites) |
 | Lint | `npm run lint` | ESLint for both workspaces |
 
 ### Definition of done
@@ -62,10 +62,12 @@ scripts/   # Cross-platform helper scripts
 - Add or update Cypress specs when user flows change; prefer smoke coverage for new screens.
 - Update documentation (`README.md`, relevant files in `docs/`) whenever behaviour changes.
 
-### Known gaps (as of Epic 2 Story 2)
+### Known gaps (post Epic 2 Story 3)
 - ✅ Backend trigger unit & integration tests exist.
+- ✅ Cypress preview flows now cover manual payloads, sample data, and validation paths.
 - 🚧 Cypress trigger flows occasionally fail; stabilise specs under `frontend/cypress/e2e/workflow-triggers.cy.ts` (expand coverage + tighten selectors).
 - 🚧 Component tests for `WorkflowTriggers` UI slated for follow-up.
+- 🚧 Component snapshot tests for `WorkflowPreviewResults` are pending to catch layout regressions.
 - 🚧 `TriggerService` currently logs scheduled executions; integrate with `WorkflowService` before marking the feature fully delivered.
 
 ---

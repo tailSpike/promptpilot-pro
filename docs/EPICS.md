@@ -130,14 +130,28 @@ Epic 1 focuses on the core prompt management capabilities that form the foundati
 
 **Status:** ✅ **COMPLETE (Phase 1)** — Trigger management and UX shipped; execution integration tracked as follow-up
 
-### Story 3: Testing & Preview System 📋 PLANNED
-**User Story:** As a user, I want to preview and test flows before deploying them.
+### Story 3: Testing & Preview System ✅ COMPLETE
+📄 **[View Full Story Details](./EPIC2_STORY3.md)**
 
-**Key Features:**
-- Test mode with sample data
-- Step-by-step execution preview
-- Output validation and debugging
-- Performance metrics and optimization
+**User Story:** As a workflow owner, I want to preview and test flows before deploying them so I can validate behaviour without polluting production history.
+
+**Acceptance Criteria (aligned with Atlassian's epic documentation guidance):**
+- Preview executions reuse the orchestration pipeline without creating persistent records.
+- UI exposes both manual JSON payloads and auto-generated sample data with validation feedback.
+- Step-level diagnostics (duration, token estimates, warnings, errors) surface to the builder.
+- Cypress coverage guards happy paths, validation errors, and warning states.
+
+**Key Features Delivered:**
+- 🔁 **Ad-hoc test runs** – Preview workflows with either manual JSON payloads or auto-generated sample data.
+- 📊 **Step insights** – Detailed run breakdown with per-step duration, token estimates, warnings, and error context.
+- 🧪 **Safe sandboxing** – Execute previews without persisting history, keeping production execution logs uncluttered.
+- 🧩 **UI polishing** – Guardrails on manual payloads, clear messaging for invalid inputs, and a results viewer with final output formatting.
+- ✅ **Automation** – Cypress coverage for preview journeys (sample data, manual entry, validation) plus backend guards.
+
+**Follow-ups Tracked:**
+- Persist preview runs for comparison and sharing.
+- Surface aggregated preview metrics alongside execution history.
+- Extend Cypress coverage to include failure-state visual regressions.
 
 ---
 

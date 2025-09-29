@@ -10,8 +10,15 @@ This document outlines the comprehensive testing strategy and CI/CD pipeline imp
 - **Version Control Tests**: 27/27 tests passing (100% success rate)
 - **Enhanced Workflow Trigger Tests**: Comprehensive UI testing with full authentication flow
 - **Comprehensive Workflow Management Tests**: Full CRUD operations, step management, execution testing
+- **Workflow Preview Tests**: Sample data toggles, manual payload validation, warning handling, and end-to-end preview UX flows
 
 ### 🧪 E2E Test Suites
+
+### 🔁 Retry Strategy for Flake Reduction
+- Cypress global retries are enabled via `retries.runMode = 2` and `retries.openMode = 1`.
+- This configuration leverages the official [Test Retries guide](https://docs.cypress.io/app/guides/test-retries#Introduction) to automatically re-run flaky specs in CI while keeping local debugging snappy.
+- Each retry re-executes `beforeEach`/`afterEach` hooks, so tests remain isolated across attempts.
+
 
 #### 1. Version Control Tests (`version-control.cy.ts`)
 - ✅ Authentication flow testing
@@ -35,6 +42,13 @@ This document outlines the comprehensive testing strategy and CI/CD pipeline imp
 - ✅ Integration with prompts system
 - ✅ Error handling and validation
 - ✅ Real-time updates and performance testing
+
+#### 4. Workflow Preview (`workflow-preview.cy.ts`)
+- ✅ Toggle between manual JSON payloads and auto-generated sample data
+- ✅ Validate malformed payloads and surface actionable error messaging
+- ✅ Confirm preview results render step-by-step breakdowns with warnings and token estimates
+- ✅ Ensure clearing previews resets UI state without stale data
+- ✅ Smoke test preview failure states (backend validation errors)
 
 ## 🚀 CI/CD Pipeline
 

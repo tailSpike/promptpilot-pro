@@ -4,6 +4,14 @@
 Write-Host "Starting PromptPilot Pro Development Environment" -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Green
 
+$scriptRoot = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+if (-not $scriptRoot) {
+    $scriptRoot = Get-Location
+}
+$repoRoot = (Resolve-Path $scriptRoot).Path
+$backendPath = Join-Path $repoRoot 'backend'
+$frontendPath = Join-Path $repoRoot 'frontend'
+
 # Function to kill processes on specific ports
 function Stop-ProcessOnPort {
     param([int]$Port)
@@ -27,11 +35,26 @@ Get-Process -Name "node" -ErrorAction SilentlyContinue | Stop-Process -Force -Er
 Stop-ProcessOnPort -Port 3001
 Stop-ProcessOnPort -Port 5173
 
+Write-Host "Ensuring development database schema is up to date..." -ForegroundColor Yellow
+try {
+    Push-Location $backendPath
+    npm run db:push | Out-Host
+}
+catch {
+    Write-Host "⚠ Failed to synchronize database schema. Check the output above." -ForegroundColor Red
+    exit 1
+}
+finally {
+    Pop-Location
+}
+
 Write-Host "Starting Backend Server (Port 3001)..." -ForegroundColor Cyan
-Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", "Set-Location C:\work\promptpilot-pro\backend; npm run dev" -WindowStyle Normal
+$backendCommand = "Set-Location `"$backendPath`"; npm run dev"
+Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $backendCommand -WindowStyle Normal
 
 Write-Host "Starting Frontend Server (Port 5173)..." -ForegroundColor Cyan
-Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", "Set-Location C:\work\promptpilot-pro\frontend; npm run dev" -WindowStyle Normal
+$frontendCommand = "Set-Location `"$frontendPath`"; npm run dev"
+Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $frontendCommand -WindowStyle Normal
 
 Write-Host ""
 Write-Host "Waiting for services to start..." -ForegroundColor Yellow
