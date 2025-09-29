@@ -32,6 +32,7 @@ jobs:
       # Make secrets available to all steps in this job
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+      NPM_CONFIG_PRODUCTION: 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -46,13 +47,11 @@ jobs:
           node-version: 20
 
       - name: Install root dependencies
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --include=dev
-        env:
-          NPM_CONFIG_PRODUCTION: 'false'
 
       - name: Install backend dependencies
         working-directory: backend
@@ -89,6 +88,8 @@ jobs:
     needs: prep
     if: ${{ needs.prep.outputs.has_record_key != 'true' }}
     runs-on: ubuntu-latest
+    env:
+      NPM_CONFIG_PRODUCTION: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,13 +100,11 @@ jobs:
           node-version: 20
 
       - name: Install root dependencies
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --include=dev
-        env:
-          NPM_CONFIG_PRODUCTION: 'false'
 
       - name: Install backend dependencies
         working-directory: backend

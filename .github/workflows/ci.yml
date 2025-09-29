@@ -52,6 +52,8 @@ jobs:
   frontend-ci:
     runs-on: ubuntu-latest
     name: Frontend CI
+    env:
+      NPM_CONFIG_PRODUCTION: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,8 +68,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci --include=dev
-        env:
-          NPM_CONFIG_PRODUCTION: 'false'
 
       - name: Run frontend linter
         working-directory: ./frontend
@@ -115,6 +115,8 @@ jobs:
   frontend-security-audit:
     runs-on: ubuntu-latest
     name: Frontend Security Audit
+    env:
+      NPM_CONFIG_PRODUCTION: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -129,8 +131,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci --include=dev
-        env:
-          NPM_CONFIG_PRODUCTION: 'false'
 
       - name: Run frontend security audit
         working-directory: ./frontend
