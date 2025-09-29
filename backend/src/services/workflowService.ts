@@ -401,12 +401,19 @@ export class WorkflowService {
 
     let usedSampleData = false;
     let preparedInput = { ...baseInput };
+    const inputProvided = Object.keys(preparedInput).length > 0;
+    const shouldAutoSample = options.useSampleData === true || (!inputProvided && options.useSampleData === undefined);
 
-    if (options.useSampleData || Object.keys(preparedInput).length === 0) {
+    if (shouldAutoSample) {
       const { sample, warnings: sampleWarnings } = this.buildSampleInput(inputVariables, preparedInput);
       preparedInput = sample;
       warnings.push(...sampleWarnings);
       usedSampleData = true;
+    } else if (!inputProvided && options.useSampleData === false) {
+      const requiredVariables = inputVariables.filter(variable => variable.isRequired).map(variable => variable.name);
+      if (requiredVariables.length > 0) {
+        warnings.push(`Missing required inputs: ${requiredVariables.join(', ')}`);
+      }
     }
 
     const validationError = this.validateWorkflowInput(preparedInput, inputVariables);
