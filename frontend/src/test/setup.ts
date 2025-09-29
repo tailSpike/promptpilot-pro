@@ -4,6 +4,8 @@ import { flushSync } from 'react-dom'
 import { beforeEach, vi } from 'vitest'
 
 type Thenable<T> = { then: (resolve: (value: T) => void, reject?: (reason: unknown) => void) => void }
+type ActFunction = (callback: () => unknown) => Thenable<unknown>
+type ReactWithOptionalAct = Omit<typeof React, 'act'> & { act?: ActFunction }
 
 declare global {
   // Vitest runs in Node context; declare optional flag used by RTL act polyfill
@@ -11,12 +13,13 @@ declare global {
 }
 
 function ensureActImplementation() {
-  const currentAct = (React as unknown as { act?: unknown }).act
+  const reactNamespace = React as ReactWithOptionalAct
+  const currentAct = reactNamespace.act
   if (typeof currentAct === 'function') {
-    return currentAct as (cb: () => unknown) => Thenable<unknown>
+    return currentAct
   }
 
-  const polyfillAct = (callback: () => unknown): Thenable<unknown> => {
+  const polyfillAct: ActFunction = (callback: () => unknown) => {
     let result: unknown
     let thrown: unknown
 
@@ -64,7 +67,7 @@ function ensureActImplementation() {
     }
   }
 
-  ;(React as unknown as { act: typeof polyfillAct }).act = polyfillAct
+  reactNamespace.act = polyfillAct
   return polyfillAct
 }
 

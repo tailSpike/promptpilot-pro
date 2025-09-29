@@ -177,7 +177,7 @@ export default function WorkflowDetail() {
         throw new Error('Invalid JSON in input field');
       }
 
-      if (Array.isArray(input) || typeof input !== 'object') {
+      if (input === null || Array.isArray(input) || typeof input !== 'object') {
         throw new Error('Input must be a JSON object.');
       }
 
@@ -216,8 +216,10 @@ export default function WorkflowDetail() {
         useSampleData?: boolean;
       } = {};
 
-      if (parsedInput && (Array.isArray(parsedInput) || typeof parsedInput !== 'object')) {
-        throw new Error('Input must be a JSON object.');
+      if (typeof parsedInput !== 'undefined') {
+        if (parsedInput === null || Array.isArray(parsedInput) || typeof parsedInput !== 'object') {
+          throw new Error('Input must be a JSON object.');
+        }
       }
 
       if (parsedInput && Object.keys(parsedInput).length > 0) {

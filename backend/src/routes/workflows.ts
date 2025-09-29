@@ -94,9 +94,20 @@ const ExecuteWorkflowSchema = z.object({
   input: z.record(z.string(), z.any()).optional(),
   variables: z.record(z.string(), z.any()).optional(),
   triggerType: z.string().optional(),
-}).refine((data) => data.input || data.variables, {
-  message: 'Input payload is required',
-  path: ['input'],
+}).superRefine((data, ctx) => {
+  if (!data.input && !data.variables) {
+    const message = "Either 'input' or 'variables' payload is required";
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message,
+      path: ['input'],
+    });
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message,
+      path: ['variables'],
+    });
+  }
 });
 
 const PreviewWorkflowSchema = z.object({

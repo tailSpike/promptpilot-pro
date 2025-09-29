@@ -987,7 +987,7 @@ export class WorkflowService {
       }
       return JSON.parse(JSON.stringify(value));
     } catch {
-      return JSON.parse(JSON.stringify(value));
+      return value;
     }
   }
 }

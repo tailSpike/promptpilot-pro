@@ -3,6 +3,11 @@ import { defineConfig } from 'cypress'
 export default defineConfig({
   // Cypress Cloud project for Dashboard recordings
   projectId: 'r9d8f3',
+  retries: {
+    // Allow automatic retries to bolster CI stability while keeping interactive runs fast
+    runMode: 2,
+    openMode: 1,
+  },
   e2e: {
     // Environment-aware baseUrl - defaults to dev server, but CI can override
     baseUrl: process.env.CYPRESS_baseUrl || 'http://localhost:5173',

@@ -106,7 +106,7 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
           <h4 className="text-sm font-semibold text-yellow-800 mb-2">Warnings</h4>
           <ul className="list-disc list-inside text-sm text-yellow-900 space-y-1">
             {preview.warnings.map((warning, idx) => (
-              <li key={`${warning}-${idx}`}>{warning}</li>
+              <li key={idx}>{warning}</li>
             ))}
           </ul>
         </div>
