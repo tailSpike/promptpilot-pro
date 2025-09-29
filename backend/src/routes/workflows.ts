@@ -611,15 +611,18 @@ router.post('/:id/execute', authenticate, async (req, res) => {
 // POST /api/workflows/:id/preview - Preview workflow execution without persisting results
 router.post('/:id/preview', authenticate, async (req, res) => {
   try {
-    if (!req.user?.id) {
+    const user = req.user;
+    if (!user?.id) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const userId = req.user.id;
-    const { id } = req.params;
+    const workflowId = req.params.id;
+    if (!workflowId) {
+      return res.status(400).json({ error: 'Workflow ID is required' });
+    }
     const validatedData = PreviewWorkflowSchema.parse(req.body ?? {});
 
-    const result = await workflowService.previewWorkflow(id, userId, validatedData);
+    const result = await workflowService.previewWorkflow(workflowId, user.id!, validatedData);
     if (!result) {
       return res.status(404).json({ error: 'Workflow not found' });
     }
