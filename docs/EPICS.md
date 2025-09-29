@@ -131,7 +131,15 @@ Epic 1 focuses on the core prompt management capabilities that form the foundati
 **Status:** ✅ **COMPLETE (Phase 1)** — Trigger management and UX shipped; execution integration tracked as follow-up
 
 ### Story 3: Testing & Preview System ✅ COMPLETE
-**User Story:** As a user, I want to preview and test flows before deploying them.
+📄 **[View Full Story Details](./EPIC2_STORY3.md)**
+
+**User Story:** As a workflow owner, I want to preview and test flows before deploying them so I can validate behaviour without polluting production history.
+
+**Acceptance Criteria (aligned with Atlassian's epic documentation guidance):**
+- Preview executions reuse the orchestration pipeline without creating persistent records.
+- UI exposes both manual JSON payloads and auto-generated sample data with validation feedback.
+- Step-level diagnostics (duration, token estimates, warnings, errors) surface to the builder.
+- Cypress coverage guards happy paths, validation errors, and warning states.
 
 **Key Features Delivered:**
 - 🔁 **Ad-hoc test runs** – Preview workflows with either manual JSON payloads or auto-generated sample data.

@@ -6,6 +6,7 @@ It enables structured prompt creation, multi-model orchestration, and team colla
 ## Key Docs
 - [System Design](./SYSTEM_DESIGN.md)
 - [Epics & User Stories](./EPICS.md)
+- [Epic 2 Story 3 Deep Dive](./EPIC2_STORY3.md)
 - [API Contracts](./API.md)
 - [Data Models](./DATA_MODELS.md)
 - [Workflow Engine](./WORKFLOW_ENGINE.md)
