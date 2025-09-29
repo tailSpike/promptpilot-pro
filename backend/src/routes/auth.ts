@@ -20,12 +20,18 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    
-    const message = error instanceof Error ? error.message : 'Failed to create user';
-    const statusCode = message.includes('already exists') ? 400 : 500;
-    
-    res.status(statusCode).json({ 
-      error: { message } 
+    let statusCode = 500;
+    let message = 'Unable to create account. Please try again later.';
+
+    if (error instanceof Error) {
+      if (error.message.includes('already exists')) {
+        statusCode = 400;
+        message = 'An account with this email already exists.';
+      }
+    }
+
+    res.status(statusCode).json({
+      error: { message }
     });
   }
 });
@@ -45,12 +51,15 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    
-    const message = error instanceof Error ? error.message : 'Login failed';
-    const statusCode = message.includes('Invalid credentials') ? 401 : 500;
-    
-    res.status(statusCode).json({ 
-      error: { message } 
+
+    const isCredentialError = error instanceof Error && error.message.includes('Invalid credentials');
+    const statusCode = isCredentialError ? 401 : 500;
+    const message = isCredentialError
+      ? 'Invalid email or password.'
+      : 'We couldn\'t sign you in right now. Please try again later.';
+
+    res.status(statusCode).json({
+      error: { message }
     });
   }
 });

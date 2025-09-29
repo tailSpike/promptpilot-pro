@@ -27,6 +27,20 @@ Get-Process -Name "node" -ErrorAction SilentlyContinue | Stop-Process -Force -Er
 Stop-ProcessOnPort -Port 3001
 Stop-ProcessOnPort -Port 5173
 
+Write-Host "Ensuring development database schema is up to date..." -ForegroundColor Yellow
+try {
+    Push-Location "C:\work\promptpilot-pro\backend"
+    npm run db:push | Out-Host
+}
+catch {
+    Write-Host "⚠ Failed to synchronize database schema. Check the output above." -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
+finally {
+    Pop-Location
+}
+
 Write-Host "Starting Backend Server (Port 3001)..." -ForegroundColor Cyan
 Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", "Set-Location C:\work\promptpilot-pro\backend; npm run dev" -WindowStyle Normal
 
