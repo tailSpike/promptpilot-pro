@@ -22,6 +22,10 @@ model User {
   promptVersions PromptVersion[]
   prompts        Prompt[]
   workflows      Workflow[]
+  librarySharesSent     PromptLibraryShare[] @relation("LibrarySharesSent")
+  librarySharesInvited  PromptLibraryShare[] @relation("LibrarySharesInvited")
+  librarySharesRevoked  PromptLibraryShare[] @relation("LibrarySharesRevoked")
+  auditLogs             AuditLog[]
 
   @@map("users")
 }
@@ -41,6 +45,7 @@ model Folder {
   children    Folder[]   @relation("FolderHierarchy")
   prompts     Prompt[]
   workflows   Workflow[]
+  shares      PromptLibraryShare[]
 
   @@map("folders")
 }
@@ -275,9 +280,49 @@ model PromptExecution {
   @@map("prompt_executions")
 }
 
+model PromptLibraryShare {
+  id            String            @id @default(cuid())
+  folderId      String
+  folder        Folder            @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  invitedUserId String
+  invitedUser   User              @relation("LibrarySharesInvited", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  invitedById   String
+  invitedBy     User              @relation("LibrarySharesSent", fields: [invitedById], references: [id], onDelete: Cascade)
+  revokedById   String?
+  revokedBy     User?             @relation("LibrarySharesRevoked", fields: [revokedById], references: [id])
+  role          LibraryShareRole  @default(VIEWER)
+  createdAt     DateTime          @default(now())
+  deletedAt     DateTime?
+  lastNotifiedAt DateTime?
+
+  @@unique([folderId, invitedUserId])
+  @@index([invitedUserId])
+  @@index([folderId])
+  @@map("prompt_library_shares")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  action     String
+  targetType String
+  targetId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetId])
+  @@map("audit_logs")
+}
+
 enum Role {
   USER
   ADMIN
+}
+
+enum LibraryShareRole {
+  OWNER
+  VIEWER
 }
 
 enum TriggerType {

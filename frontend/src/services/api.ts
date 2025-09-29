@@ -1,5 +1,15 @@
 import axios from 'axios';
-import type { CreatePromptData, UpdatePromptData, CreateFolderData, UpdateFolderData } from '../types';
+import type {
+  CreatePromptData,
+  UpdatePromptData,
+  CreateFolderData,
+  UpdateFolderData,
+  FeatureFlags,
+  PromptLibraryShare,
+  SharedLibrarySummary,
+  UserSummary,
+  Prompt,
+} from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -45,7 +55,11 @@ export type {
   UpdatePromptData,
   Folder,
   CreateFolderData,
-  UpdateFolderData
+  UpdateFolderData,
+  FeatureFlags,
+  PromptLibraryShare,
+  SharedLibrarySummary,
+  UserSummary,
 } from '../types';
 
 // Auth API
@@ -104,6 +118,62 @@ export const promptsAPI = {
       variables, 
       model: model || 'gpt-4' 
     });
+    return response.data;
+  },
+};
+
+export const featureFlagsAPI = {
+  getFlags: async (): Promise<FeatureFlags> => {
+    const response = await api.get('/api/feature-flags');
+    return response.data.flags ?? {};
+  },
+};
+
+export const libraryShareAPI = {
+  shareLibrary: async (libraryId: string, inviteeEmail: string) => {
+    const response = await api.post(`/api/libraries/${libraryId}/shares`, { inviteeEmail });
+    return response.data;
+  },
+
+  getLibraryShares: async (libraryId: string): Promise<{ shares: PromptLibraryShare[] }> => {
+    const response = await api.get(`/api/libraries/${libraryId}/shares`);
+    return response.data;
+  },
+
+  revokeShare: async (libraryId: string, shareId: string) => {
+    const response = await api.delete(`/api/libraries/${libraryId}/shares/${shareId}`);
+    return response.data;
+  },
+
+  getSharedWithMe: async (): Promise<{ shares: SharedLibrarySummary[] }> => {
+    const response = await api.get('/api/libraries/shared-with-me');
+    return response.data;
+  },
+
+  getLibraryDetails: async (
+    libraryId: string,
+  ): Promise<{
+    library: {
+      id: string;
+      name: string;
+      owner: UserSummary;
+      promptCount: number;
+      updatedAt: string;
+    };
+  }> => {
+    const response = await api.get(`/api/libraries/${libraryId}`);
+    return response.data;
+  },
+
+  getLibraryPrompts: async (libraryId: string): Promise<{ prompts: Prompt[] }> => {
+    const response = await api.get(`/api/libraries/${libraryId}/prompts`);
+    return response.data;
+  },
+};
+
+export const usersAPI = {
+  searchMembers: async (query: string): Promise<{ users: UserSummary[] }> => {
+    const response = await api.get('/api/users/search', { params: { q: query } });
     return response.data;
   },
 };

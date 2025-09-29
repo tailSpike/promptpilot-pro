@@ -11,6 +11,9 @@ import folderRoutes from './routes/folders';
 import versionRoutes from './routes/versions';
 import workflowRoutes from './routes/workflows';
 import triggerRoutes from './routes/triggers';
+import libraryShareRoutes from './routes/libraryShares';
+import featureFlagRoutes from './routes/featureFlags';
+import usersRoutes from './routes/users';
 
 // Load environment variables
 dotenv.config();
@@ -127,6 +130,9 @@ app.get('/api/health', (_req: express.Request, res: express.Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/prompts', promptRoutes);
 app.use('/api/folders', folderRoutes);
+app.use('/api/libraries', libraryShareRoutes);
+app.use('/api/feature-flags', featureFlagRoutes);
+app.use('/api/users', usersRoutes);
 app.use('/api', versionRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/workflows', triggerRoutes);

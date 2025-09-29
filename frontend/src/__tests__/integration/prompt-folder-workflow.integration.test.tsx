@@ -6,23 +6,44 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import PromptList from '../../components/PromptList';
 import * as promptsAPI from '../../services/api';
 
+vi.mock('../../contexts/FeatureFlagsContext', () => ({
+  useFeatureFlags: () => ({
+    flags: { 'collaboration.sharing': true },
+    loading: false,
+    refresh: vi.fn(),
+    isEnabled: (flag: string) => flag === 'collaboration.sharing',
+  }),
+}));
+
 // Mock the API
 vi.mock('../../services/api', () => ({
   promptsAPI: {
     getPrompts: vi.fn(),
     deletePrompt: vi.fn(),
-    updatePrompt: vi.fn()
+    updatePrompt: vi.fn(),
   },
   foldersAPI: {
     getFolders: vi.fn(),
     createFolder: vi.fn(),
     updateFolder: vi.fn(),
-    deleteFolder: vi.fn()
-  }
+    deleteFolder: vi.fn(),
+  },
+  libraryShareAPI: {
+    getSharedWithMe: vi.fn(),
+    getLibraryPrompts: vi.fn(),
+    shareLibrary: vi.fn(),
+    getLibraryShares: vi.fn(),
+    revokeShare: vi.fn(),
+    getLibraryDetails: vi.fn(),
+  },
+  usersAPI: {
+    searchMembers: vi.fn(),
+  },
 }));
 
 const mockedPromptsAPI = vi.mocked(promptsAPI.promptsAPI);
 const mockedFoldersAPI = vi.mocked(promptsAPI.foldersAPI);
+const mockedLibraryShareAPI = vi.mocked(promptsAPI.libraryShareAPI);
 
 const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <BrowserRouter>{children}</BrowserRouter>
@@ -84,6 +105,8 @@ describe('Prompt-Folder Workflow Integration', () => {
       message: 'Success',
       prompt: mockPrompts[0] 
     });
+    mockedLibraryShareAPI.getSharedWithMe.mockResolvedValue({ shares: [] });
+    mockedLibraryShareAPI.getLibraryPrompts.mockResolvedValue({ prompts: [] });
   });
 
   it('should handle complete drag-and-drop workflow with folder count updates', async () => {

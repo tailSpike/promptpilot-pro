@@ -99,3 +99,42 @@ export interface UpdateFolderData {
   parentId?: string | null;
   sortOrder?: number;
 }
+
+export interface FeatureFlags {
+  [flag: string]: boolean;
+}
+
+export interface UserSummary {
+  id: string;
+  email: string;
+  name?: string;
+}
+
+export interface PromptLibraryShare {
+  id: string;
+  folderId: string;
+  invitedUserId: string;
+  invitedById: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  invitedUser: UserSummary;
+  invitedBy: UserSummary;
+  folder: {
+    id: string;
+    name: string;
+    updatedAt: string;
+  };
+}
+
+export interface SharedLibrarySummary {
+  id: string;
+  createdAt: string;
+  folder: {
+    id: string;
+    name: string;
+    updatedAt: string;
+    user: UserSummary;
+  };
+  invitedBy: UserSummary;
+}

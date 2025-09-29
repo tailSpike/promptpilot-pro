@@ -11,7 +11,7 @@ It enables structured prompt creation, multi-model orchestration, and team colla
 - [Data Models](./DATA_MODELS.md)
 - [Workflow Engine](./WORKFLOW_ENGINE.md)
 - [Testing Strategy](../TESTING.md)
-- [MVP Scope](./MVP_SCOPE.md)
+- [Epic 3 Story 1: Team Collaboration Foundations](./EPIC3_STORY1.md)
 
 ## Tech Stack
 - Node.js + Express + TypeScript services (Prisma ORM)
