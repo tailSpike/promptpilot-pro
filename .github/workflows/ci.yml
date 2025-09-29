@@ -66,6 +66,8 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci --include=dev
+        env:
+          NPM_CONFIG_PRODUCTION: 'false'
 
       - name: Run frontend linter
         working-directory: ./frontend
@@ -127,6 +129,8 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci --include=dev
+        env:
+          NPM_CONFIG_PRODUCTION: 'false'
 
       - name: Run frontend security audit
         working-directory: ./frontend
