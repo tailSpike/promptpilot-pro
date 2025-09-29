@@ -8,10 +8,12 @@ It enables structured prompt creation, multi-model orchestration, and team colla
 - [Epics & User Stories](./EPICS.md)
 - [API Contracts](./API.md)
 - [Data Models](./DATA_MODELS.md)
+- [Workflow Engine](./WORKFLOW_ENGINE.md)
+- [Testing Strategy](../TESTING.md)
 - [MVP Scope](./MVP_SCOPE.md)
 
 ## Tech Stack
-- Node.js + TypeScript
-- PostgreSQL + Redis
-- React + Tailwind
-- OpenAI / Claude / Gemini integrations
+- Node.js + Express + TypeScript services (Prisma ORM)
+- React + Vite + Tailwind frontend SPA
+- SQLite for local development/testing; PostgreSQL ready for production
+- Cypress, Vitest, and Jest for automated coverage

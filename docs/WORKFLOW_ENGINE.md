@@ -8,7 +8,7 @@ This document explains how workflows are executed today, how triggers interact w
 ---
 
 ## 1. Execution flow
-1. **Launch** — A workflow is started manually via the UI/API or by a trigger. The request lands on `POST /api/workflows/:id/execute`.
+1. **Launch** — A workflow is started manually via the UI/API or by a trigger. The request lands on `POST /api/workflows/:id/execute` and immediately records a `workflow_executions` row with `PENDING` status.
 2. **Validation** — Inputs are validated against stored `WorkflowVariable` definitions (type, required flag, defaults).
 3. **Preparation** — A `workflow_executions` record is created with metadata about the trigger, payload, and initial status (`PENDING`).
 4. **Step iteration** — Steps execute sequentially by `order`. For each step:
@@ -16,7 +16,7 @@ This document explains how workflows are executed today, how triggers interact w
    - Variables are resolved from prior step outputs or execution inputs.
    - Model calls and step logic run (PROMPT, CONDITION, etc.).
    - Outputs and errors are persisted to `workflow_step_executions`.
-5. **Completion** — Execution status flips to `COMPLETED` or `FAILED`, with timestamps captured for analytics.
+5. **Completion** — Execution status flips to `COMPLETED` or `FAILED`, with timestamps captured for analytics. Failures capture error payloads for debugging, while successful runs persist final outputs for follow-up previews or audits.
 
 > **Note:** The trigger-to-execution bridge is partially stubbed today; scheduled/webhook/API triggers acknowledge the request while the workflow execution pipeline is wired in. See "Integration roadmap" below.
 
@@ -46,6 +46,20 @@ This document explains how workflows are executed today, how triggers interact w
 - Step-level retry metadata (`retryConfig`, `retryCount`) is stored with each `WorkflowStepExecution`.
 - Default policy: 0 retries (configurable per step). Future work will add exponential backoff and dead-letter queues for repeated failures.
 - Trigger scheduler gracefully stops all cron jobs on shutdown to avoid duplicate executions.
+
+---
+
+## 4. Preview flows
+
+The non-persistent preview API (`POST /api/workflows/:id/preview`) lets builders dry-run a workflow without writing to execution history. Key behaviours:
+
+- **Input hydration** — Accepts a manual `input` payload or `useSampleData = true`, which hydrates sample values from `WorkflowVariable` definitions.
+- **Step sandboxing** — Executes the same orchestration pipeline as production runs but clones all step inputs/outputs before returning them to avoid mutation side-effects.
+- **Result contract** — Returns `WorkflowPreviewResult` containing run status, per-step timing, warnings, token estimates, and the final output snapshot.
+- **Safe fallbacks** — If deep cloning fails (e.g., circular structures), the service gracefully falls back to returning the raw value instead of crashing.
+- **UI hooks** — The React dashboard surfaces previews with toggleable sample data, JSON validation guards, warning banners, and a detail view per step.
+
+Preview runs are cached client-side only; subsequent API work will allow persisting previews for team review.
 
 ---
 

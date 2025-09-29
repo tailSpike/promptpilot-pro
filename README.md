@@ -16,6 +16,12 @@ PromptPilot Pro is an AI workflow operations platform that helps teams design, e
 - Rich configuration forms, inline validation, and live preview of downstream variables
 - Execution history with recent run summaries and step-level logging
 
+### Testing & preview (Epic 2 Story 3)
+- One-click workflow previews with manual JSON input or auto-generated sample data
+- Step-by-step result explorer with duration, token estimates, warnings, and error stacks
+- Final output sandbox that highlights the executed payload without persisting history
+- Cypress end-to-end coverage for preview flows, including validation, sample-data toggles, and manual payloads
+
 ### Trigger automation (Epic 2 Story 2)
 - Five trigger types: **Manual**, **Scheduled**, **Webhook**, **API**, and **Event** (extensible scaffold)
 - `TriggerService` drives node-cron scheduling with graceful startup/shutdown and timezone support
@@ -25,7 +31,7 @@ PromptPilot Pro is an AI workflow operations platform that helps teams design, e
 
 ### Developer experience
 - Type-safe React + Vite frontend and Express + Prisma backend
-- PowerShell & Bash scripts for start/stop/status, database resets, and hook installation
+- PowerShell & Bash scripts for start/stop/status, Prisma sync, database resets, and hook installation
 - GitHub Actions CI covering linting, builds, unit/integration tests, and Cypress smoke flows
 
 ---
@@ -117,7 +123,7 @@ Backend-only scripts live under `backend/package.json` (`db:generate`, `db:reset
 ## ✅ Testing & quality gates
 - **Backend**: Jest unit and integration tests execute against a real SQLite database (`npm run test:backend`).
 - **Frontend**: Vitest exercises React components and utilities (`npm run test:frontend`).
-- **End-to-end**: Cypress specs validate major flows, including trigger management (`npm run test:e2e`). The trigger E2E suite is still being hardened—expect intermittent failures until TODOs in `docs/DEV_GUIDE.md` are resolved.
+- **End-to-end**: Cypress specs validate major flows, including trigger management and workflow preview/testing journeys (`npm run test:e2e`). Global retries (`runMode=2`) cushion known flake while specs are expanded.
 - **Static analysis**: ESLint + TypeScript rules enforced via `npm run lint` and pre-push hooks.
 
 ---
@@ -145,6 +151,7 @@ Backend-only scripts live under `backend/package.json` (`db:generate`, `db:reset
 - `POST /api/workflows/:id/steps`
 - `PUT /api/workflows/:id/steps/:stepId`
 - `DELETE /api/workflows/:id/steps/:stepId`
+- `POST /api/workflows/:id/preview`
 - `POST /api/workflows/:id/execute`
 
 ### Triggers & scheduling
@@ -199,6 +206,7 @@ promptpilot-pro/
 ## 🛣️ Status & next steps
 - Scheduled triggers currently log their intent; wiring into the workflow execution engine is tracked in `TriggerService` TODOs.
 - Manual trigger execution (`POST /api/triggers/:id/execute`) and webhook callbacks return acknowledgements while runtime integration is finalized.
+- Workflow previews currently simulate execution in-process and return the result envelope without persisting history; follow-up work will allow saving previews and reusing sample payloads.
 - Cypress coverage for trigger CRUD/execution flows is in progress; see the test TODOs in `docs/DEV_GUIDE.md` before treating failures as regressions.
 - `EVENT` trigger type exists for forward compatibility and will be wired to internal bus integrations in a subsequent epic.
 

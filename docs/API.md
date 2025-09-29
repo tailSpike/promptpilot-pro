@@ -163,13 +163,66 @@ Update step name, order, prompt, or config payload.
 Remove a step.
 
 ### POST `/api/workflows/:id/execute`
-Kick off a workflow execution. Currently returns an acknowledgement payload while the execution engine is integrated.
+Kick off a workflow execution. Responds with the persisted execution record while work continues asynchronously.
 ```json
 {
   "input": {
     "weeklyNotes": "Highlights from the week"
   },
   "triggerType": "MANUAL"
+}
+```
+**Response**
+```json
+{
+  "id": "exec_cuid",
+  "workflowId": "workflow_cuid",
+  "status": "PENDING",
+  "input": { "weeklyNotes": "Highlights from the week" },
+  "metadata": {
+    "stepCount": 4,
+    "inputVariableCount": 1
+  },
+  "createdAt": "2025-09-29T19:45:10.322Z"
+}
+```
+
+### POST `/api/workflows/:id/preview`
+Preview workflow execution without persisting results.
+```json
+{
+  "input": {
+    "weeklyNotes": "Highlights from the week"
+  },
+  "useSampleData": false
+}
+```
+**Response**
+```json
+{
+  "workflowId": "workflow_cuid",
+  "status": "COMPLETED",
+  "usedSampleData": false,
+  "input": { "weeklyNotes": "Highlights from the week" },
+  "finalOutput": { "summary": "..." },
+  "totalDurationMs": 1834,
+  "stats": {
+    "stepsExecuted": 4,
+    "tokensUsed": 182
+  },
+  "warnings": [],
+  "stepResults": [
+    {
+      "stepId": "step_cuid",
+      "name": "Draft summary",
+      "type": "PROMPT",
+      "order": 0,
+      "durationMs": 642,
+      "inputSnapshot": { "weeklyNotes": "Highlights from the week" },
+      "output": { "summary": "..." },
+      "warnings": []
+    }
+  ]
 }
 ```
 
