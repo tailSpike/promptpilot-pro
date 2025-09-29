@@ -46,16 +46,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install root dependencies
-        run: npm ci --include=dev
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --include=dev
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: npm ci
+      - name: Install workspace dependencies
+        run: npm ci --workspaces --include-workspace-root --include=dev
 
       - name: Prepare E2E database
         run: npm run prepare:e2e
@@ -99,16 +91,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install root dependencies
-        run: npm ci --include=dev
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --include=dev
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: npm ci
+      - name: Install workspace dependencies
+        run: npm ci --workspaces --include-workspace-root --include=dev
 
       - name: Prepare E2E database
         run: npm run prepare:e2e
