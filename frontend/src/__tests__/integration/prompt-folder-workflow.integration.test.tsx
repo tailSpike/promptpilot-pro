@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -250,7 +250,9 @@ describe('Prompt-Folder Workflow Integration', () => {
         }))
       }
     });
-    fireEvent(promptCard!, dragStartEvent);
+    await act(async () => {
+      fireEvent(promptCard!, dragStartEvent);
+    });
 
     const dropEvent = new Event('drop', { bubbles: true });
     Object.defineProperty(dropEvent, 'dataTransfer', {
@@ -262,7 +264,9 @@ describe('Prompt-Folder Workflow Integration', () => {
         }))
       }
     });
-    fireEvent(personalFolder!, dropEvent);
+    await act(async () => {
+      fireEvent(personalFolder!, dropEvent);
+    });
 
     // Give some time for potential async operations
     await new Promise(resolve => setTimeout(resolve, 100));

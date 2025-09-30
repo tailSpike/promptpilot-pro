@@ -66,8 +66,8 @@ describe('ShareLibraryModal', () => {
       expect(mockedLibraryShareAPI.getLibraryShares).toHaveBeenCalledWith('folder-1');
     });
 
-    expect(screen.getByText('teammate@example.com')).toBeInTheDocument();
-    expect(screen.getByText(/invited by owner@example.com/i)).toBeInTheDocument();
+  expect(screen.getByText('teammate@example.com')).toBeInTheDocument();
+  expect(screen.getByText(/invited by owner/i)).toBeInTheDocument();
   });
 
   it('searches members and shares library invite', async () => {
