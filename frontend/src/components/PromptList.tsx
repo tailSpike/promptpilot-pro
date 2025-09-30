@@ -44,6 +44,19 @@ export default function PromptList() {
 
   const folderTreeRef = useRef<FolderTreeViewRef>(null);
 
+  const initiateShareForFolder = useCallback(
+    (folderId: string, folderName?: string) => {
+      if (!sharingEnabled) {
+        return;
+      }
+
+      setShareTargetFolderId(folderId);
+      setShareTargetFolderName(folderName);
+      setShareModalOpen(true);
+    },
+    [sharingEnabled],
+  );
+
   useEffect(() => {
     if (!toast) {
       return;
@@ -245,15 +258,29 @@ export default function PromptList() {
     }
   };
 
+  const handleShareFolder = useCallback(
+    (folder: Folder) => {
+      if (!sharingEnabled) {
+        return;
+      }
+
+      setSelectedFolderId(folder.id);
+      initiateShareForFolder(folder.id, folder.name);
+    },
+    [initiateShareForFolder, sharingEnabled],
+  );
+
   const openShareModal = () => {
     if (!sharingEnabled || typeof selectedFolderId !== 'string') {
       return;
     }
 
     const folder = folders.find((item) => item.id === selectedFolderId);
-    setShareTargetFolderId(selectedFolderId);
-    setShareTargetFolderName(folder?.name);
-    setShareModalOpen(true);
+    if (!folder) {
+      return;
+    }
+
+    initiateShareForFolder(folder.id, folder.name);
   };
 
   const handleShareUpdate = ({ type, email }: { type: 'shared' | 'revoked'; email: string }) => {
@@ -387,6 +414,8 @@ export default function PromptList() {
               onCreateFolder={handleCreateFolder}
               onMovePromptToFolder={handleMovePromptToFolder}
               onFolderChange={loadPrompts}
+                sharingEnabled={sharingEnabled}
+                onShareFolder={handleShareFolder}
             />
           ) : (
             <div className="flex h-full flex-col overflow-hidden">

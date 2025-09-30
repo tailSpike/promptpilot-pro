@@ -8,6 +8,8 @@ interface FolderTreeViewProps {
   onCreateFolder?: (parentId?: string) => void;
   onMovePromptToFolder?: (promptId: string, targetFolderId: string | null) => void;
   onFolderChange?: () => void;
+  sharingEnabled?: boolean;
+  onShareFolder?: (folder: Folder) => void;
 }
 
 export interface FolderTreeViewRef {
@@ -24,6 +26,8 @@ interface FolderNodeProps {
   onFolderUpdate?: () => void;
   onFolderChange?: () => void;
   allFolders?: Folder[];
+  sharingEnabled?: boolean;
+  onShareFolder?: (folder: Folder) => void;
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({
@@ -35,7 +39,9 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   onMovePromptToFolder,
   onFolderUpdate,
   onFolderChange,
-  allFolders
+  allFolders,
+  sharingEnabled,
+  onShareFolder
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -320,6 +326,21 @@ const FolderNode: React.FC<FolderNodeProps> = ({
         <div className="flex items-center ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
           {!isEditing && (
             <>
+              {sharingEnabled && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShareFolder?.(folder);
+                  }}
+                  className="p-1 hover:bg-blue-100 rounded text-gray-500 hover:text-blue-700 mr-1"
+                  title="Share library"
+                  data-testid="folder-share-button"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M15 8a3 3 0 10-2.83-4H9a3 3 0 100 2h3.17A3.001 3.001 0 0015 8zm-7 4a3 3 0 102.83 4h3.17a3 3 0 100-2h-3.17A3.001 3.001 0 008 12zm7-2a3 3 0 00-2.83 2H9a3 3 0 100 2h3.17A3.001 3.001 0 1015 10z"/>
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={handleEditClick}
                 className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-700 mr-1"
@@ -393,7 +414,9 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
   selectedFolderId,
   onCreateFolder,
   onMovePromptToFolder,
-  onFolderChange
+  onFolderChange,
+  sharingEnabled,
+  onShareFolder
 }, ref) => {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -584,6 +607,8 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
             onFolderUpdate={loadFolders}
             onFolderChange={onFolderChange}
             allFolders={flattenFolders(folders)}
+            sharingEnabled={sharingEnabled}
+            onShareFolder={onShareFolder}
           />
         ))}
       </div>
