@@ -1,0 +1,1 @@
+export const DEFAULT_TOAST_DISMISS_MS = 4000;

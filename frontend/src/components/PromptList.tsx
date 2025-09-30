@@ -6,6 +6,8 @@ import FolderTreeView, { type FolderTreeViewRef } from './FolderTreeView';
 import FolderModal from './FolderModal';
 import ShareLibraryModal from './ShareLibraryModal';
 import { useFeatureFlags } from '../hooks/useFeatureFlags';
+import { DEFAULT_TOAST_DISMISS_MS } from '../constants/notifications';
+import { FOLDER_REFRESH_DELAY_MS } from '../constants/folders';
 
 type ViewMode = 'mine' | 'shared';
 
@@ -47,7 +49,7 @@ export default function PromptList() {
       return;
     }
 
-    const timer = setTimeout(() => setToast(null), 4000);
+  const timer = setTimeout(() => setToast(null), DEFAULT_TOAST_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -196,7 +198,7 @@ export default function PromptList() {
   };
 
   const handleFolderModalSuccess = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, FOLDER_REFRESH_DELAY_MS));
 
     void loadFolders();
     if (folderTreeRef.current) {

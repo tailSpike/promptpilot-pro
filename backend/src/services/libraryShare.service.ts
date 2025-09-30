@@ -4,7 +4,24 @@ import { AuditService } from './audit.service';
 import { AnalyticsService } from './analytics.service';
 import { EmailService } from './email.service';
 
-const SHARE_RATE_LIMIT_PER_HOUR = 20;
+const DEFAULT_SHARE_RATE_LIMIT_PER_HOUR = 20;
+
+const SHARE_RATE_LIMIT_PER_HOUR = (() => {
+  const rawLimit = process.env.SHARE_RATE_LIMIT_PER_HOUR;
+  if (!rawLimit) {
+    return DEFAULT_SHARE_RATE_LIMIT_PER_HOUR;
+  }
+
+  const parsedLimit = Number.parseInt(rawLimit, 10);
+  if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+    console.warn(
+      `[libraryShare] Invalid SHARE_RATE_LIMIT_PER_HOUR="${rawLimit}". Using default ${DEFAULT_SHARE_RATE_LIMIT_PER_HOUR}.`,
+    );
+    return DEFAULT_SHARE_RATE_LIMIT_PER_HOUR;
+  }
+
+  return parsedLimit;
+})();
 
 export class LibraryShareService {
   static async shareLibrary(options: { ownerId: string; folderId: string; inviteeEmail: string }) {
@@ -45,7 +62,7 @@ export class LibraryShareService {
       throw new Error('You already own this library');
     }
 
-    // Rate limiting: 20 invites per owner per rolling hour
+  // Rate limiting: configurable invites per owner per rolling hour
     const since = subHours(new Date(), 1);
     const inviteCount = await prisma.promptLibraryShare.count({
       where: {

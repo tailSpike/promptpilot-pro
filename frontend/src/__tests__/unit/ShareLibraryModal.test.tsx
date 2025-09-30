@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import ShareLibraryModal from '../../components/ShareLibraryModal';
+import { SHARE_SEARCH_MIN_QUERY_LENGTH } from '../../constants/shareLibrary';
 import * as api from '../../services/api';
 
 vi.mock('../../services/api', () => ({
@@ -89,10 +90,11 @@ describe('ShareLibraryModal', () => {
     );
 
     const searchInput = screen.getByPlaceholderText('Search by email');
-    fireEvent.change(searchInput, { target: { value: 'ne' } });
+    const validQuery = 'n'.repeat(SHARE_SEARCH_MIN_QUERY_LENGTH);
+    fireEvent.change(searchInput, { target: { value: validQuery } });
 
     await waitFor(() => {
-      expect(mockedUsersAPI.searchMembers).toHaveBeenCalledWith('ne');
+      expect(mockedUsersAPI.searchMembers).toHaveBeenCalledWith(validQuery);
     });
 
     const shareButton = await screen.findByRole('button', { name: /share$/i });

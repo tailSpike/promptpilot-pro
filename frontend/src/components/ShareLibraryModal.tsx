@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { libraryShareAPI, usersAPI } from '../services/api';
+import { DEFAULT_TOAST_DISMISS_MS } from '../constants/notifications';
+import { SHARE_MODAL_TOAST_DISMISS_MS, SHARE_SEARCH_MIN_QUERY_LENGTH } from '../constants/shareLibrary';
 import type { PromptLibraryShare, UserSummary } from '../types';
 
 interface ShareLibraryModalProps {
@@ -14,8 +16,6 @@ interface ToastMessage {
   type: 'success' | 'error';
   message: string;
 }
-
-const MIN_SEARCH_LENGTH = 2;
 
 const ShareLibraryModal: React.FC<ShareLibraryModalProps> = ({
   isOpen,
@@ -75,7 +75,8 @@ const ShareLibraryModal: React.FC<ShareLibraryModalProps> = ({
       return;
     }
 
-    const timer = setTimeout(() => setToast(null), 4000);
+    const dismissDelay = SHARE_MODAL_TOAST_DISMISS_MS ?? DEFAULT_TOAST_DISMISS_MS;
+    const timer = setTimeout(() => setToast(null), dismissDelay);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -89,7 +90,7 @@ const ShareLibraryModal: React.FC<ShareLibraryModalProps> = ({
     setError(null);
 
     const trimmed = value.trim();
-    if (trimmed.length < MIN_SEARCH_LENGTH) {
+    if (trimmed.length < SHARE_SEARCH_MIN_QUERY_LENGTH) {
       setSearchResults([]);
       return;
     }
@@ -187,8 +188,8 @@ const ShareLibraryModal: React.FC<ShareLibraryModalProps> = ({
             placeholder="Search by email"
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          {searchQuery.trim().length > 0 && searchQuery.trim().length < MIN_SEARCH_LENGTH && (
-            <p className="mt-2 text-xs text-gray-500">Type at least {MIN_SEARCH_LENGTH} characters to search.</p>
+          {searchQuery.trim().length > 0 && searchQuery.trim().length < SHARE_SEARCH_MIN_QUERY_LENGTH && (
+            <p className="mt-2 text-xs text-gray-500">Type at least {SHARE_SEARCH_MIN_QUERY_LENGTH} characters to search.</p>
           )}
           {isSearching && <p className="mt-2 text-sm text-gray-500">Searching teammates…</p>}
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
