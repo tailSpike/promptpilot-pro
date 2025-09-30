@@ -257,6 +257,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         title="Drag to move this folder, or drop other folders/prompts here to organize them"
+        data-testid="folder-tree-item"
+        data-folder-id={folder.id}
       >
         {/* Always reserve space for caret to ensure consistent alignment */}
         <div className="mr-1 p-0.5 w-4 h-4 flex items-center justify-center">
@@ -507,7 +509,7 @@ const FolderTreeView = forwardRef<FolderTreeViewRef, FolderTreeViewProps>(({
   }
 
   return (
-    <div className="p-2">
+    <div className="p-2" data-testid="folder-tree">
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-900">Folders</h3>

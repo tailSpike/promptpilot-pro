@@ -70,6 +70,9 @@ describe('Prompt library sharing', () => {
     cy.clearCookies();
 
     cy.intercept('GET', `${apiUrl}/api/feature-flags`).as('featureFlags');
+    cy.intercept('GET', `${apiUrl}/api/users/search*`).as('searchMembers');
+    cy.intercept('POST', `${apiUrl}/api/libraries/*/shares`).as('createShare');
+    cy.intercept('GET', `${apiUrl}/api/libraries/shared-with-me`).as('sharedWithMe');
 
     cy.visit('/prompts', {
       onBeforeLoad: (win) => {
@@ -80,11 +83,15 @@ describe('Prompt library sharing', () => {
 
     cy.wait('@featureFlags', { timeout: 15000 });
 
-    cy.contains('Shared Campaign Library', { timeout: 15000 }).should('be.visible').click();
+    cy.get('[data-testid="folder-tree"]', { timeout: 15000 })
+      .contains('[data-testid="folder-tree-item"]', 'Shared Campaign Library')
+      .click();
 
-    cy.contains('button', 'Share library', { timeout: 15000 }).should('be.visible').click();
+    cy.get('[data-testid="share-library-button"]', { timeout: 15000 }).should('be.visible').click();
 
     cy.get('input#share-search').type(inviteeEmail.slice(0, 6));
+
+    cy.wait('@searchMembers', { timeout: 15000 });
 
     cy.get('[data-testid="share-search-result"]', { timeout: 10000 })
       .contains(inviteeEmail)
@@ -93,6 +100,8 @@ describe('Prompt library sharing', () => {
       .within(() => {
         cy.get('[data-testid="share-search-invite"]').click();
       });
+
+    cy.wait('@createShare', { timeout: 15000 });
 
     cy.contains(`Shared Shared Campaign Library with ${inviteeEmail}`, { timeout: 10000 }).should('be.visible');
     cy.get('[data-testid="share-member"]', { timeout: 10000 }).should('contain', inviteeEmail);
@@ -112,6 +121,8 @@ describe('Prompt library sharing', () => {
     cy.wait('@featureFlags', { timeout: 15000 });
 
     cy.contains('button', 'Shared with me').click();
+
+  cy.wait('@sharedWithMe', { timeout: 15000 });
 
     cy.contains('Shared Campaign Library', { timeout: 15000 }).should('be.visible').click();
 

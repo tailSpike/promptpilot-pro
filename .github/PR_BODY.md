@@ -1,29 +1,26 @@
 ## Summary
-- Delivers Epic 2 Story 2 by layering a full trigger and scheduling system on top of the existing workflow automation stack.
-- Extends both backend services and frontend UX so workflows can be executed manually, on schedules, via webhooks, or programmatically, while keeping the experience approachable.
+- Delivers Epic 3 Story 1 by shipping the library sharing skeleton behind the `collaboration.sharing` feature flag so owners can invite teammates into prompt libraries.
+- Documents the sharing flow, locks down backend permissions, and hardens the Cypress journey to keep invite → accept → view green in CI.
 
 ## Key changes
 ### Backend
-- Adds `WorkflowTrigger` data model, schema migration, and relations so executions can track their launch source.
-- Introduces `TriggerService` with node-cron powered scheduling, secure secret/api-key generation, and graceful startup/shutdown handling of scheduled jobs.
-- Exposes authenticated REST endpoints under `/api/workflows/:workflowId/triggers` plus trigger CRUD/execute/webhook routes, wired into existing auth middleware.
-- Updates Prisma helpers, workflow services, and tests to normalize trigger config, capture execution metadata, and seed hooks for future workflow execution.
-- Refreshes backend tooling (`node-cron`, typed config, new global setup) to support trigger validation and repeatable test resets.
+- Adds prompt library share persistence (Prisma schema + migrations), service guardrails, and audit logging hooks for create/revoke flows.
+- Exposes `POST /api/libraries/:id/shares`, `DELETE /api/libraries/:id/shares/:shareId`, and `GET /api/libraries/shared-with-me` with feature-flag gating, membership checks, and analytics events.
+- Extends auth middleware and test utilities so shared-library viewers can read prompts while non-members receive 403s.
 
 ### Frontend
-- Ships a new `WorkflowTriggers` experience with simple/advanced scheduling modes, cron helpers, realtime descriptions, toast feedback, and per-trigger action menus.
-- Extends workflow screens (`WorkflowDetail`, `WorkflowEditor`, `WorkflowList`) to surface trigger state, quick actions, and execution summaries.
-- Adds trigger-focused Cypress suites plus broader workflow E2E coverage, richer fixtures, and support utilities for regression scenarios.
-- Polishes global UI—including Tailwind tweaks, API helper additions, and comprehensive README/product docs—to explain trigger types, examples, and best practices.
+- Introduces the share modal, shared-with-me panel, and toast UX so owners can invite and viewers can discover shared libraries.
+- Tags folder tree nodes and share controls with deterministic data attributes, smoothing Cypress selectors and asynchronous loading states.
+- Threads feature-flagged permission checks through prompt list/tree components to prevent unauthorized edits while the flag is off.
 
-### Tooling & Docs
-- Provides fresh contributor guidance (`DEV_GUIDE`, `TESTING`, scripts for hooks/e2e) so teammates can set up, lint, and test consistently.
-- Adds `.npmrc` to preserve workspace binary links during CI and new GitHub workflows (CI, Cypress, epic-specific) to exercise the expanded surface area.
-- Seeds `.github/instructions/memory.instruction.md` and related automation content to coordinate review guidelines and runtime behavior.
+### Testing, Tooling & Docs
+- Expands Cypress with a stabilized `library-sharing` spec (explicit intercepts, waits, and fixtures) to exercise invite, accept, and revoke.
+- Updates README, DEV_GUIDE, API docs, and workflow manual checklist with flag instructions, endpoints, and QA steps for collaboration sharing.
+- Captures manual verification steps and story documentation under `docs/EPIC3_STORY1.md` to guide rollout and follow-up work.
 
 ## Testing
-- `npm run build`
+- `npm run build:frontend`
+- `npm run test:e2e`
 
 ## Follow-ups / Notes
-- Trigger execution currently acknowledges work and schedules jobs; integrating real workflow execution inside the scheduled/task paths is marked as a TODO in `TriggerService`.
-- Webhook handling endpoints return acknowledgements today—the HMAC verification scaffolding is in place and ready for deeper integration.
+- Future collaboration stories will layer editing, notifications, and granular roles on top of this skeleton; rate limiting and audit hooks are in place for that expansion.

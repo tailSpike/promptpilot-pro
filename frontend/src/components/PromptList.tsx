@@ -487,6 +487,7 @@ export default function PromptList() {
                         type="button"
                         onClick={openShareModal}
                         className="inline-flex items-center rounded-md border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-50"
+                        data-testid="share-library-button"
                       >
                         Share library
                       </button>
