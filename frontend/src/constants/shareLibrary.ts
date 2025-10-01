@@ -1,0 +1,3 @@
+export const SHARE_SEARCH_MIN_QUERY_LENGTH = 2;
+
+export const SHARE_MODAL_TOAST_DISMISS_MS = 4000;

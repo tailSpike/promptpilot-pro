@@ -157,15 +157,32 @@ Epic 1 focuses on the core prompt management capabilities that form the foundati
 
 ## 👥 Epic 3: Collaboration & Sharing
 
-### User Stories
-- As a user, I want to share prompt libraries with my team so we can standardize outputs.
-- As a user, I want to comment on and suggest edits to shared prompts.
-- As a user, I want to publish prompt templates to a marketplace.
+### Story Overview
+Epic 3 unlocks collaborative workflows so teams can co-manage prompt assets, exchange feedback, and distribute approved templates. We are taking a walking-skeleton approach with thin, end-to-end slices:
 
-### Acceptance Criteria
-- Prompts and workflows can be shared with role-based permissions
-- Commenting and suggestion threads are supported
-- Public publishing includes metadata and attribution
+### Story 1: Library Sharing Skeleton 🚧 DISCOVERY
+**User Story:** As a prompt program lead, I want to invite teammates to view a prompt library so they can reuse approved prompts without needing the original author.
+📄 **[View Full Story Details](./EPIC3_STORY1.md)**
+
+**Slice Outcome:** Owner-to-viewer sharing, “Shared with me” navigation, and audit logging under feature flag `collaboration.sharing`.
+
+### Story 2: Feedback Threads Skeleton 🚧 DISCOVERY
+**User Story:** As a prompt author, I want to leave feedback on a teammate’s shared prompt so we can collaborate without drifting versions.
+📄 **[View Full Story Details](./EPIC3_STORY2.md)**
+
+**Slice Outcome:** Plain-text comment threads on prompts, in-app owner notifications, and soft-delete handling gated by `collaboration.comments`.
+
+### Story 3: Marketplace Publishing Skeleton 🚧 DISCOVERY
+**User Story:** As a prompt program lead, I want to publish a vetted prompt library to our marketplace so other workspaces can discover and import it.
+📄 **[View Full Story Details](./EPIC3_STORY3.md)**
+
+**Slice Outcome:** Minimal submission form, reviewer queue, and public listing/import flow behind `collaboration.marketplace` flag.
+
+### Backlog Candidates
+- External partner sharing and group principals.
+- Real-time co-editing with presence indicators.
+- Suggestion diffs and approval workflows.
+- Marketplace monetisation controls and rating system.
 
 ---
 

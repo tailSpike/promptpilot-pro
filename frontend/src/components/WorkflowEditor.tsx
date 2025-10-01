@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useContext } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { promptsAPI, workflowsAPI } from '../services/api';
 import type { Prompt } from '../types';
+import { AuthContext } from '../contexts/AuthContext';
 
 interface WorkflowStep {
   id?: string;
@@ -77,6 +78,25 @@ export default function WorkflowEditor() {
   const navigate = useNavigate();
   const location = useLocation();
   const isEditing = Boolean(id);
+  const auth = useContext(AuthContext);
+  const fallbackUserId = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const raw = window.localStorage.getItem('user');
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as { id?: string };
+      return typeof parsed.id === 'string' ? parsed.id : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const currentUserId = auth?.user?.id ?? fallbackUserId;
   
   const [workflow, setWorkflow] = useState<Workflow>({
     name: '',
@@ -93,6 +113,42 @@ export default function WorkflowEditor() {
   const [showAddStepModal, setShowAddStepModal] = useState(false);
   const [modalStepName, setModalStepName] = useState('');
   const [modalStepType, setModalStepType] = useState<WorkflowStep['type']>('PROMPT');
+
+  const groupedPrompts = useMemo(() => {
+    const groups: Record<'owned' | 'shared' | 'public', Prompt[]> = {
+      owned: [],
+      shared: [],
+      public: [],
+    };
+
+    const resolveScope = (prompt: Prompt): 'owned' | 'shared' | 'public' => {
+      if (prompt.accessScope) {
+        return prompt.accessScope;
+      }
+
+      if (currentUserId && prompt.user.id === currentUserId) {
+        return 'owned';
+      }
+
+      return 'public';
+    };
+
+    availablePrompts.forEach((prompt) => {
+      const scope = resolveScope(prompt);
+      groups[scope].push(prompt);
+    });
+
+    return groups;
+  }, [availablePrompts, currentUserId]);
+
+  const firstAvailablePromptId = useMemo(() => {
+    return (
+      groupedPrompts.owned[0]?.id ||
+      groupedPrompts.shared[0]?.id ||
+      groupedPrompts.public[0]?.id ||
+      null
+    );
+  }, [groupedPrompts]);
 
   const fetchPrompts = useCallback(async () => {
     try {
@@ -543,7 +599,7 @@ export default function WorkflowEditor() {
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   updateStep(index, { 
-                                    promptId: availablePrompts[0]?.id,
+                                    promptId: firstAvailablePromptId ?? undefined,
                                     config: { ...step.config, promptContent: undefined }
                                   });
                                 }
@@ -586,11 +642,41 @@ export default function WorkflowEditor() {
                             disabled={loadingPrompts}
                           >
                             <option value="">Select a prompt...</option>
-                            {availablePrompts.map(prompt => (
-                              <option key={prompt.id} value={prompt.id}>
-                                {prompt.name} {prompt.folder ? `(${prompt.folder.name})` : ''}
-                              </option>
-                            ))}
+                            {groupedPrompts.owned.length > 0 && (
+                              <optgroup label="My prompts">
+                                {groupedPrompts.owned.map((prompt) => (
+                                  <option key={prompt.id} value={prompt.id}>
+                                    {prompt.name} {prompt.folder ? `(${prompt.folder.name})` : ''}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {groupedPrompts.shared.length > 0 && (
+                              <optgroup label="Shared with me">
+                                {groupedPrompts.shared.map((prompt) => {
+                                  const ownerLabel = prompt.user.name || prompt.user.email;
+                                  const folderLabel = prompt.folder ? `(${prompt.folder.name})` : '';
+                                  return (
+                                    <option key={prompt.id} value={prompt.id}>
+                                      {prompt.name} {folderLabel} • {ownerLabel}
+                                    </option>
+                                  );
+                                })}
+                              </optgroup>
+                            )}
+                            {groupedPrompts.public.length > 0 && (
+                              <optgroup label="Public">
+                                {groupedPrompts.public.map((prompt) => {
+                                  const ownerLabel = prompt.user.name || prompt.user.email;
+                                  const folderLabel = prompt.folder ? `(${prompt.folder.name})` : '';
+                                  return (
+                                    <option key={prompt.id} value={prompt.id}>
+                                      {prompt.name} {folderLabel} • Public by {ownerLabel}
+                                    </option>
+                                  );
+                                })}
+                              </optgroup>
+                            )}
                           </select>
                           {loadingPrompts && (
                             <p className="text-xs text-gray-500 mt-1">Loading prompts...</p>
@@ -599,18 +685,30 @@ export default function WorkflowEditor() {
                             <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
                               <p className="font-medium">Selected Prompt Preview:</p>
                               {(() => {
-                                const selectedPrompt = availablePrompts.find(p => p.id === step.promptId);
-                                return selectedPrompt ? (
-                                  <div className="mt-1">
+                                const selectedPrompt = availablePrompts.find((p) => p.id === step.promptId);
+                                if (!selectedPrompt) {
+                                  return <p className="text-gray-500">Prompt not found</p>;
+                                }
+
+                                const ownerLabel = selectedPrompt.user.name || selectedPrompt.user.email;
+
+                                return (
+                                  <div className="mt-1 space-y-2">
                                     <p className="text-gray-600 truncate">{selectedPrompt.content}</p>
+                                    {selectedPrompt.accessScope === 'shared' && (
+                                      <p className="text-xs font-medium text-indigo-600">
+                                        Shared library • Owner: {ownerLabel}
+                                      </p>
+                                    )}
+                                    {selectedPrompt.accessScope === 'public' && (
+                                      <p className="text-xs text-gray-500">Public prompt by {ownerLabel}</p>
+                                    )}
                                     {selectedPrompt.variables.length > 0 && (
-                                      <p className="text-gray-500 text-xs mt-1">
-                                        Variables: {selectedPrompt.variables.map(v => `{{${v.name}}}`).join(', ')}
+                                      <p className="text-gray-500 text-xs">
+                                        Variables: {selectedPrompt.variables.map((v) => `{{${v.name}}}`).join(', ')}
                                       </p>
                                     )}
                                   </div>
-                                ) : (
-                                  <p className="text-gray-500">Prompt not found</p>
                                 );
                               })()}
                             </div>

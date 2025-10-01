@@ -1,28 +1,49 @@
 ﻿import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import PromptList from '../../components/PromptList';
 import * as promptsAPI from '../../services/api';
 
+vi.mock('../../hooks/useFeatureFlags', () => ({
+  useFeatureFlags: () => ({
+    flags: { 'collaboration.sharing': true },
+    loading: false,
+    refresh: vi.fn(),
+    isEnabled: (flag: string) => flag === 'collaboration.sharing',
+  }),
+}));
+
 // Mock the API
 vi.mock('../../services/api', () => ({
   promptsAPI: {
     getPrompts: vi.fn(),
     deletePrompt: vi.fn(),
-    updatePrompt: vi.fn()
+    updatePrompt: vi.fn(),
   },
   foldersAPI: {
     getFolders: vi.fn(),
     createFolder: vi.fn(),
     updateFolder: vi.fn(),
-    deleteFolder: vi.fn()
-  }
+    deleteFolder: vi.fn(),
+  },
+  libraryShareAPI: {
+    getSharedWithMe: vi.fn(),
+    getLibraryPrompts: vi.fn(),
+    shareLibrary: vi.fn(),
+    getLibraryShares: vi.fn(),
+    revokeShare: vi.fn(),
+    getLibraryDetails: vi.fn(),
+  },
+  usersAPI: {
+    searchMembers: vi.fn(),
+  },
 }));
 
 const mockedPromptsAPI = vi.mocked(promptsAPI.promptsAPI);
 const mockedFoldersAPI = vi.mocked(promptsAPI.foldersAPI);
+const mockedLibraryShareAPI = vi.mocked(promptsAPI.libraryShareAPI);
 
 const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <BrowserRouter>{children}</BrowserRouter>
@@ -84,6 +105,8 @@ describe('Prompt-Folder Workflow Integration', () => {
       message: 'Success',
       prompt: mockPrompts[0] 
     });
+    mockedLibraryShareAPI.getSharedWithMe.mockResolvedValue({ shares: [] });
+    mockedLibraryShareAPI.getLibraryPrompts.mockResolvedValue({ prompts: [] });
   });
 
   it('should handle complete drag-and-drop workflow with folder count updates', async () => {
@@ -227,7 +250,9 @@ describe('Prompt-Folder Workflow Integration', () => {
         }))
       }
     });
-    fireEvent(promptCard!, dragStartEvent);
+    await act(async () => {
+      fireEvent(promptCard!, dragStartEvent);
+    });
 
     const dropEvent = new Event('drop', { bubbles: true });
     Object.defineProperty(dropEvent, 'dataTransfer', {
@@ -239,7 +264,9 @@ describe('Prompt-Folder Workflow Integration', () => {
         }))
       }
     });
-    fireEvent(personalFolder!, dropEvent);
+    await act(async () => {
+      fireEvent(personalFolder!, dropEvent);
+    });
 
     // Give some time for potential async operations
     await new Promise(resolve => setTimeout(resolve, 100));

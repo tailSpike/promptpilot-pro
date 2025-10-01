@@ -11,6 +11,12 @@ PromptPilot Pro is an AI workflow operations platform that helps teams design, e
 - Prompt authoring with variable templates, metadata, and semantic version history
 - Branch-aware prompt management with diff-friendly audit trails
 
+### Collaboration & sharing (Epic 3 Story 1)
+- Owner-to-viewer library sharing under feature flag `collaboration.sharing`
+- Share modal with member search, invite rate limiting, and revoke controls
+- "Shared with me" workspace view for read-only access to approved prompts
+- Audit, analytics, and email hooks wired for compliance-ready telemetry
+
 ### Workflow automation
 - Drag-and-drop workflow builder with PROMPT, CONDITION, TRANSFORM, DELAY, WEBHOOK, and DECISION steps
 - Rich configuration forms, inline validation, and live preview of downstream variables
@@ -94,6 +100,7 @@ JWT_SECRET="your-super-secret-jwt-key"
 PORT=3001
 FRONTEND_URL="http://localhost:5173"
 CORS_ORIGIN="http://localhost:5173"
+FEATURE_FLAG_COLLABORATION_SHARING="on"   # Toggle library sharing skeleton
 ```
 
 **frontend/.env**
@@ -112,7 +119,7 @@ VITE_API_URL="http://localhost:3001"
 | `npm run lint` / `npm run lint:fix` | ESLint across backend and frontend (optional fix) |
 | `npm run test:backend` | Jest unit + integration suites (SQLite in-memory) |
 | `npm run test:frontend` | Vitest component/unit suite |
-| `npm run test:e2e` | Build, reset DB, launch services, and run Cypress headless |
+| `npm run test:e2e` | Build, reset DB, launch services, and run Cypress headless (includes library sharing journey) |
 | `npm run prepare:e2e` | Reset test database without executing Cypress |
 | `npm run ci` | Local mirror of the GitHub Actions pipeline |
 

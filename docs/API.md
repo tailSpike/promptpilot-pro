@@ -228,7 +228,44 @@ Preview workflow execution without persisting results.
 
 ---
 
-## 6. Triggers & scheduling
+## 6. Libraries & sharing
+
+> **Feature flag:** Requires `collaboration.sharing` to be enabled via `FEATURE_FLAG_COLLABORATION_SHARING`.
+
+### POST `/api/libraries/:id/shares`
+Share a prompt library (folder) with another workspace member.
+```json
+{
+  "inviteeEmail": "teammate@example.com"
+}
+```
+**Responses**
+- `201` with share metadata (invitee, inviter, folder) when successful
+- `404` when the folder is not owned by the requester
+- `429` when exceeding the hourly invite rate limit
+- `400` for invalid email or duplicate active share
+
+### DELETE `/api/libraries/:id/shares/:shareId`
+Revoke an existing share. Response body includes `message` confirmation.
+
+### GET `/api/libraries/:id/shares`
+List active shares for the owner, returning invitee details and audit metadata.
+
+### GET `/api/libraries/shared-with-me`
+List libraries the authenticated user can view, including owner and inviter information.
+
+### GET `/api/libraries/:id`
+Fetch a shared library summary (owner, prompt count, timestamps). Enforces access via ownership or viewer share.
+
+### GET `/api/libraries/:id/prompts`
+Return prompts within the library when the requester is the owner or has viewer access.
+
+### GET `/api/users/search?q=term`
+Member lookup used by the share modal. Requires at least two characters and returns up to ten matches.
+
+---
+
+## 7. Triggers & scheduling
 
 ### GET `/api/workflows/:workflowId/triggers`
 List triggers for the workflow with recent execution summaries.
@@ -273,7 +310,7 @@ Webhook entry point. Returns 200 after basic validation. Future work will valida
 
 ---
 
-## 7. Error handling
+## 8. Error handling
 Errors follow a consistent shape:
 ```json
 {
@@ -294,7 +331,7 @@ Errors follow a consistent shape:
 
 ---
 
-## 8. Rate limiting & security
+## 9. Rate limiting & security
 - JWT secret configured via `JWT_SECRET`; rotate regularly in production.
 - Webhook and API triggers generate random 256-bit secrets that should be stored securely by clients.
 - Add reverse proxies (Nginx/Cloudflare) for rate limiting and TLS termination in production.

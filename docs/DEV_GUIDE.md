@@ -53,7 +53,7 @@ scripts/   # Cross-platform helper scripts
 | Backend unit | `npm run test:unit:backend` | Runs against in-memory SQLite |
 | Backend integration | `npm run test:integration` | Exercises REST routes + Prisma |
 | Frontend unit/component | `npm run test:frontend` | Vitest + Testing Library |
-| E2E | `npm run test:e2e` | Builds, resets DB, starts servers, runs Cypress headless (workflow preview + trigger suites) |
+| E2E | `npm run test:e2e` | Builds, resets DB, starts servers, runs Cypress headless (workflow preview, trigger suites, library sharing) |
 | Lint | `npm run lint` | ESLint for both workspaces |
 
 ### Definition of done
@@ -65,6 +65,7 @@ scripts/   # Cross-platform helper scripts
 ### Known gaps (post Epic 2 Story 3)
 - ✅ Backend trigger unit & integration tests exist.
 - ✅ Cypress preview flows now cover manual payloads, sample data, and validation paths.
+- ✅ Library sharing skeleton guarded by `FEATURE_FLAG_COLLABORATION_SHARING`; backend integration + Cypress coverage ensure invite → view → revoke flow stays green.
 - 🚧 Cypress trigger flows occasionally fail; stabilise specs under `frontend/cypress/e2e/workflow-triggers.cy.ts` (expand coverage + tighten selectors).
 - 🚧 Component tests for `WorkflowTriggers` UI slated for follow-up.
 - 🚧 Component snapshot tests for `WorkflowPreviewResults` are pending to catch layout regressions.
@@ -89,7 +90,34 @@ scripts/   # Cross-platform helper scripts
 
 ---
 
-## 8. Resources
+## 8. Manual verification — Library sharing skeleton
+
+Follow these steps before sign-off to validate the collaboration slice end to end:
+
+1. **Bootstrap env vars**
+	- Ensure `backend/.env` exports `FEATURE_FLAG_COLLABORATION_SHARING=on` (already set in the repo default).
+	- Confirm `frontend/.env` points `VITE_API_URL` at `http://localhost:3001`.
+2. **Start services**
+	- Run the backend in one terminal: `npm run dev:backend`
+	- Run the frontend in another: `npm run dev:frontend`
+3. **Invite flow**
+	- Log in as the owner account (or register a fresh owner) and create a library folder.
+	- From the folder header click **Share library**, search for an existing teammate email, and send an invite.
+	- Verify the toast confirmation, audit log (`library.share.created`), and analytics log in the backend console.
+4. **Shared with me view**
+	- Log in as the invitee. Switch to **Shared with me** and open the shared library.
+	- Confirm prompts render read-only (no edit/delete actions) and metadata shows owner + inviter names.
+5. **Revocation**
+	- Return to the owner session, revoke the invite from the modal, and confirm the invitee list updates immediately.
+	- As the invitee, refresh **Shared with me** and verify the library disappears.
+6. **Rate limit guard (optional)**
+	- Issue >20 invites within an hour to trigger the 429 error and toast messaging.
+
+> Tip: `npm run test:e2e` already automates invite → view → revoke; the manual pass ensures UX polish and telemetry checks.
+
+---
+
+## 9. Resources
 - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for architectural context.
 - [`docs/API.md`](API.md) for endpoint contracts.
 - [`docs/WORKFLOW_ENGINE.md`](WORKFLOW_ENGINE.md) for trigger + execution details.
