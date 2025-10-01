@@ -7,6 +7,7 @@ import authRoutes from '../../routes/auth';
 import libraryShareRoutes from '../../routes/libraryShares';
 import featureFlagRoutes from '../../routes/featureFlags';
 import usersRoutes from '../../routes/users';
+import promptsRoutes from '../../routes/prompts';
 
 describe('Library Sharing API', () => {
   let app: express.Express;
@@ -29,6 +30,7 @@ describe('Library Sharing API', () => {
     app.use('/api/libraries', libraryShareRoutes);
     app.use('/api/feature-flags', featureFlagRoutes);
     app.use('/api/users', usersRoutes);
+  app.use('/api/prompts', promptsRoutes);
 
     const ownerRegister = await request(app)
       .post('/api/auth/register')
@@ -129,6 +131,10 @@ describe('Library Sharing API', () => {
 
     expect(promptsResponse.body.prompts).toHaveLength(1);
     expect(promptsResponse.body.prompts[0].id).toBe(promptId);
+    expect(promptsResponse.body.prompts[0].user).toMatchObject({
+      id: ownerId,
+      email: 'integration-owner@example.com',
+    });
 
     await request(app)
       .delete(`/api/libraries/${folderId}/shares/${shareId}`)
@@ -141,6 +147,26 @@ describe('Library Sharing API', () => {
       .expect(200);
 
     expect(afterRevoke.body.shares).toHaveLength(0);
+  });
+
+  it('lists shared prompts in the combined prompts catalogue with access scope', async () => {
+    await request(app)
+      .post(`/api/libraries/${folderId}/shares`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ inviteeEmail: 'integration-invitee@example.com' })
+      .expect(201);
+
+    const promptsResponse = await request(app)
+      .get('/api/prompts?limit=20')
+      .set('Authorization', `Bearer ${inviteeToken}`)
+      .expect(200);
+
+    const sharedPrompt = promptsResponse.body.prompts.find(
+      (prompt: { id: string }) => prompt.id === promptId,
+    ) as { id: string; accessScope?: string } | undefined;
+
+    expect(sharedPrompt).toBeTruthy();
+    expect(sharedPrompt?.accessScope).toBe('shared');
   });
 
   it('blocks requests when feature flag disabled', async () => {

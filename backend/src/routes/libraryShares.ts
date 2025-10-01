@@ -193,6 +193,13 @@ router.get('/:id/prompts', async (req, res) => {
     const prompts = await prisma.prompt.findMany({
       where: { folderId },
       include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         folder: {
           select: {
             id: true,

@@ -4,6 +4,8 @@ import { AuditService } from './audit.service';
 import { AnalyticsService } from './analytics.service';
 import { EmailService } from './email.service';
 
+const DEFAULT_WORKSPACE_ID = process.env.DEFAULT_WORKSPACE_ID ?? 'workspace-default';
+
 const DEFAULT_SHARE_RATE_LIMIT_PER_HOUR = 20;
 
 const SHARE_RATE_LIMIT_PER_HOUR = (() => {
@@ -133,6 +135,7 @@ export class LibraryShareService {
     await AnalyticsService.track({
       name: 'collaboration.library.shared',
       payload: {
+        workspaceId: DEFAULT_WORKSPACE_ID,
         folderId: options.folderId,
         ownerId: options.ownerId,
         inviteeId: invitee.id,
@@ -182,6 +185,7 @@ export class LibraryShareService {
     await AnalyticsService.track({
       name: 'collaboration.library.share.revoked',
       payload: {
+        workspaceId: DEFAULT_WORKSPACE_ID,
         folderId: options.folderId,
         ownerId: options.ownerId,
         inviteeId: share.invitedUserId,

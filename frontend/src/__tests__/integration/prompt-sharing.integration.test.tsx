@@ -107,6 +107,7 @@ describe('PromptList sharing experiences', () => {
         id: 'user-owner',
         email: 'owner@example.com',
       },
+  accessScope: 'shared' as const,
       _count: {
         executions: 3,
       },
@@ -115,6 +116,9 @@ describe('PromptList sharing experiences', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.clear();
+    }
     mockedPromptsAPI.getPrompts.mockResolvedValue({
       prompts: [],
       pagination: { page: 1, pages: 1, limit: 10, total: 0 },
@@ -145,6 +149,11 @@ describe('PromptList sharing experiences', () => {
     });
 
     expect(screen.getByText('Design System')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('prompt-list-toast')).toHaveTextContent(
+        'Owner shared "Design System" with you',
+      );
+    });
 
     await user.click(screen.getByText('Design System'));
 
@@ -176,5 +185,34 @@ describe('PromptList sharing experiences', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /share library/i })).toBeInTheDocument();
     });
+  });
+
+  it('does not repeat the new share toast once a library is acknowledged', async () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(
+        'promptpilot.sharedLibraries.seen',
+        JSON.stringify(sharedLibraries.map((share) => share.id)),
+      );
+    }
+
+    const user = userEvent.setup();
+
+    render(
+      <Wrapper>
+        <PromptList />
+      </Wrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Marketing')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /shared with me/i }));
+
+    await waitFor(() => {
+      expect(mockedLibraryShareAPI.getSharedWithMe).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByTestId('prompt-list-toast')).not.toBeInTheDocument();
   });
 });

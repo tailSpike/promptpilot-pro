@@ -37,10 +37,11 @@ This first slice delivers a thin end-to-end sharing flow (invite → accept → 
    - Invitees see a “Shared with me” tab showing the library name, owner, and last updated timestamp.
    - GET endpoints enforce that only owners or share recipients with `Viewer` role can read the library and its prompts.
    - Access revocation removes the library from the shared tab immediately.
+   - First time a new library appears in a recipient’s list, the UI surfaces a toast announcing who shared it; the acknowledgement is cached locally to avoid duplicate alerts.
 
 3. **Audit & Telemetry**
    - Each create/delete share action appends an immutable audit record with actor, target, and timestamp.
-   - Analytics event `collaboration.library.shared` fires with `{workspaceId, actorId, libraryId}` payload.
+   - Analytics event `collaboration.library.shared` fires with `{workspaceId, actorId, libraryId}` payload. (A default single-workspace identifier is emitted until multi-workspace support ships.)
 
 ### Definition of Done
 - UI, API, and persistence are wired through and demoable end-to-end.

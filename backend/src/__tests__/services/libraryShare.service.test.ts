@@ -83,12 +83,19 @@ describe('LibraryShareService', () => {
       ),
     ).toBe(true);
 
-    expect(
-      consoleCalls.some(
-        ([label, eventName]) =>
-          label === '[analytics]' && eventName === 'collaboration.library.shared',
-      ),
-    ).toBe(true);
+    const sharedEvent = consoleCalls.find(
+      ([label, eventName]) => label === '[analytics]' && eventName === 'collaboration.library.shared',
+    );
+
+    expect(sharedEvent).toBeDefined();
+    if (sharedEvent) {
+      const [, , rawPayload] = sharedEvent;
+  const payload = (typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload) as Record<string, unknown>;
+  expect(payload.workspaceId).toBe('workspace-default');
+  expect(payload.folderId).toBe(folderId);
+  expect(payload.ownerId).toBe(ownerId);
+  expect(payload.inviteeId).toBe(inviteeId);
+    }
 
     const auditEvents = await prisma.auditLog.findMany({
       where: {
@@ -168,12 +175,20 @@ describe('LibraryShareService', () => {
 
     expect(revoked.deletedAt).not.toBeNull();
     expect(revoked.revokedById).toBe(ownerId);
-    expect(
-      consoleCalls.some(
-        ([label, eventName]) =>
-          label === '[analytics]' && eventName === 'collaboration.library.share.revoked',
-      ),
-    ).toBe(true);
+    const revokedEvent = consoleCalls.find(
+      ([label, eventName]) =>
+        label === '[analytics]' && eventName === 'collaboration.library.share.revoked',
+    );
+
+    expect(revokedEvent).toBeDefined();
+    if (revokedEvent) {
+      const [, , rawPayload] = revokedEvent;
+  const payload = (typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload) as Record<string, unknown>;
+  expect(payload.workspaceId).toBe('workspace-default');
+  expect(payload.folderId).toBe(folderId);
+  expect(payload.ownerId).toBe(ownerId);
+  expect(payload.inviteeId).toBe(inviteeId);
+    }
 
     const auditEvents = await prisma.auditLog.findMany({
       where: {

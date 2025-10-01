@@ -16,6 +16,39 @@ interface ToastMessage {
   message: string;
 }
 
+const SHARED_LIBRARY_STORAGE_KEY = 'promptpilot.sharedLibraries.seen';
+
+const readSeenSharedLibraryIds = (): string[] => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SHARED_LIBRARY_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value) => typeof value === 'string') : [];
+  } catch (error) {
+    console.warn('Failed to read shared library cache', error);
+    return [];
+  }
+};
+
+const writeSeenSharedLibraryIds = (ids: string[]) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(SHARED_LIBRARY_STORAGE_KEY, JSON.stringify(ids));
+  } catch (error) {
+    console.warn('Failed to persist shared library cache', error);
+  }
+};
+
 export default function PromptList() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [sharedPrompts, setSharedPrompts] = useState<Prompt[]>([]);
@@ -43,6 +76,31 @@ export default function PromptList() {
   const [selectedSharedLibraryId, setSelectedSharedLibraryId] = useState<string | null>(null);
 
   const folderTreeRef = useRef<FolderTreeViewRef>(null);
+  const announceNewShares = useCallback(
+    (shares: SharedLibrarySummary[]) => {
+      if (shares.length === 0) {
+        writeSeenSharedLibraryIds([]);
+        return;
+      }
+
+      const previouslySeen = new Set(readSeenSharedLibraryIds());
+      const unseenShares = shares.filter((share) => !previouslySeen.has(share.id));
+
+      if (unseenShares.length > 0) {
+        const firstShare = unseenShares[0];
+        const inviterName = firstShare.invitedBy.name || firstShare.invitedBy.email;
+        const message =
+          unseenShares.length === 1
+            ? `${inviterName} shared "${firstShare.folder.name}" with you`
+            : `${unseenShares.length} new libraries were shared with you`;
+
+        setToast({ type: 'success', message });
+      }
+
+      writeSeenSharedLibraryIds(shares.map((share) => share.id));
+    },
+    [setToast],
+  );
 
   const initiateShareForFolder = useCallback(
     (folderId: string, folderName?: string) => {
@@ -135,6 +193,7 @@ export default function PromptList() {
       const { shares } = await libraryShareAPI.getSharedWithMe();
       setSharedLibraries(shares);
       setSharedError(null);
+      announceNewShares(shares);
 
       setSelectedSharedLibraryId((previous) => {
         if (!previous) {
@@ -153,7 +212,7 @@ export default function PromptList() {
     } finally {
       setSharedLibrariesLoading(false);
     }
-  }, [sharingEnabled]);
+  }, [sharingEnabled, announceNewShares]);
 
   useEffect(() => {
     void loadPrompts();
@@ -247,7 +306,12 @@ export default function PromptList() {
     try {
       setSharedLibraryLoading(true);
       const { prompts: sharedPromptResponse } = await libraryShareAPI.getLibraryPrompts(share.folder.id);
-      setSharedPrompts(sharedPromptResponse);
+      setSharedPrompts(
+        sharedPromptResponse.map((prompt) => ({
+          ...prompt,
+          accessScope: 'shared',
+        })),
+      );
       setSharedError(null);
     } catch (err) {
       console.error('Failed to load shared prompts:', err);
@@ -304,7 +368,13 @@ export default function PromptList() {
     return sharedLibraries.find((share) => share.id === selectedSharedLibraryId) ?? null;
   }, [selectedSharedLibraryId, sharedLibraries]);
 
-  const renderPromptCard = (prompt: Prompt, options?: { allowActions?: boolean }) => (
+  const renderPromptCard = (
+    prompt: Prompt,
+    options?: { allowActions?: boolean; badge?: string; hint?: React.ReactNode },
+  ) => {
+    const badgeLabel = options?.badge ?? (prompt.accessScope === 'shared' ? 'Shared' : undefined);
+
+    return (
     <div
       key={prompt.id}
       className={`rounded-lg bg-white p-6 shadow transition-shadow ${
@@ -317,6 +387,11 @@ export default function PromptList() {
         <div className="flex-1">
           <div className="flex items-center space-x-3">
             <h3 className="text-lg font-medium text-gray-900">{prompt.name}</h3>
+            {badgeLabel && (
+              <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+                {badgeLabel}
+              </span>
+            )}
             {prompt.isPublic && (
               <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
                 Public
@@ -326,6 +401,8 @@ export default function PromptList() {
               v{prompt.version}
             </span>
           </div>
+
+          {options?.hint}
 
           {prompt.description && <p className="mt-2 text-sm text-gray-600">{prompt.description}</p>}
 
@@ -382,7 +459,8 @@ export default function PromptList() {
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   if (loading && prompts.length === 0 && viewMode === 'mine') {
     return (
@@ -629,7 +707,7 @@ export default function PromptList() {
                 </div>
               ) : selectedSharedLibrary ? (
                 <div className="space-y-6" data-testid="shared-library-content">
-                  <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="shared-library-detail">
+                  <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" data-testid="shared-library-detail">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <h2 className="text-2xl font-semibold text-gray-900">{selectedSharedLibrary.folder.name}</h2>
@@ -641,22 +719,37 @@ export default function PromptList() {
                         Invited by {selectedSharedLibrary.invitedBy.name || selectedSharedLibrary.invitedBy.email}
                       </div>
                     </div>
-                  </div>
 
-                  {sharedLibraryLoading ? (
-                    <div className="flex min-h-48 items-center justify-center" data-testid="shared-library-loading">
-                      <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
-                    </div>
-                  ) : sharedPrompts.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center" data-testid="shared-library-empty">
-                      <h3 className="text-lg font-medium text-gray-900">No prompts available</h3>
-                      <p className="mt-2 text-sm text-gray-500">This shared library doesn’t have any prompts yet.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4" data-testid="shared-library-prompts">
-                      {sharedPrompts.map((prompt) => renderPromptCard(prompt, { allowActions: false }))}
-                    </div>
-                  )}
+                    {sharedLibraryLoading ? (
+                      <div className="mt-6 flex min-h-48 items-center justify-center" data-testid="shared-library-loading">
+                        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
+                      </div>
+                    ) : sharedPrompts.length === 0 ? (
+                      <div className="mt-6 rounded-lg border border-dashed border-gray-300 p-8 text-center" data-testid="shared-library-empty">
+                        <h3 className="text-lg font-medium text-gray-900">No prompts available</h3>
+                        <p className="mt-2 text-sm text-gray-500">This shared library doesn’t have any prompts yet.</p>
+                      </div>
+                    ) : (
+                      <div className="relative mt-6" data-testid="shared-library-prompts">
+                        <div className="absolute left-3 top-0 bottom-3 w-px bg-gray-200" aria-hidden="true"></div>
+                        <div className="space-y-4 pl-8">
+                          {sharedPrompts.map((prompt) => (
+                            <div key={prompt.id} className="relative">
+                              <div className="absolute -left-8 top-6 h-px w-8 border-t border-gray-200" aria-hidden="true"></div>
+                              {renderPromptCard(prompt, {
+                                allowActions: false,
+                                hint: (
+                                  <p className="mt-2 text-xs font-medium text-gray-500">
+                                    Read-only • Owner: {prompt.user.name || prompt.user.email}
+                                  </p>
+                                ),
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : sharedLibrariesLoading ? (
                 <div className="flex min-h-48 items-center justify-center" data-testid="shared-library-skeleton">

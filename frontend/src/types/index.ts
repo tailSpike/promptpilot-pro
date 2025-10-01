@@ -40,6 +40,7 @@ export interface Prompt {
     name: string;
     color?: string;
   };
+  accessScope?: 'owned' | 'shared' | 'public';
   _count?: {
     executions: number;
   };

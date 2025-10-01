@@ -118,12 +118,34 @@ router.get('/', async (req, res) => {
     const limitNum = Math.max(1, Math.min(100, parseInt(String(limit)) || 10)); // Cap at 100
     const skip = (pageNum - 1) * limitNum;
 
+    // Identify shared libraries for the viewer
+    const sharedFolders = await prisma.promptLibraryShare.findMany({
+      where: {
+        invitedUserId: userId,
+        deletedAt: null,
+      },
+      select: {
+        folderId: true,
+      },
+    });
+
+    const sharedFolderIds = sharedFolders.map((record) => record.folderId);
+
     // Build where condition
+    const scopeConditions: Record<string, unknown>[] = [
+      { userId },
+    ];
+
+    if (isPublic !== 'false') {
+      scopeConditions.push({ isPublic: true });
+    }
+
+    if (sharedFolderIds.length > 0) {
+      scopeConditions.push({ folderId: { in: sharedFolderIds } });
+    }
+
     const where: Record<string, unknown> = {
-      OR: [
-        { userId }, // User's own prompts
-        ...(isPublic !== 'false' ? [{ isPublic: true }] : []) // Public prompts (unless explicitly excluded)
-      ]
+      OR: scopeConditions,
     };
 
     // Add search filter
@@ -184,8 +206,19 @@ router.get('/', async (req, res) => {
       prisma.prompt.count({ where })
     ]);
 
+    const sharedFolderSet = new Set(sharedFolderIds);
+    const promptsWithScope = prompts.map((prompt) => ({
+      ...prompt,
+      accessScope:
+        prompt.userId === userId
+          ? 'owned'
+          : sharedFolderSet.has(prompt.folderId ?? '')
+            ? 'shared'
+            : 'public',
+    }));
+
     res.json({
-      prompts,
+      prompts: promptsWithScope,
       pagination: {
         page: pageNum,
         limit: limitNum,
