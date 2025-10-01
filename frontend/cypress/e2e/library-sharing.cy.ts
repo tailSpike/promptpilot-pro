@@ -87,7 +87,8 @@ describe('Prompt library sharing', () => {
       .contains('[data-testid="folder-tree-item"]', 'Shared Campaign Library')
       .click();
 
-    cy.get('[data-testid="share-library-button"]', { timeout: 15000 }).should('be.visible').click();
+  cy.get('[data-testid="share-library-button"]', { timeout: 15000 }).should('be.visible').click();
+  cy.get('[data-testid="share-library-modal"]', { timeout: 10000 }).should('be.visible');
 
     cy.get('input#share-search').type(inviteeEmail.slice(0, 6));
 
@@ -103,10 +104,12 @@ describe('Prompt library sharing', () => {
 
     cy.wait('@createShare', { timeout: 15000 });
 
-    cy.contains(`Shared Shared Campaign Library with ${inviteeEmail}`, { timeout: 10000 }).should('be.visible');
-    cy.get('[data-testid="share-member"]', { timeout: 10000 }).should('contain', inviteeEmail);
+    cy.get('[data-testid="share-modal-toast"]', { timeout: 10000 }).should('contain', inviteeEmail);
+    cy.get('[data-testid="share-member-list"]', { timeout: 10000 }).should('contain', inviteeEmail);
+    cy.get('[data-testid="prompt-list-toast"]', { timeout: 10000 }).should('contain', inviteeEmail);
 
-    cy.contains('button', 'Close').click();
+    cy.get('[data-testid="share-modal-close"]').click();
+    cy.get('[data-testid="share-library-modal"]').should('not.exist');
 
     cy.clearLocalStorage();
     cy.clearCookies();
@@ -120,14 +123,17 @@ describe('Prompt library sharing', () => {
 
     cy.wait('@featureFlags', { timeout: 15000 });
 
-    cy.contains('button', 'Shared with me').click();
+    cy.get('[data-testid="view-mode-shared"]').click();
 
-  cy.wait('@sharedWithMe', { timeout: 15000 });
+    cy.wait('@sharedWithMe', { timeout: 15000 });
 
-    cy.contains('Shared Campaign Library', { timeout: 15000 }).should('be.visible').click();
+    cy.get('[data-testid="shared-library-list"]', { timeout: 15000 }).should('contain', 'Shared Campaign Library');
 
-    cy.contains('Shared Welcome Prompt', { timeout: 15000 }).should('be.visible');
-    cy.contains('No prompts available').should('not.exist');
-    cy.contains('button', 'Share library').should('not.exist');
+    cy.get(`[data-testid="shared-library-list-item"][data-library-id="${folderId}"]`, { timeout: 15000 }).click();
+
+    cy.get('[data-testid="shared-library-detail"]', { timeout: 15000 }).should('contain', 'Shared Campaign Library');
+    cy.get('[data-testid="shared-library-prompts"]', { timeout: 15000 }).should('contain', 'Shared Welcome Prompt');
+    cy.get('[data-testid="shared-library-prompts"]', { timeout: 15000 }).should('not.contain', 'No prompts available');
+    cy.get('[data-testid="share-library-button"]').should('not.exist');
   });
 });

@@ -149,7 +149,10 @@ const ShareLibraryModal: React.FC<ShareLibraryModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+      data-testid="share-library-modal"
+    >
       <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <div>
@@ -171,6 +174,7 @@ const ShareLibraryModal: React.FC<ShareLibraryModalProps> = ({
             className={`mx-6 mt-4 rounded-md px-4 py-2 text-sm ${
               toast.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
             }`}
+            data-testid="share-modal-toast"
           >
             {toast.message}
           </div>
@@ -259,6 +263,7 @@ const ShareLibraryModal: React.FC<ShareLibraryModalProps> = ({
             type="button"
             onClick={onClose}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+            data-testid="share-modal-close"
           >
             Close
           </button>

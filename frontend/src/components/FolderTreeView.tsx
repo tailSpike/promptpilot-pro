@@ -333,7 +333,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({
                     onShareFolder?.(folder);
                   }}
                   className="p-1 hover:bg-blue-100 rounded text-gray-500 hover:text-blue-700 mr-1"
-                  title="Share library"
+                  title={`Share folder ${folder.name}`}
+                  aria-label={`Share folder ${folder.name}`}
                   data-testid="folder-share-button"
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

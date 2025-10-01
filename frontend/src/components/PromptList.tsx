@@ -399,6 +399,7 @@ export default function PromptList() {
           className={`mx-6 my-4 rounded-md px-4 py-3 text-sm ${
             toast.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
           }`}
+          data-testid="prompt-list-toast"
         >
           {toast.message}
         </div>
@@ -418,7 +419,7 @@ export default function PromptList() {
                 onShareFolder={handleShareFolder}
             />
           ) : (
-            <div className="flex h-full flex-col overflow-hidden">
+            <div className="flex h-full flex-col overflow-hidden" data-testid="shared-library-sidebar">
               <div className="border-b border-gray-200 px-4 py-3">
                 <h2 className="text-sm font-semibold text-gray-700">Shared libraries</h2>
               </div>
@@ -430,7 +431,7 @@ export default function PromptList() {
                 ) : sharedLibraries.length === 0 ? (
                   <p className="text-sm text-gray-500">No libraries have been shared with you yet.</p>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="space-y-3" data-testid="shared-library-list">
                     {sharedLibraries.map((share) => {
                       const isActive = share.id === selectedSharedLibraryId;
                       return (
@@ -443,6 +444,8 @@ export default function PromptList() {
                                 ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
                                 : 'border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50'
                             }`}
+                            data-testid="shared-library-list-item"
+                            data-library-id={share.folder.id}
                           >
                             <div className="font-medium">{share.folder.name}</div>
                             <div className="text-xs text-gray-500">
@@ -473,6 +476,7 @@ export default function PromptList() {
                     ? 'bg-blue-600 text-white shadow'
                     : 'bg-gray-200 text-gray-700 hover:bg-blue-100 hover:text-blue-700'
                 }`}
+                data-testid="view-mode-mine"
               >
                 My libraries
               </button>
@@ -484,6 +488,7 @@ export default function PromptList() {
                     ? 'bg-blue-600 text-white shadow'
                     : 'bg-gray-200 text-gray-700 hover:bg-blue-100 hover:text-blue-700'
                 }`}
+                data-testid="view-mode-shared"
               >
                 Shared with me
               </button>
@@ -623,8 +628,8 @@ export default function PromptList() {
                   <p className="mt-2 text-sm text-gray-500">When teammates share a library with you, it will appear here.</p>
                 </div>
               ) : selectedSharedLibrary ? (
-                <div className="space-y-6">
-                  <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="space-y-6" data-testid="shared-library-content">
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="shared-library-detail">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <h2 className="text-2xl font-semibold text-gray-900">{selectedSharedLibrary.folder.name}</h2>
@@ -639,22 +644,22 @@ export default function PromptList() {
                   </div>
 
                   {sharedLibraryLoading ? (
-                    <div className="flex min-h-48 items-center justify-center">
+                    <div className="flex min-h-48 items-center justify-center" data-testid="shared-library-loading">
                       <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
                     </div>
                   ) : sharedPrompts.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center">
+                    <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center" data-testid="shared-library-empty">
                       <h3 className="text-lg font-medium text-gray-900">No prompts available</h3>
                       <p className="mt-2 text-sm text-gray-500">This shared library doesn’t have any prompts yet.</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4" data-testid="shared-library-prompts">
                       {sharedPrompts.map((prompt) => renderPromptCard(prompt, { allowActions: false }))}
                     </div>
                   )}
                 </div>
               ) : sharedLibrariesLoading ? (
-                <div className="flex min-h-48 items-center justify-center">
+                <div className="flex min-h-48 items-center justify-center" data-testid="shared-library-skeleton">
                   <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
                 </div>
               ) : (
