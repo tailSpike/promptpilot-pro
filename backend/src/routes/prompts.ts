@@ -2,6 +2,9 @@ import express from 'express';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { VersionService, VersionChangeType } from '../services/versionService';
+import { PromptCommentService } from '../services/promptComment.service';
+import { requireFeature } from '../middleware/featureFlag';
+import { COLLABORATION_COMMENTS_FLAG } from '../lib/featureFlags';
 
 const router = express.Router();
 
@@ -233,6 +236,72 @@ router.get('/', async (req, res) => {
     });
   }
 });
+
+// List comments for a prompt
+router.get(
+  '/:id/comments',
+  requireFeature(COLLABORATION_COMMENTS_FLAG),
+  async (req, res) => {
+    try {
+      const promptId = req.params.id;
+      const userId = req.user!.id;
+
+      if (!promptId) {
+        return res.status(400).json({
+          error: { message: 'Prompt ID is required' },
+        });
+      }
+
+      const { comments, libraryId } = await PromptCommentService.listComments(promptId, userId);
+
+      res.json({
+        comments,
+        libraryId,
+      });
+    } catch (error) {
+      console.error('List prompt comments error:', error);
+      res.status(400).json({
+        error: {
+          message: error instanceof Error ? error.message : 'Failed to load comments',
+        },
+      });
+    }
+  },
+);
+
+// Create a new comment on a prompt
+router.post(
+  '/:id/comments',
+  requireFeature(COLLABORATION_COMMENTS_FLAG),
+  async (req, res) => {
+    try {
+      const promptId = req.params.id;
+      const userId = req.user!.id;
+      const { body } = req.body as { body?: string };
+
+      if (!promptId) {
+        return res.status(400).json({
+          error: { message: 'Prompt ID is required' },
+        });
+      }
+
+      const comment = await PromptCommentService.createComment({
+        promptId,
+        userId,
+        body: body ?? '',
+      });
+
+      res.status(201).json({ comment });
+    } catch (error) {
+      console.error('Create prompt comment error:', error);
+      res.status(400).json({
+        error: {
+          message: error instanceof Error ? error.message : 'Failed to create comment',
+        },
+      });
+    }
+  },
+);
 
 // Get a specific prompt by ID
 router.get('/:id', async (req, res) => {

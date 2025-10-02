@@ -8,9 +8,11 @@ export class FeatureDisabledError extends Error {
 const NORMALISED_TRUE = new Set(['1', 'true', 'on', 'enabled', 'yes']);
 
 export const COLLABORATION_SHARING_FLAG = 'collaboration.sharing';
+export const COLLABORATION_COMMENTS_FLAG = 'collaboration.comments';
 
 const flagLoaders: Record<string, () => string | undefined> = {
   [COLLABORATION_SHARING_FLAG]: () => process.env.FEATURE_FLAG_COLLABORATION_SHARING,
+  [COLLABORATION_COMMENTS_FLAG]: () => process.env.FEATURE_FLAG_COLLABORATION_COMMENTS,
 };
 
 function normalise(value: string | undefined): string | undefined {
@@ -48,5 +50,6 @@ export function assertFeatureEnabled(flag: string): void {
 export function getFeatureFlags(): Record<string, boolean> {
   return {
     [COLLABORATION_SHARING_FLAG]: isFeatureEnabled(COLLABORATION_SHARING_FLAG),
+    [COLLABORATION_COMMENTS_FLAG]: isFeatureEnabled(COLLABORATION_COMMENTS_FLAG),
   };
 }

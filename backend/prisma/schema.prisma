@@ -26,6 +26,7 @@ model User {
   librarySharesInvited  PromptLibraryShare[] @relation("LibrarySharesInvited")
   librarySharesRevoked  PromptLibraryShare[] @relation("LibrarySharesRevoked")
   auditLogs             AuditLog[]
+  promptComments        PromptComment[]
 
   @@map("users")
 }
@@ -46,6 +47,7 @@ model Folder {
   prompts     Prompt[]
   workflows   Workflow[]
   shares      PromptLibraryShare[]
+  promptComments PromptComment[]
 
   @@map("folders")
 }
@@ -71,6 +73,7 @@ model Prompt {
   folder           Folder?           @relation(fields: [folderId], references: [id])
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   workflowSteps    WorkflowStep[]
+  comments         PromptComment[]
 
   @@map("prompts")
 }
@@ -278,6 +281,26 @@ model PromptExecution {
   prompt    Prompt         @relation(fields: [promptId], references: [id], onDelete: Cascade)
 
   @@map("prompt_executions")
+}
+
+model PromptComment {
+  id          String   @id @default(cuid())
+  workspaceId String
+  promptId    String
+  libraryId   String
+  authorId    String
+  body        String
+  createdAt   DateTime @default(now())
+  deletedAt   DateTime?
+
+  prompt  Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  library Folder @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  author  User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([promptId, createdAt])
+  @@index([libraryId])
+  @@index([authorId])
+  @@map("prompt_comments")
 }
 
 model PromptLibraryShare {
