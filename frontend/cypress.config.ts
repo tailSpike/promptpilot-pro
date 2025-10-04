@@ -10,8 +10,11 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const backendDir = path.join(repoRoot, 'backend')
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const apiHealthUrl = 'http://127.0.0.1:3001/api/health'
-const frontendUrl = 'http://127.0.0.1:5173'
+const defaultApiUrl = process.env.CYPRESS_apiUrl || 'http://127.0.0.1:3001'
+const defaultFrontendUrl = process.env.CYPRESS_baseUrl || 'http://127.0.0.1:5173'
+
+let apiHealthUrl = new URL('/api/health', defaultApiUrl).toString()
+let frontendUrl = defaultFrontendUrl
 
 let e2eServersProcess: ChildProcess | null = null
 let ensureServersPromise: Promise<void> | null = null
@@ -162,6 +165,18 @@ export default defineConfig({
     animationDistanceThreshold: 2,
     chromeWebSecurity: false,
     setupNodeEvents(on, config) {
+      if (config?.env?.apiUrl) {
+        try {
+          apiHealthUrl = new URL('/api/health', config.env.apiUrl).toString()
+        } catch (error) {
+          console.warn('[cypress.config] Failed to derive API health URL from config.env.apiUrl:', error)
+        }
+      }
+
+      if (config?.baseUrl) {
+        frontendUrl = config.baseUrl
+      }
+
       on('task', {
         async 'e2e:ensureServers'() {
           if (!config.isInteractive) {
