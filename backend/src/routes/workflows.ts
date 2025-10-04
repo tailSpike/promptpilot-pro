@@ -23,6 +23,40 @@ const UpdateWorkflowSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+const ModelRetrySchema = z.object({
+  maxAttempts: z.number().int().min(0).max(5).optional(),
+  baseDelayMs: z.number().int().min(0).max(60000).optional(),
+  maxDelayMs: z.number().int().min(0).max(300000).optional(),
+}).strict().optional();
+
+const ModelParametersSchema = z.object({
+  temperature: z.number().min(0).max(2).optional(),
+  topP: z.number().min(0).max(1).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  presencePenalty: z.number().min(-2).max(2).optional(),
+  frequencyPenalty: z.number().min(-2).max(2).optional(),
+  seed: z.number().int().optional(),
+  responseFormat: z.enum(['json', 'text']).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
+}).strict().optional();
+
+const ModelConfigSchema = z.object({
+  id: z.string().min(1).optional(),
+  provider: z.enum(['openai', 'anthropic', 'google', 'custom']).default('openai'),
+  model: z.string().min(1),
+  label: z.string().min(1).optional(),
+  parameters: ModelParametersSchema,
+  retry: ModelRetrySchema,
+  disabled: z.boolean().optional(),
+});
+
+const ModelRoutingSchema = z.object({
+  mode: z.enum(['parallel', 'fallback']).default('parallel'),
+  onError: z.enum(['abort', 'continue']).default('abort'),
+  concurrency: z.number().int().min(1).max(5).optional(),
+  preferredOrder: z.array(z.string()).optional(),
+}).optional();
+
 const CreateStepSchema = z.object({
   name: z.string().min(1).max(200),
   type: z.enum(['PROMPT', 'CONDITION', 'TRANSFORM', 'DELAY', 'WEBHOOK', 'DECISION']),
@@ -40,6 +74,8 @@ const CreateStepSchema = z.object({
       maxTokens: z.number().int().positive().optional(),
       model: z.string().optional(),
     }).optional(),
+    models: z.array(ModelConfigSchema).min(1).optional(),
+    modelRouting: ModelRoutingSchema,
     
     // CONDITION step configuration
     condition: z.object({

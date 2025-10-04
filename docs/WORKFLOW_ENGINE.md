@@ -70,7 +70,18 @@ Preview runs are cached client-side only; subsequent API work will allow persist
 
 ---
 
-## 5. Integration roadmap
+## 5. Multi-model execution enhancements (Epic 4 Story 1)
+- Prompt steps will accept a `models` array with provider metadata (OpenAI, Anthropic, Gemini, custom) while maintaining backward compatibility with legacy single-model configs.
+- Execution and preview flows will call a shared dispatcher that fan-outs requests in parallel or fallback mode, capturing tokens, latency, retries, and provider warnings per response.
+- Missing credentials produce actionable errors that point builders to official setup docs noted in [`docs/EPIC4_STORY1.md`](EPIC4_STORY1.md) and the updated developer guide.
+- Retry policies will default to exponential backoff with jitter for `429/5XX` responses and respect provider-specific limits (see OpenAI/Gemini rate limit references).
+- Execution payloads will expose consolidated fields:
+   - `modelOutputs` — per-provider/model content, metadata, and diagnostics.
+   - `aggregateTokens` — totals across providers to inform cost tooling.
+   - `warnings` — surfaced to the UI so builders understand degraded paths.
+- Feature flag: `workflow.multiModel` to allow staged rollout across environments.
+
+## 6. Integration roadmap
 - [ ] Invoke `WorkflowService.executeWorkflow` directly from `TriggerService` when cron/webhook/API triggers fire.
 - [ ] Persist HMAC verification results for webhook triggers.
 - [ ] Attach execution metrics (duration, status) back to trigger detail responses.

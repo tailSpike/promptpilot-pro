@@ -1,6 +1,12 @@
 import { performance } from 'perf_hooks';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import {
+  modelDispatcher,
+  ModelConfig,
+  ModelRoutingOptions,
+  ModelExecutionResult,
+} from './modelDispatcher';
 
 // Define step types as constants (since SQLite doesn't support enums natively)
 export const StepTypes = {
@@ -446,6 +452,10 @@ export class WorkflowService {
           stepWarnings.push('Step returned no output payload.');
         }
 
+        if (rawOutput && typeof rawOutput === 'object' && Array.isArray((rawOutput as any).warnings)) {
+          stepWarnings.push(...(rawOutput as any).warnings);
+        }
+
         if (rawOutput && typeof rawOutput === 'object' && 'tokens' in rawOutput) {
           const tokenValue = Number((rawOutput as any).tokens);
           if (!Number.isNaN(tokenValue)) {
@@ -749,23 +759,144 @@ export class WorkflowService {
    * Execute a prompt step with variable substitution
    */
   private async executePromptStep(prompt: any, input: Record<string, any>, config: any): Promise<any> {
-    // This is a simplified implementation - in a real system, you'd integrate with AI models
     const variables = JSON.parse(prompt.variables || '[]');
     let content = prompt.content;
 
-    // Simple variable substitution
     for (const variable of variables) {
-      const value = input[variable.name] || variable.defaultValue || '';
+      const value = input[variable.name] ?? variable.defaultValue ?? '';
       content = content.replace(new RegExp(`{{${variable.name}}}`, 'g'), value);
     }
 
-    // Simulate AI model execution
+    const models = this.buildModelConfigs(config);
+    const routing = this.buildRoutingConfig(config);
+
+    const dispatcherResult = await modelDispatcher.execute({
+      prompt: content,
+      variables: input,
+      models,
+      routing,
+    });
+
+  const providersByName: Record<string, Record<string, any>> = {};
+    const warnings: string[] = [];
+    const errors: string[] = [];
+
+    dispatcherResult.results.forEach((result) => {
+      if (result.warnings && result.warnings.length > 0) {
+        warnings.push(...result.warnings);
+      }
+
+      if (!result.success) {
+        errors.push(`${result.provider}:${result.model} → ${result.error ?? 'unknown error'}`);
+      }
+
+      const providerKey = result.provider;
+      providersByName[providerKey] = providersByName[providerKey] || {};
+      providersByName[providerKey][result.model] = {
+        label: result.label,
+        text: result.outputText,
+        success: result.success,
+        tokens: result.tokensUsed,
+        latencyMs: result.latencyMs,
+        metadata: result.metadata,
+        error: result.error,
+        warnings: result.warnings,
+      };
+
+    });
+
+    const primaryResult = this.selectPrimaryResult(dispatcherResult.results);
+    if (!primaryResult && dispatcherResult.results.length > 0 && errors.length > 0) {
+      warnings.push('All configured providers failed to generate output.');
+    }
+
+    const primaryText = primaryResult?.outputText ?? `Generated response for: ${content.substring(0, 100)}...`;
+    const primaryModel = primaryResult?.model ?? models[0]?.model ?? 'unknown-model';
+
+    if (errors.length > 0) {
+      warnings.push(...errors);
+    }
+
     return {
       content,
-      generatedText: `Generated response for: ${content.substring(0, 100)}...`,
-      model: config.model || 'gpt-3.5-turbo',
-      tokens: Math.floor(Math.random() * 1000) + 100,
+      generatedText: primaryText,
+      model: primaryModel,
+      tokens: dispatcherResult.aggregatedTokens,
+      primaryProvider: primaryResult?.provider ?? models[0]?.provider ?? 'openai',
+      modelOutputs: providersByName,
+      providerResults: dispatcherResult.results,
+      warnings,
     };
+  }
+
+  private buildModelConfigs(config: any): ModelConfig[] {
+    const rawModels = Array.isArray(config?.models) ? config.models : [];
+    const allowedProviders = (process.env.ALLOWED_MODEL_PROVIDERS || 'openai,anthropic,google,custom')
+      .split(',')
+      .map((provider) => provider.trim())
+      .filter(Boolean);
+
+    const normalized = rawModels
+      .filter((candidate: any) => !!candidate)
+      .map((candidate: any, index: number): ModelConfig => ({
+        id: candidate.id || `model-${index}`,
+        provider: (candidate.provider || 'openai') as ModelConfig['provider'],
+        model: candidate.model || config?.modelSettings?.model || 'gpt-4o-mini',
+        label: candidate.label,
+        disabled: candidate.disabled ?? false,
+        parameters: candidate.parameters,
+        retry: candidate.retry,
+      }))
+      .filter((model: ModelConfig) => {
+        if (!allowedProviders.includes(model.provider)) {
+          console.warn(`Model provider ${model.provider} is not allowed by ALLOWED_MODEL_PROVIDERS.`);
+          return false;
+        }
+        return true;
+      });
+
+    if (normalized.length > 0) {
+      return normalized;
+    }
+
+    return [
+      {
+        id: 'legacy-default-model',
+        provider: 'openai',
+        model: config?.modelSettings?.model || 'gpt-4o-mini',
+        parameters: {
+          temperature: config?.modelSettings?.temperature,
+          maxTokens: config?.modelSettings?.maxTokens,
+        },
+      },
+    ];
+  }
+
+  private buildRoutingConfig(config: any): ModelRoutingOptions | undefined {
+    if (!config?.modelRouting) {
+      return undefined;
+    }
+
+    const routing = config.modelRouting;
+    return {
+      mode: routing.mode,
+      onError: routing.onError,
+      concurrency: routing.concurrency,
+      preferredOrder: routing.preferredOrder,
+    };
+  }
+
+  private selectPrimaryResult(results: ModelExecutionResult[]): ModelExecutionResult | undefined {
+    if (!results || results.length === 0) {
+      return undefined;
+    }
+
+    const successful = results.filter((result) => result.success && result.outputText);
+    if (successful.length > 0) {
+      return successful[0];
+    }
+
+    return results[0];
   }
 
   /**

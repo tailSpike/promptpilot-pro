@@ -4,6 +4,57 @@ import { promptsAPI, workflowsAPI } from '../services/api';
 import type { Prompt } from '../types';
 import { AuthContext } from '../contexts/AuthContext';
 
+type PromptModelProvider = 'openai' | 'anthropic' | 'google' | 'custom';
+
+const MODEL_PROVIDER_OPTIONS: Array<{ value: PromptModelProvider; label: string; defaultModel: string }> = [
+  { value: 'openai', label: 'OpenAI · GPT', defaultModel: 'gpt-4o-mini' },
+  { value: 'anthropic', label: 'Anthropic · Claude', defaultModel: 'claude-3.5-sonnet' },
+  { value: 'google', label: 'Google · Gemini', defaultModel: 'gemini-2.0-flash' },
+  { value: 'custom', label: 'Custom Provider', defaultModel: 'custom-model' },
+];
+
+const DEFAULT_MODEL_PARAMETERS: PromptModelParameters = {
+  temperature: 0.7,
+  topP: 0.9,
+  maxTokens: 1024,
+};
+
+const generateModelId = () => {
+  if (typeof window !== 'undefined' && window.crypto && 'randomUUID' in window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
+  return `model-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+};
+
+interface PromptModelRetryConfig {
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+interface PromptModelParameters {
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+}
+
+interface PromptModelConfig {
+  id?: string;
+  provider: PromptModelProvider;
+  model: string;
+  label?: string;
+  disabled?: boolean;
+  parameters?: PromptModelParameters;
+  retry?: PromptModelRetryConfig;
+}
+
+interface PromptModelRoutingConfig {
+  mode?: 'parallel' | 'fallback';
+  onError?: 'abort' | 'continue';
+  concurrency?: number;
+  preferredOrder?: string[];
+}
+
 interface WorkflowStep {
   id?: string;
   name: string;
@@ -19,6 +70,8 @@ interface WorkflowStep {
       maxTokens?: number;
       model?: string;
     };
+    models?: PromptModelConfig[];
+    modelRouting?: PromptModelRoutingConfig;
     // CONDITION step configuration
     condition?: {
       field?: string;
@@ -175,11 +228,59 @@ export default function WorkflowEditor() {
       }
 
       const data = await workflowsAPI.getWorkflow(id);
+  const normalizedSteps = (data.steps || []).map((step: WorkflowStep) => {
+        if (step.type !== 'PROMPT') {
+          return step;
+        }
+
+        const existingModels = Array.isArray(step.config?.models) ? step.config.models : undefined;
+        const hydratedModels = (existingModels && existingModels.length > 0)
+          ? existingModels.map((model, modelIndex) => ({
+              ...model,
+              id: model.id || `${step.id || 'step'}-model-${modelIndex}`,
+            }))
+          : [
+              {
+                id: generateModelId(),
+                provider: 'openai',
+                model: step.config?.modelSettings?.model || MODEL_PROVIDER_OPTIONS[0].defaultModel,
+                parameters: {
+                  temperature: step.config?.modelSettings?.temperature ?? DEFAULT_MODEL_PARAMETERS.temperature,
+                  maxTokens: step.config?.modelSettings?.maxTokens ?? DEFAULT_MODEL_PARAMETERS.maxTokens,
+                  topP: DEFAULT_MODEL_PARAMETERS.topP,
+                },
+                retry: {
+                  maxAttempts: 2,
+                  baseDelayMs: 750,
+                  maxDelayMs: 5000,
+                },
+              },
+            ];
+
+        const preferredOrder = step.config?.modelRouting?.preferredOrder && step.config.modelRouting.preferredOrder.length > 0
+          ? step.config.modelRouting.preferredOrder
+          : hydratedModels.map((model) => model.id!).filter(Boolean);
+
+        return {
+          ...step,
+          config: {
+            ...step.config,
+            models: hydratedModels,
+            modelRouting: {
+              mode: step.config?.modelRouting?.mode ?? 'parallel',
+              onError: step.config?.modelRouting?.onError ?? 'continue',
+              concurrency: step.config?.modelRouting?.concurrency,
+              preferredOrder,
+            },
+          },
+        };
+      });
+
       setWorkflow({
         id: data.id,
         name: data.name,
         description: data.description || '',
-        steps: data.steps || [],
+        steps: normalizedSteps,
         isActive: data.isActive
       });
     } catch (err) {
@@ -317,6 +418,28 @@ export default function WorkflowEditor() {
         description: ''
       }
     };
+
+    if (newStep.type === 'PROMPT') {
+      const openAIOption = MODEL_PROVIDER_OPTIONS.find((option) => option.value === 'openai');
+      newStep.config.models = [
+        {
+          id: generateModelId(),
+          provider: openAIOption?.value ?? 'openai',
+          model: openAIOption?.defaultModel ?? 'gpt-4o-mini',
+          parameters: { ...DEFAULT_MODEL_PARAMETERS },
+          retry: {
+            maxAttempts: 2,
+            baseDelayMs: 750,
+            maxDelayMs: 5000,
+          },
+        },
+      ];
+      newStep.config.modelRouting = {
+        mode: 'parallel',
+        onError: 'continue',
+        preferredOrder: newStep.config.models.map((model) => model.id!).filter(Boolean),
+      };
+    }
     
     // For existing workflows, save the step immediately to the backend
     if (isEditing && id) {
@@ -392,6 +515,205 @@ export default function WorkflowEditor() {
         setError('Failed to save step changes. Please try again.');
       }
     }
+  };
+
+  const hydrateModelConfig = (model: PromptModelConfig): PromptModelConfig => ({
+    ...model,
+    id: model.id || generateModelId(),
+    parameters: {
+      ...DEFAULT_MODEL_PARAMETERS,
+      ...model.parameters,
+    },
+    retry: {
+      maxAttempts: model.retry?.maxAttempts ?? 2,
+      baseDelayMs: model.retry?.baseDelayMs ?? 750,
+      maxDelayMs: model.retry?.maxDelayMs ?? 5000,
+    },
+  });
+
+  const reconcilePreferredOrder = (order: string[] | undefined, models: PromptModelConfig[]): string[] => {
+    const modelIds = models.map((model) => model.id!).filter(Boolean);
+    const baseOrder = (order || []).filter((id) => modelIds.includes(id));
+    const missing = modelIds.filter((id) => !baseOrder.includes(id));
+    return [...baseOrder, ...missing];
+  };
+
+  const updatePromptStepModels = (
+    stepIndex: number,
+    transformer: (models: PromptModelConfig[]) => PromptModelConfig[],
+  ) => {
+    const step = workflow.steps[stepIndex];
+    if (!step || step.type !== 'PROMPT') {
+      return;
+    }
+
+    const currentModels = Array.isArray(step.config.models) ? step.config.models : [];
+    const transformed = transformer(currentModels).map(hydrateModelConfig);
+    if (transformed.length === 0) {
+      return;
+    }
+
+    const routing = step.config.modelRouting ?? {
+      mode: 'parallel',
+      onError: 'continue',
+    };
+
+    const preferredOrder = transformed.map((model) => model.id!).filter(Boolean);
+
+    updateStep(stepIndex, {
+      config: {
+        ...step.config,
+        models: transformed,
+        modelRouting: {
+          ...routing,
+          preferredOrder,
+        },
+      },
+    });
+  };
+
+  const updatePromptStepRouting = (
+    stepIndex: number,
+    updates: Partial<PromptModelRoutingConfig>,
+  ) => {
+    const step = workflow.steps[stepIndex];
+    if (!step || step.type !== 'PROMPT') {
+      return;
+    }
+
+    const currentModels = Array.isArray(step.config.models) ? step.config.models.map(hydrateModelConfig) : [];
+    if (currentModels.length === 0) {
+      return;
+    }
+
+    const routing = step.config.modelRouting ?? {
+      mode: 'parallel',
+      onError: 'continue',
+    };
+
+    const nextRouting = {
+      ...routing,
+      ...updates,
+    };
+
+    nextRouting.preferredOrder = reconcilePreferredOrder(nextRouting.preferredOrder, currentModels);
+
+    updateStep(stepIndex, {
+      config: {
+        ...step.config,
+        models: currentModels,
+        modelRouting: nextRouting,
+      },
+    });
+  };
+
+  const addModelToStep = (stepIndex: number) => {
+    const providerOption = MODEL_PROVIDER_OPTIONS[0];
+    updatePromptStepModels(stepIndex, (models) => [
+      ...models,
+      {
+        id: generateModelId(),
+        provider: providerOption.value,
+        model: providerOption.defaultModel,
+        parameters: { ...DEFAULT_MODEL_PARAMETERS },
+        retry: {
+          maxAttempts: 2,
+          baseDelayMs: 750,
+          maxDelayMs: 5000,
+        },
+      },
+    ]);
+  };
+
+  const removeModelFromStep = (stepIndex: number, modelId: string) => {
+    updatePromptStepModels(stepIndex, (models) => {
+      if (models.length <= 1) {
+        return models;
+      }
+      return models.filter((model) => model.id !== modelId);
+    });
+  };
+
+  const moveModelInStep = (stepIndex: number, modelId: string, direction: 'up' | 'down') => {
+    updatePromptStepModels(stepIndex, (models) => {
+      const currentIndex = models.findIndex((model) => model.id === modelId);
+      if (currentIndex === -1) {
+        return models;
+      }
+
+      const targetIndex = direction === 'up'
+        ? Math.max(0, currentIndex - 1)
+        : Math.min(models.length - 1, currentIndex + 1);
+
+      if (currentIndex === targetIndex) {
+        return models;
+      }
+
+      const reordered = [...models];
+      const [moved] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, moved);
+      return reordered;
+    });
+  };
+
+  const updateModelConfig = (
+    stepIndex: number,
+    modelId: string,
+    updates: Partial<PromptModelConfig>,
+  ) => {
+    updatePromptStepModels(stepIndex, (models) =>
+      models.map((model) =>
+        model.id === modelId
+          ? {
+              ...model,
+              ...updates,
+            }
+          : model,
+      ),
+    );
+  };
+
+  const updateModelParameters = (
+    stepIndex: number,
+    modelId: string,
+    parameterUpdates: Partial<PromptModelConfig['parameters']>,
+  ) => {
+    updatePromptStepModels(stepIndex, (models) =>
+      models.map((model) =>
+        model.id === modelId
+          ? {
+              ...model,
+              parameters: {
+                ...DEFAULT_MODEL_PARAMETERS,
+                ...model.parameters,
+                ...parameterUpdates,
+              },
+            }
+          : model,
+      ),
+    );
+  };
+
+  const updateModelRetry = (
+    stepIndex: number,
+    modelId: string,
+    retryUpdates: Partial<PromptModelConfig['retry']>,
+  ) => {
+    updatePromptStepModels(stepIndex, (models) =>
+      models.map((model) =>
+        model.id === modelId
+          ? {
+              ...model,
+              retry: {
+                maxAttempts: model.retry?.maxAttempts ?? 2,
+                baseDelayMs: model.retry?.baseDelayMs ?? 750,
+                maxDelayMs: model.retry?.maxDelayMs ?? 5000,
+                ...retryUpdates,
+              },
+            }
+          : model,
+      ),
+    );
   };
 
   if (loading) {
@@ -734,73 +1056,287 @@ export default function WorkflowEditor() {
                         </div>
                       )}
 
-                      {/* Model settings (common for both existing and inline prompts) */}
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Temperature
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max="2"
-                            step="0.1"
-                            value={step.config.modelSettings?.temperature || 0.7}
-                            onChange={(e) => updateStep(index, {
-                              config: {
-                                ...step.config,
-                                modelSettings: {
-                                  ...step.config.modelSettings,
-                                  temperature: parseFloat(e.target.value)
-                                }
-                              }
-                            })}
-                            className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Max Tokens
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="4000"
-                            value={step.config.modelSettings?.maxTokens || 1000}
-                            onChange={(e) => updateStep(index, {
-                              config: {
-                                ...step.config,
-                                modelSettings: {
-                                  ...step.config.modelSettings,
-                                  maxTokens: parseInt(e.target.value)
-                                }
-                              }
-                            })}
-                            className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Model
-                          </label>
-                          <select
-                            value={step.config.modelSettings?.model || 'gpt-3.5-turbo'}
-                            onChange={(e) => updateStep(index, {
-                              config: {
-                                ...step.config,
-                                modelSettings: {
-                                  ...step.config.modelSettings,
-                                  model: e.target.value
-                                }
-                              }
-                            })}
-                            className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                      {/* Ensemble model configuration */}
+                      <div className="border-t pt-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-medium text-gray-900">Model Ensemble</h5>
+                          <button
+                            type="button"
+                            onClick={() => addModelToStep(index)}
+                            className="text-xs font-medium text-purple-700 hover:text-purple-900"
                           >
-                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                            <option value="gpt-4">GPT-4</option>
-                            <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-                            <option value="claude-3-haiku">Claude 3 Haiku</option>
-                          </select>
+                            + Add model
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-600">
+                          Configure one or more models to execute for this prompt. Use fallback mode to try providers in order, or run in parallel.
+                        </p>
+
+                        <div className="space-y-3">
+                          {(step.config.models || []).map((model, modelIdx) => {
+                            const providerOption = MODEL_PROVIDER_OPTIONS.find((option) => option.value === model.provider);
+                            const providerLabel = providerOption?.label || 'Provider';
+                            const modelsCount = step.config.models?.length || 0;
+
+                            return (
+                              <div key={model.id || modelIdx} className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-3">
+                                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Provider</label>
+                                      <select
+                                        value={model.provider}
+                                        onChange={(e) => {
+                                          const nextProvider = e.target.value as PromptModelProvider;
+                                          const nextDefaultModel = MODEL_PROVIDER_OPTIONS.find((option) => option.value === nextProvider)?.defaultModel || model.model;
+                                          updateModelConfig(index, model.id!, {
+                                            provider: nextProvider,
+                                            model: nextDefaultModel,
+                                          });
+                                        }}
+                                        className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                      >
+                                        {MODEL_PROVIDER_OPTIONS.map((option) => (
+                                          <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Model name</label>
+                                      <input
+                                        type="text"
+                                        value={model.model}
+                                        onChange={(e) => updateModelConfig(index, model.id!, { model: e.target.value })}
+                                        className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                        placeholder={providerOption?.defaultModel || 'model-id'}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Display label</label>
+                                      <input
+                                        type="text"
+                                        value={model.label || ''}
+                                        onChange={(e) => updateModelConfig(index, model.id!, { label: e.target.value })}
+                                        className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                        placeholder={`${providerLabel} output`}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-start gap-2 md:flex-col md:items-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => moveModelInStep(index, model.id!, 'up')}
+                                      disabled={modelIdx === 0}
+                                      className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                                    >
+                                      ↑ Move up
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveModelInStep(index, model.id!, 'down')}
+                                      disabled={modelIdx === modelsCount - 1}
+                                      className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                                    >
+                                      ↓ Move down
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeModelFromStep(index, model.id!)}
+                                      disabled={modelsCount <= 1}
+                                      className="text-xs text-red-600 hover:text-red-700 disabled:opacity-40"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Temperature</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="2"
+                                      step="0.05"
+                                      value={model.parameters?.temperature ?? DEFAULT_MODEL_PARAMETERS.temperature}
+                                      onChange={(e) => {
+                                        const next = parseFloat(e.target.value);
+                                        updateModelParameters(index, model.id!, {
+                                          temperature: Number.isFinite(next) ? next : undefined,
+                                        });
+                                      }}
+                                      className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Top P</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="1"
+                                      step="0.05"
+                                      value={model.parameters?.topP ?? DEFAULT_MODEL_PARAMETERS.topP}
+                                      onChange={(e) => {
+                                        const next = parseFloat(e.target.value);
+                                        updateModelParameters(index, model.id!, {
+                                          topP: Number.isFinite(next) ? next : undefined,
+                                        });
+                                      }}
+                                      className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Max tokens</label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="4000"
+                                      value={model.parameters?.maxTokens ?? DEFAULT_MODEL_PARAMETERS.maxTokens}
+                                      onChange={(e) => {
+                                        const next = parseInt(e.target.value, 10);
+                                        updateModelParameters(index, model.id!, {
+                                          maxTokens: Number.isFinite(next) ? next : undefined,
+                                        });
+                                      }}
+                                      className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Retry attempts</label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="5"
+                                      value={model.retry?.maxAttempts ?? 2}
+                                      onChange={(e) => {
+                                        const next = parseInt(e.target.value, 10);
+                                        updateModelRetry(index, model.id!, {
+                                          maxAttempts: Number.isFinite(next) ? next : undefined,
+                                        });
+                                      }}
+                                      className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Base delay (ms)</label>
+                                    <input
+                                      type="number"
+                                      min="100"
+                                      step="50"
+                                      value={model.retry?.baseDelayMs ?? 750}
+                                      onChange={(e) => {
+                                        const next = parseInt(e.target.value, 10);
+                                        updateModelRetry(index, model.id!, {
+                                          baseDelayMs: Number.isFinite(next) ? next : undefined,
+                                        });
+                                      }}
+                                      className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Max delay (ms)</label>
+                                    <input
+                                      type="number"
+                                      min="100"
+                                      step="50"
+                                      value={model.retry?.maxDelayMs ?? 5000}
+                                      onChange={(e) => {
+                                        const next = parseInt(e.target.value, 10);
+                                        updateModelRetry(index, model.id!, {
+                                          maxDelayMs: Number.isFinite(next) ? next : undefined,
+                                        });
+                                      }}
+                                      className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <label className="flex items-center text-xs text-gray-600">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(model.disabled)}
+                                      onChange={(e) => updateModelConfig(index, model.id!, { disabled: e.target.checked })}
+                                      className="mr-2"
+                                    />
+                                    Disable this model during execution
+                                  </label>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="border-t pt-4 space-y-3">
+                          <h6 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Routing Strategy</h6>
+                          <div className="flex flex-wrap gap-4 text-xs text-gray-700">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name={`modelRoutingMode-${index}`}
+                                value="parallel"
+                                checked={(step.config.modelRouting?.mode || 'parallel') === 'parallel'}
+                                onChange={() => updatePromptStepRouting(index, { mode: 'parallel' })}
+                              />
+                              Run all models in parallel
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name={`modelRoutingMode-${index}`}
+                                value="fallback"
+                                checked={step.config.modelRouting?.mode === 'fallback'}
+                                onChange={() => updatePromptStepRouting(index, { mode: 'fallback' })}
+                              />
+                              Fallback through models in order
+                            </label>
+                          </div>
+
+                          {(step.config.modelRouting?.mode || 'parallel') === 'parallel' ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Parallelism limit</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={(step.config.models || []).length || 1}
+                                  value={step.config.modelRouting?.concurrency || (step.config.models || []).length || 1}
+                                  onChange={(e) => {
+                                    const next = parseInt(e.target.value, 10);
+                                    updatePromptStepRouting(index, {
+                                      concurrency: Number.isFinite(next) ? next : undefined,
+                                    });
+                                  }}
+                                  className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                />
+                                <p className="text-[11px] text-gray-500 mt-1">
+                                  Limit how many models run at once (default runs all concurrently).
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-gray-500">
+                              Models will run one at a time in the order shown above. Move cards to rearrange fallback priority.
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">On error</label>
+                            <select
+                              value={step.config.modelRouting?.onError || 'continue'}
+                              onChange={(e) => updatePromptStepRouting(index, { onError: e.target.value as 'abort' | 'continue' })}
+                              className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                            >
+                              <option value="continue">Continue with available responses</option>
+                              <option value="abort">Abort the step if models fail</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
 
