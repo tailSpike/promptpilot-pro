@@ -178,12 +178,12 @@ describe('PromptList sharing experiences', () => {
       expect(screen.getByText('Marketing')).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole('button', { name: /share library/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('share-library-button')).not.toBeInTheDocument();
 
     await user.click(screen.getByText('Marketing'));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /share library/i })).toBeInTheDocument();
+      expect(screen.getByTestId('share-library-button')).toBeInTheDocument();
     });
   });
 
