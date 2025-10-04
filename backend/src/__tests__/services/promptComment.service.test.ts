@@ -1,6 +1,7 @@
 import prisma from '../../lib/prisma';
 import { PromptCommentService } from '../../services/promptComment.service';
 import { AnalyticsService, type AnalyticsEvent } from '../../services/analytics.service';
+import { NotificationService, type CommentCreatedNotification } from '../../services/notification.service';
 
 describe('PromptCommentService', () => {
   let ownerId: string;
@@ -10,9 +11,9 @@ describe('PromptCommentService', () => {
   let promptId: string;
 
   const analyticsEvents: AnalyticsEvent[] = [];
-  const consoleCalls: unknown[][] = [];
+  const notificationCalls: CommentCreatedNotification[] = [];
   let analyticsSpy: jest.SpyInstance;
-  let consoleSpy: jest.SpyInstance;
+  let notificationSpy: jest.SpyInstance;
 
   beforeAll(async () => {
     const owner = await prisma.user.create({
@@ -74,18 +75,20 @@ describe('PromptCommentService', () => {
 
   beforeEach(() => {
     analyticsEvents.length = 0;
-    consoleCalls.length = 0;
+    notificationCalls.length = 0;
     analyticsSpy = jest.spyOn(AnalyticsService, 'track').mockImplementation(async (event) => {
       analyticsEvents.push(event);
     });
-    consoleSpy = jest.spyOn(console, 'info').mockImplementation((...args: unknown[]) => {
-      consoleCalls.push(args);
-    });
+    notificationSpy = jest
+      .spyOn(NotificationService, 'emitPromptCommentCreated')
+      .mockImplementation((payload: CommentCreatedNotification) => {
+        notificationCalls.push(payload);
+      });
   });
 
   afterEach(async () => {
     analyticsSpy?.mockRestore();
-    consoleSpy?.mockRestore();
+    notificationSpy?.mockRestore();
     await prisma.auditLog.deleteMany({ where: { targetId: promptId } });
     await prisma.promptComment.deleteMany({ where: { promptId } });
   });
@@ -152,13 +155,10 @@ describe('PromptCommentService', () => {
       });
     }
 
-    const notificationCall = consoleCalls.find(
-      ([label, eventName]) => label === '[notification]' && eventName === 'comment.created',
-    );
+    const notificationCall = notificationCalls[0];
     expect(notificationCall).toBeDefined();
     if (notificationCall) {
-      const payload = typeof notificationCall[2] === 'string' ? JSON.parse(notificationCall[2] as string) : notificationCall[2];
-      expect(payload).toMatchObject({ ownerId, promptId, commentId: comment.id });
+      expect(notificationCall).toMatchObject({ ownerId, promptId, commentId: comment.id });
     }
   });
 

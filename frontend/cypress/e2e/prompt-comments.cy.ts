@@ -1,5 +1,7 @@
 /// <reference types="cypress" />
 
+import { loginAndVisit, type AuthSession } from '../support/authHelpers';
+
 function sanitiseBody(raw: string) {
   return raw
     .trim()
@@ -18,43 +20,14 @@ describe('Prompt comment collaboration', () => {
   const outsiderEmail = `outsider-${Date.now()}@example.com`;
   const password = 'CommentSpec!123';
 
-  let ownerAuth: { token: string; user: { id: string; email: string; name: string } };
-  let reviewerAuth: { token: string; user: { id: string; email: string; name: string } };
-  let outsiderAuth: { token: string; user: { id: string; email: string; name: string } };
+  let ownerAuth: AuthSession;
+  let reviewerAuth: AuthSession;
+  let outsiderAuth: AuthSession;
   let folderId: string;
   let promptId: string;
   let uiPromptId: string | undefined;
   let uiPromptPath: string | undefined;
   const sharedLibraryName = 'Comment Test Library';
-
-  const visitAs = (auth: { token: string; user: { id: string; email: string; name: string } }, path: string) => {
-    cy.clearCookies();
-    cy.clearLocalStorage();
-
-    return cy
-      .request('POST', `${apiUrl}/api/auth/login`, {
-        email: auth.user.email,
-        password,
-      })
-      .then((response) => {
-        const refreshedAuth = response.body as typeof auth;
-
-        if (auth.user.email === ownerEmail) {
-          ownerAuth = refreshedAuth;
-        } else if (auth.user.email === reviewerEmail) {
-          reviewerAuth = refreshedAuth;
-        } else if (auth.user.email === outsiderEmail) {
-          outsiderAuth = refreshedAuth;
-        }
-
-        return cy.visit(path, {
-          onBeforeLoad(win) {
-            win.localStorage.setItem('token', refreshedAuth.token);
-            win.localStorage.setItem('user', JSON.stringify(refreshedAuth.user));
-          },
-        });
-      });
-  };
 
   before(() => {
     cy.task('e2e:ensureServers');
@@ -156,7 +129,15 @@ describe('Prompt comment collaboration', () => {
     const reviewerComment = `Reviewer feedback cycle ${uniqueSuffix}`;
     const ownerReply = `Owner acknowledgement ${uniqueSuffix}`;
 
-  visitAs(ownerAuth, '/prompts/new');
+    loginAndVisit({
+      apiUrl,
+      email: ownerAuth.user.email,
+      password,
+      path: '/prompts/new',
+      onRefresh: (auth) => {
+        ownerAuth = auth;
+      },
+    });
     cy.url({ timeout: 15000 }).should('include', '/prompts/new');
   cy.contains('h1', 'Create New Prompt', { timeout: 20000 }).should('be.visible');
 
@@ -194,7 +175,15 @@ describe('Prompt comment collaboration', () => {
     cy.contains('h2', 'Feedback', { timeout: 10000 }).should('be.visible');
     cy.contains('No feedback yet', { timeout: 10000 }).should('be.visible');
 
-  visitAs(reviewerAuth, '/prompts');
+    loginAndVisit({
+      apiUrl,
+      email: reviewerAuth.user.email,
+      password,
+      path: '/prompts',
+      onRefresh: (auth) => {
+        reviewerAuth = auth;
+      },
+    });
 
     cy.get('[data-testid="view-mode-shared"]', { timeout: 15000 }).click();
     cy.contains('[data-testid="shared-library-list-item"]', sharedLibraryName, { timeout: 15000 }).click();
@@ -227,7 +216,15 @@ describe('Prompt comment collaboration', () => {
 
     cy.then(() => {
       expect(uiPromptPath, 'prompt path to be captured from owner flow').to.be.a('string');
-      return visitAs(ownerAuth, uiPromptPath!);
+      return loginAndVisit({
+        apiUrl,
+        email: ownerAuth.user.email,
+        password,
+        path: uiPromptPath!,
+        onRefresh: (auth) => {
+          ownerAuth = auth;
+        },
+      });
     });
 
     cy.contains('p', reviewerComment, { timeout: 10000 }).should('be.visible');
@@ -250,7 +247,15 @@ describe('Prompt comment collaboration', () => {
 
     cy.then(() => {
       expect(uiPromptPath, 'prompt path for reviewer recheck').to.be.a('string');
-      return visitAs(reviewerAuth, uiPromptPath!);
+      return loginAndVisit({
+        apiUrl,
+        email: reviewerAuth.user.email,
+        password,
+        path: uiPromptPath!,
+        onRefresh: (auth) => {
+          reviewerAuth = auth;
+        },
+      });
     });
 
     cy.contains('p', reviewerComment, { timeout: 10000 }).should('be.visible');

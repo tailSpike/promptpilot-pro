@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { LibraryShareService } from './libraryShare.service';
 import { AuditService } from './audit.service';
 import { AnalyticsService } from './analytics.service';
+import { NotificationService } from './notification.service';
 
 const DEFAULT_WORKSPACE_ID = process.env.DEFAULT_WORKSPACE_ID ?? 'workspace-default';
 
@@ -174,13 +175,11 @@ export class PromptCommentService {
     });
 
     if (userId !== ownerId) {
-      // Fire-and-forget toast notification hook stub. In a real implementation this
-      // would integrate with the notification service.
-      console.info('[notification]', 'comment.created', JSON.stringify({
+      NotificationService.emitPromptCommentCreated({
         ownerId,
         promptId,
         commentId: comment.id,
-      }));
+      });
     }
 
     return comment;

@@ -216,12 +216,19 @@ export default function PromptDetail() {
       return;
     }
 
-    const latestTimestamp = comments.reduce<number>((latest, comment) => {
-      const createdAt = new Date(comment.createdAt).getTime();
-      return Number.isFinite(createdAt) && createdAt > latest ? createdAt : latest;
-    }, 0);
+    const latestTimestampCandidate = comments[0]
+      ? new Date(comments[0].createdAt).getTime()
+      : 0;
+    const latestTimestamp = Number.isFinite(latestTimestampCandidate)
+      ? latestTimestampCandidate
+      : comments.reduce<number>((latest, comment) => {
+        const createdAt = new Date(comment.createdAt).getTime();
+        return Number.isFinite(createdAt) && createdAt > latest ? createdAt : latest;
+      }, 0);
 
     if (user.id === prompt.user.id) {
+      // Assumption: API responses return comments sorted by createdAt descending (newest first),
+      // so this find operation yields the freshest collaborator comment efficiently.
       const latestNonOwnerComment = comments.find((comment) => comment.author.id !== user.id);
 
       if (latestNonOwnerComment) {
