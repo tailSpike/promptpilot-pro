@@ -5,6 +5,7 @@ import { promptsAPI, promptCommentsAPI } from '../services/api';
 import type { Prompt, PromptComment, PromptExecution } from '../types';
 import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import { useAuth } from '../hooks/useAuth';
+import { DEFAULT_TOAST_DISMISS_MS } from '../constants/notifications';
 
 interface ApiError extends Error {
   response?: {
@@ -15,6 +16,68 @@ interface ApiError extends Error {
       };
     };
   };
+}
+
+export const PROMPT_FEEDBACK_LAST_SEEN_STORAGE_PREFIX = 'promptpilot.feedback.lastSeen';
+
+type PromptFeedbackToast = {
+  message: string;
+};
+
+function getStorageKey(userId: string): string {
+  return `${PROMPT_FEEDBACK_LAST_SEEN_STORAGE_PREFIX}.${userId}`;
+}
+
+function readLastSeenMap(userId: string): Record<string, number> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getStorageKey(userId));
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, number | string>;
+    return Object.entries(parsed).reduce<Record<string, number>>((accumulator, [promptId, value]) => {
+      const numericValue = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+      if (Number.isFinite(numericValue)) {
+        accumulator[promptId] = numericValue;
+      }
+      return accumulator;
+    }, {});
+  } catch (error) {
+    console.warn('Failed to parse feedback last-seen map', error);
+    return {};
+  }
+}
+
+function getLastSeenTimestamp(userId: string, promptId: string): number | null {
+  const map = readLastSeenMap(userId);
+  return map[promptId] ?? null;
+}
+
+function updateLastSeenTimestamp(userId: string, promptId: string, timestamp: number) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const safeTimestamp = Number.isFinite(timestamp) ? timestamp : Date.now();
+  const map = readLastSeenMap(userId);
+  const current = map[promptId];
+
+  if (current !== undefined && current >= safeTimestamp) {
+    return;
+  }
+
+  map[promptId] = safeTimestamp;
+
+  try {
+    window.localStorage.setItem(getStorageKey(userId), JSON.stringify(map));
+  } catch (error) {
+    console.warn('Failed to persist feedback last-seen timestamp', error);
+  }
 }
 
 export default function PromptDetail() {
@@ -35,6 +98,8 @@ export default function PromptDetail() {
   const [commentValidationError, setCommentValidationError] = useState<string | null>(null);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [deletingCommentIds, setDeletingCommentIds] = useState<Set<string>>(new Set());
+  const [hasLoadedComments, setHasLoadedComments] = useState(false);
+  const [toast, setToast] = useState<PromptFeedbackToast | null>(null);
 
   const commentsEnabled = useMemo(() => isEnabled('collaboration.comments'), [isEnabled]);
 
@@ -73,6 +138,7 @@ export default function PromptDetail() {
       setCommentsLoading(true);
       setCommentsError(null);
       setCommentAccessMessage(null);
+      setHasLoadedComments(false);
 
       const data = await promptCommentsAPI.list(id);
       setComments(data.comments);
@@ -91,6 +157,7 @@ export default function PromptDetail() {
       setComments([]);
     } finally {
       setCommentsLoading(false);
+      setHasLoadedComments(true);
     }
   }, [id]);
 
@@ -111,6 +178,70 @@ export default function PromptDetail() {
 
     void loadComments();
   }, [commentsEnabled, flagsLoading, loadComments, prompt]);
+
+  useEffect(() => {
+    if (!toast || typeof window === 'undefined') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, DEFAULT_TOAST_DISMISS_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (
+      !prompt ||
+      !user ||
+      !hasLoadedComments ||
+      commentsLoading ||
+      !commentsEnabled ||
+      commentAccessMessage
+    ) {
+      return;
+    }
+
+    if (!id) {
+      return;
+    }
+
+    const lastSeenAt = getLastSeenTimestamp(user.id, prompt.id) ?? 0;
+
+    if (comments.length === 0) {
+      updateLastSeenTimestamp(user.id, prompt.id, Date.now());
+      return;
+    }
+
+    const latestTimestamp = comments.reduce<number>((latest, comment) => {
+      const createdAt = new Date(comment.createdAt).getTime();
+      return Number.isFinite(createdAt) && createdAt > latest ? createdAt : latest;
+    }, 0);
+
+    if (user.id === prompt.user.id) {
+      const latestNonOwnerComment = comments.find((comment) => comment.author.id !== user.id);
+
+      if (latestNonOwnerComment) {
+        const latestNonOwnerTimestamp = new Date(latestNonOwnerComment.createdAt).getTime();
+        if (Number.isFinite(latestNonOwnerTimestamp) && latestNonOwnerTimestamp > lastSeenAt && !toast) {
+          const libraryLabel = prompt.folder?.name ?? 'this prompt';
+          setToast({ message: `New feedback on ${libraryLabel}/${prompt.name}` });
+        }
+      }
+
+      if (Number.isFinite(latestTimestamp) && latestTimestamp > lastSeenAt) {
+        updateLastSeenTimestamp(user.id, prompt.id, Math.max(latestTimestamp, Date.now()));
+      }
+      return;
+    }
+
+    if (Number.isFinite(latestTimestamp) && latestTimestamp > lastSeenAt) {
+      updateLastSeenTimestamp(user.id, prompt.id, latestTimestamp);
+    }
+  }, [commentAccessMessage, comments, commentsEnabled, commentsLoading, hasLoadedComments, id, prompt, toast, user]);
 
   const handleCommentSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -331,6 +462,18 @@ export default function PromptDetail() {
   return (
     <div className="px-4 py-6 sm:px-0">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        {toast && (
+          <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-4">
+            <div
+              className="w-full max-w-md rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-900 shadow"
+              data-testid="prompt-detail-toast"
+              role="status"
+              aria-live="polite"
+            >
+              {toast.message}
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <Link to="/prompts" className="text-sm font-medium text-blue-600 hover:text-blue-700">

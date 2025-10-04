@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import PromptDetail from '../../components/PromptDetail';
+import PromptDetail, { PROMPT_FEEDBACK_LAST_SEEN_STORAGE_PREFIX } from '../../components/PromptDetail';
 import type { Prompt, PromptComment } from '../../types';
 
 vi.mock('../../hooks/useAuth', () => ({
@@ -116,6 +116,7 @@ const viewerComment: PromptComment = {
 
 describe('PromptDetail', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.clearAllMocks();
     featureFlagsMock.flags['collaboration.comments'] = true;
 
@@ -143,6 +144,12 @@ describe('PromptDetail', () => {
     await waitFor(() => {
       expect(promptsAPI.getPrompt).toHaveBeenCalledWith('prompt-1');
       expect(promptCommentsAPI.list).toHaveBeenCalledWith('prompt-1');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('prompt-detail-toast')).toHaveTextContent(
+        'New feedback on Onboarding/Welcome Email',
+      );
     });
 
     expect(screen.getByRole('heading', { name: 'Welcome Email' })).toBeInTheDocument();
@@ -183,5 +190,23 @@ describe('PromptDetail', () => {
     ).toBeInTheDocument();
 
     featureFlagsMock.flags['collaboration.comments'] = true;
+  });
+
+  it('suppresses the toast when feedback has already been acknowledged', async () => {
+    const storageKey = `${PROMPT_FEEDBACK_LAST_SEEN_STORAGE_PREFIX}.user-owner`;
+    const futureTimestamp = new Date('2025-10-02T12:30:00.000Z').getTime();
+    window.localStorage.setItem(storageKey, JSON.stringify({ 'prompt-1': futureTimestamp }));
+
+    renderWithRouter();
+
+    await waitFor(() => {
+      expect(promptsAPI.getPrompt).toHaveBeenCalledWith('prompt-1');
+    });
+
+    await waitFor(() => {
+      expect(promptCommentsAPI.list).toHaveBeenCalledWith('prompt-1');
+    });
+
+    expect(screen.queryByTestId('prompt-detail-toast')).not.toBeInTheDocument();
   });
 });
