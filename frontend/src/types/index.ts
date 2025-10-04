@@ -44,6 +44,7 @@ export interface Prompt {
   _count?: {
     executions: number;
   };
+  executions?: PromptExecution[];
 }
 
 export interface PromptExecution {
@@ -52,6 +53,26 @@ export interface PromptExecution {
   output: string;
   model: string;
   createdAt: string;
+}
+
+export interface PromptCommentAuthor {
+  id: string;
+  name?: string;
+  email: string;
+}
+
+export interface PromptComment {
+  id: string;
+  promptId: string;
+  libraryId: string;
+  body: string;
+  createdAt: string;
+  author: PromptCommentAuthor;
+}
+
+export interface PromptCommentsResult {
+  comments: PromptComment[];
+  libraryId: string;
 }
 
 export interface CreatePromptData {

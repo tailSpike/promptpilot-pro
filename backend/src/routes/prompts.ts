@@ -5,6 +5,7 @@ import { VersionService, VersionChangeType } from '../services/versionService';
 import { PromptCommentService } from '../services/promptComment.service';
 import { requireFeature } from '../middleware/featureFlag';
 import { COLLABORATION_COMMENTS_FLAG } from '../lib/featureFlags';
+import { LibraryShareService } from '../services/libraryShare.service';
 
 const router = express.Router();
 
@@ -309,21 +310,22 @@ router.get('/:id', async (req, res) => {
     const { id } = req.params;
     const userId = req.user!.id;
 
-    const prompt = await prisma.prompt.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId }, // User's own prompt
-          { isPublic: true } // Public prompt
-        ]
-      },
+    const prompt = await prisma.prompt.findUnique({
+      where: { id },
       include: {
         user: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
+        },
+        folder: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
         },
         executions: {
           orderBy: { createdAt: 'desc' },
@@ -333,23 +335,48 @@ router.get('/:id', async (req, res) => {
             input: true,
             output: true,
             model: true,
-            createdAt: true
-          }
-        }
-      }
+            createdAt: true,
+          },
+        },
+      },
     });
 
     if (!prompt) {
-      return res.status(404).json({ 
-        error: { message: 'Prompt not found' } 
+      return res.status(404).json({
+        error: { message: 'Prompt not found' },
       });
     }
 
-    res.json({ prompt });
+    const isOwner = prompt.userId === userId;
+    const isPublic = prompt.isPublic;
+    let hasSharedAccess = false;
+
+    if (!isOwner && !isPublic && prompt.folderId) {
+      try {
+        hasSharedAccess = await LibraryShareService.userHasViewerAccess(userId, prompt.folderId);
+      } catch (shareError) {
+        console.error('Failed to verify shared prompt access:', shareError);
+      }
+    }
+
+    if (!isOwner && !isPublic && !hasSharedAccess) {
+      return res.status(404).json({
+        error: { message: 'Prompt not found' },
+      });
+    }
+
+    const accessScope = isOwner ? 'owned' : hasSharedAccess ? 'shared' : 'public';
+
+    res.json({
+      prompt: {
+        ...prompt,
+        accessScope,
+      },
+    });
   } catch (error) {
     console.error('Get prompt error:', error);
-    res.status(500).json({ 
-      error: { message: 'Failed to fetch prompt' } 
+    res.status(500).json({
+      error: { message: 'Failed to fetch prompt' },
     });
   }
 });

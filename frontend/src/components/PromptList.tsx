@@ -424,20 +424,25 @@ export default function PromptList() {
           </div>
         </div>
 
-        {options?.allowActions !== false && (
-          <div className="ml-4 flex items-center space-x-2">
-            <Link to={`/prompts/${prompt.id}/edit`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
-              Edit
-            </Link>
-            <button
-              type="button"
-              onClick={() => void handleDelete(prompt.id)}
-              className="text-sm font-medium text-red-600 hover:text-red-800"
-            >
-              Delete
-            </button>
-          </div>
-        )}
+        <div className="ml-4 flex items-center space-x-2">
+          <Link to={`/prompts/${prompt.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
+            View
+          </Link>
+          {options?.allowActions !== false && (
+            <>
+              <Link to={`/prompts/${prompt.id}/edit`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                Edit
+              </Link>
+              <button
+                type="button"
+                onClick={() => void handleDelete(prompt.id)}
+                className="text-sm font-medium text-red-600 hover:text-red-800"
+              >
+                Delete
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 rounded bg-gray-50 p-3">

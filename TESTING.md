@@ -13,6 +13,32 @@ This document outlines the comprehensive testing strategy and CI/CD pipeline imp
 - **Workflow Preview Tests**: Sample data toggles, manual payload validation, warning handling, and end-to-end preview UX flows
 
 ### 🧪 E2E Test Suites
+#### Running Cypress locally without flakes
+
+The Cypress team explicitly recommends starting your web servers **outside** of Cypress and waiting for health checks before kicking off tests ([Testing Your App – Step 1](https://docs.cypress.io/app/end-to-end-testing/testing-your-app#Step-1-Start-your-server), [Best Practices – Web Servers](https://docs.cypress.io/app/core-concepts/best-practices#Web-Servers)). Our workflow follows that guidance with `start-server-and-test`, which blocks until both the API and UI respond with `200` status codes. A few handy scripts:
+
+```bash
+# One-off headless suite (builds, resets DB, starts servers, runs Cypress)
+npm run test:e2e
+
+# Run a single spec headlessly (any Cypress CLI flag is forwarded)
+npm run test:e2e -- --spec cypress/e2e/prompt-comments.cy.ts
+
+# Interactive debugging – launches backend (test DB), dev front-end, and Cypress open
+npm run test:e2e:open
+
+# Keep servers running for manual experimentation (run in its own terminal tab)
+npm run test:e2e:servers
+
+# With servers above running, execute a single spec (re-uses the shared servers)
+npm run cypress:run -- --spec cypress/e2e/prompt-comments.cy.ts
+```
+
+Notes:
+- `test:e2e` and `test:e2e:open` automatically wait up to three minutes for `http://127.0.0.1:3001/api/health` and `http://127.0.0.1:4173`/`5173` to respond (per the [CI boot sequence guidance](https://docs.cypress.io/app/continuous-integration/overview#Boot-your-server)).
+- Run `npm run prepare:e2e` if you need a fresh SQLite test database before spinning up `test:e2e:servers`.
+- When using `test:e2e:servers`, leave that terminal running; close with `Ctrl+C` once you are done. All Cypress invocations pick up the shared base URLs via `CYPRESS_baseUrl`/`CYPRESS_apiUrl`.
+- To tweak timeouts for especially slow local hardware, set `WAIT_ON_TIMEOUT` (milliseconds) before launching the scripts. The value is forwarded automatically to the orchestrator.
 
 ### 🔁 Retry Strategy for Flake Reduction
 - Cypress global retries are enabled via `retries.runMode = 2` and `retries.openMode = 1`.

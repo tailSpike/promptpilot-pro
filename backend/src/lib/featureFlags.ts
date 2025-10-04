@@ -6,6 +6,7 @@ export class FeatureDisabledError extends Error {
 }
 
 const NORMALISED_TRUE = new Set(['1', 'true', 'on', 'enabled', 'yes']);
+const DEFAULT_ENABLED_ENVS = new Set(['development', 'test', 'e2e']);
 
 export const COLLABORATION_SHARING_FLAG = 'collaboration.sharing';
 export const COLLABORATION_COMMENTS_FLAG = 'collaboration.comments';
@@ -27,12 +28,9 @@ export function isFeatureEnabled(flag: string): boolean {
   const rawValue = loader ? loader() : undefined;
 
   if (rawValue === undefined) {
-    // Default to enabled for development/test/e2e to keep walking skeleton usable
-    if (
-      process.env.NODE_ENV === 'development' ||
-      process.env.NODE_ENV === 'test' ||
-      process.env.NODE_ENV === 'e2e'
-    ) {
+    const env = normalise(process.env.NODE_ENV ?? '') ?? '';
+    // Default to enabled when running in dev/test/e2e or when NODE_ENV is not set (common in local tooling)
+    if (env === '' || DEFAULT_ENABLED_ENVS.has(env)) {
       return true;
     }
     return false;

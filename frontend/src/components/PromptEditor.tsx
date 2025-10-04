@@ -238,6 +238,7 @@ export default function PromptEditor() {
                 <input
                   type="text"
                   id="name"
+                  data-testid="prompt-name"
                   value={prompt.name || ''}
                   onChange={(e) => setPrompt(prev => ({ ...prev, name: e.target.value }))}
                   className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
@@ -252,6 +253,7 @@ export default function PromptEditor() {
                 </label>
                 <textarea
                   id="description"
+                  data-testid="prompt-description"
                   rows={3}
                   value={prompt.description || ''}
                   onChange={(e) => setPrompt(prev => ({ ...prev, description: e.target.value }))}

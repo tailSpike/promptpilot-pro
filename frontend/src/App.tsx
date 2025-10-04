@@ -8,6 +8,7 @@ import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import PromptEditor from './components/PromptEditor';
 import PromptList from './components/PromptList';
+import PromptDetail from './components/PromptDetail';
 import WorkflowList from './components/WorkflowList';
 import WorkflowEditor from './components/WorkflowEditor';
 import WorkflowDetail from './components/WorkflowDetail';
@@ -68,6 +69,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <PromptEditor />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/prompts/:id" element={
+              <ProtectedRoute>
+                <Layout>
+                  <PromptDetail />
                 </Layout>
               </ProtectedRoute>
             } />
