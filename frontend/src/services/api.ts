@@ -9,6 +9,8 @@ import type {
   SharedLibrarySummary,
   UserSummary,
   Prompt,
+  PromptComment,
+  PromptCommentsResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -22,6 +24,8 @@ const api = axios.create({
   },
   timeout: 10000, // 10 second timeout
 });
+
+const AUTH_REDIRECT_EXCLUSIONS = ['/api/auth/login', '/api/auth/register'];
 
 // Request interceptor to add auth token
 api.interceptors.request.use((config) => {
@@ -37,6 +41,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const requestUrl: string = error.config?.url ?? '';
+      const shouldSkipRedirect = AUTH_REDIRECT_EXCLUSIONS.some((endpoint) => requestUrl.endsWith(endpoint));
+
+      if (shouldSkipRedirect) {
+        return Promise.reject(error);
+      }
+
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
@@ -60,6 +71,8 @@ export type {
   PromptLibraryShare,
   SharedLibrarySummary,
   UserSummary,
+  PromptComment,
+  PromptCommentsResult,
 } from '../types';
 
 // Auth API
@@ -168,6 +181,22 @@ export const libraryShareAPI = {
   getLibraryPrompts: async (libraryId: string): Promise<{ prompts: Prompt[] }> => {
     const response = await api.get(`/api/libraries/${libraryId}/prompts`);
     return response.data;
+  },
+};
+
+export const promptCommentsAPI = {
+  list: async (promptId: string): Promise<PromptCommentsResult> => {
+    const response = await api.get(`/api/prompts/${promptId}/comments`);
+    return response.data;
+  },
+
+  create: async (promptId: string, body: string): Promise<PromptComment> => {
+    const response = await api.post(`/api/prompts/${promptId}/comments`, { body });
+    return response.data.comment;
+  },
+
+  delete: async (commentId: string): Promise<void> => {
+    await api.delete(`/api/comments/${commentId}`);
   },
 };
 

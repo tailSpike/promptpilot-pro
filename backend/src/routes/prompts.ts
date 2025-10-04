@@ -2,6 +2,10 @@ import express from 'express';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { VersionService, VersionChangeType } from '../services/versionService';
+import { PromptCommentService } from '../services/promptComment.service';
+import { requireFeature } from '../middleware/featureFlag';
+import { COLLABORATION_COMMENTS_FLAG } from '../lib/featureFlags';
+import { LibraryShareService } from '../services/libraryShare.service';
 
 const router = express.Router();
 
@@ -234,27 +238,94 @@ router.get('/', async (req, res) => {
   }
 });
 
+// List comments for a prompt
+router.get(
+  '/:id/comments',
+  requireFeature(COLLABORATION_COMMENTS_FLAG),
+  async (req, res) => {
+    try {
+      const promptId = req.params.id;
+      const userId = req.user!.id;
+
+      if (!promptId) {
+        return res.status(400).json({
+          error: { message: 'Prompt ID is required' },
+        });
+      }
+
+      const { comments, libraryId } = await PromptCommentService.listComments(promptId, userId);
+
+      res.json({
+        comments,
+        libraryId,
+      });
+    } catch (error) {
+      console.error('List prompt comments error:', error);
+      res.status(400).json({
+        error: {
+          message: error instanceof Error ? error.message : 'Failed to load comments',
+        },
+      });
+    }
+  },
+);
+
+// Create a new comment on a prompt
+router.post(
+  '/:id/comments',
+  requireFeature(COLLABORATION_COMMENTS_FLAG),
+  async (req, res) => {
+    try {
+      const promptId = req.params.id;
+      const userId = req.user!.id;
+      const { body } = req.body as { body?: string };
+
+      if (!promptId) {
+        return res.status(400).json({
+          error: { message: 'Prompt ID is required' },
+        });
+      }
+
+      const comment = await PromptCommentService.createComment({
+        promptId,
+        userId,
+        body: body ?? '',
+      });
+
+      res.status(201).json({ comment });
+    } catch (error) {
+      console.error('Create prompt comment error:', error);
+      res.status(400).json({
+        error: {
+          message: error instanceof Error ? error.message : 'Failed to create comment',
+        },
+      });
+    }
+  },
+);
+
 // Get a specific prompt by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
 
-    const prompt = await prisma.prompt.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId }, // User's own prompt
-          { isPublic: true } // Public prompt
-        ]
-      },
+    const prompt = await prisma.prompt.findUnique({
+      where: { id },
       include: {
         user: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
+        },
+        folder: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
         },
         executions: {
           orderBy: { createdAt: 'desc' },
@@ -264,23 +335,48 @@ router.get('/:id', async (req, res) => {
             input: true,
             output: true,
             model: true,
-            createdAt: true
-          }
-        }
-      }
+            createdAt: true,
+          },
+        },
+      },
     });
 
     if (!prompt) {
-      return res.status(404).json({ 
-        error: { message: 'Prompt not found' } 
+      return res.status(404).json({
+        error: { message: 'Prompt not found' },
       });
     }
 
-    res.json({ prompt });
+    const isOwner = prompt.userId === userId;
+    const isPublic = prompt.isPublic;
+    let hasSharedAccess = false;
+
+    if (!isOwner && !isPublic && prompt.folderId) {
+      try {
+        hasSharedAccess = await LibraryShareService.userHasViewerAccess(userId, prompt.folderId);
+      } catch (shareError) {
+        console.error('Failed to verify shared prompt access:', shareError);
+      }
+    }
+
+    if (!isOwner && !isPublic && !hasSharedAccess) {
+      return res.status(404).json({
+        error: { message: 'Prompt not found' },
+      });
+    }
+
+    const accessScope = isOwner ? 'owned' : hasSharedAccess ? 'shared' : 'public';
+
+    res.json({
+      prompt: {
+        ...prompt,
+        accessScope,
+      },
+    });
   } catch (error) {
     console.error('Get prompt error:', error);
-    res.status(500).json({ 
-      error: { message: 'Failed to fetch prompt' } 
+    res.status(500).json({
+      error: { message: 'Failed to fetch prompt' },
     });
   }
 });

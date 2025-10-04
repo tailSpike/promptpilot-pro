@@ -69,10 +69,10 @@ describe('Prompt library sharing', () => {
     cy.clearLocalStorage();
     cy.clearCookies();
 
-    cy.intercept('GET', `${apiUrl}/api/feature-flags`).as('featureFlags');
-    cy.intercept('GET', `${apiUrl}/api/users/search*`).as('searchMembers');
-    cy.intercept('POST', `${apiUrl}/api/libraries/*/shares`).as('createShare');
-    cy.intercept('GET', `${apiUrl}/api/libraries/shared-with-me`).as('sharedWithMe');
+  cy.intercept('GET', '**/api/feature-flags').as('featureFlags');
+  cy.intercept('GET', '**/api/users/search*').as('searchMembers');
+  cy.intercept('POST', '**/api/libraries/*/shares').as('createShare');
+  cy.intercept('GET', '**/api/libraries/shared-with-me').as('sharedWithMe');
 
     cy.visit('/prompts', {
       onBeforeLoad: (win) => {
@@ -87,8 +87,8 @@ describe('Prompt library sharing', () => {
       .contains('[data-testid="folder-tree-item"]', 'Shared Campaign Library')
       .click();
 
-  cy.get('[data-testid="share-library-button"]', { timeout: 15000 }).should('be.visible').click();
-  cy.get('[data-testid="share-library-modal"]', { timeout: 10000 }).should('be.visible');
+    cy.get('[data-testid="share-library-button"]', { timeout: 15000 }).should('be.visible').click();
+    cy.get('[data-testid="share-library-modal"]', { timeout: 10000 }).should('be.visible');
 
     cy.get('input#share-search').type(inviteeEmail.slice(0, 6));
 

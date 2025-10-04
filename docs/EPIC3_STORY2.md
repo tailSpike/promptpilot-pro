@@ -96,6 +96,13 @@ Middleware verifies caller has viewer access through Story 1 share table.
 - **Integration:** Share invite → comment creation → ensure list API returns comment → delete → ensure hidden.
 - **E2E:** Cypress spec covering comment create/delete with optimistic UI.
 
+## 🧳 Manual Verification Checklist
+1. Sign in as a prompt owner, create a shared library, add a prompt to it, and share the library with a teammate.
+2. Visit the prompt detail page as the teammate and submit feedback via the Feedback panel.
+3. Switch back to the owner view of the same prompt and observe the in-app toast reading **“New feedback on ‹library/prompt›”**; the banner should fade automatically after a few seconds.
+4. Reply as the owner, confirm both comments render newest-first, and ensure only the reviewer comment still shows the delete action for the owner.
+5. Delete the reviewer comment as the owner and refresh to verify it no longer appears for either participant.
+
 ## 🚀 Rollout Checklist
 1. Ship behind `collaboration.comments` flag, enable internally.
 2. Collect usability notes from prompt authors, tweak empty state copy if needed.
