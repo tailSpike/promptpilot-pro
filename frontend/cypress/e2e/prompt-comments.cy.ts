@@ -231,6 +231,11 @@ describe('Prompt comment collaboration', () => {
     });
 
     cy.contains('p', reviewerComment, { timeout: 10000 }).should('be.visible');
+    cy.get('[data-testid="prompt-detail-toast"]', { timeout: 10000 })
+      .should('be.visible')
+      .and('contain', sharedLibraryName)
+      .and('contain', promptName);
+    cy.get('[data-testid="prompt-detail-toast"]', { timeout: 15000 }).should('not.exist');
   cy.intercept('POST', '**/api/prompts/**/comments').as('postOwnerComment');
 
     cy.get('textarea[placeholder="Leave feedback for collaborators..."]', { timeout: 10000 })
