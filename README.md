@@ -101,7 +101,20 @@ PORT=3001
 FRONTEND_URL="http://localhost:5173"
 CORS_ORIGIN="http://localhost:5173"
 FEATURE_FLAG_COLLABORATION_SHARING="on"   # Toggle library sharing skeleton
+
+# Multi-model provider credentials (leave blank to use simulated responses)
+OPENAI_API_KEY="sk-..."
+AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+AZURE_OPENAI_API_KEY="azr-..."
+AZURE_OPENAI_API_VERSION="2025-04-01-preview"
+ANTHROPIC_API_KEY="sk-ant-..."
+GEMINI_API_KEY="AIza..."
+
+# Control which providers are accepted in workflow steps
+ALLOWED_MODEL_PROVIDERS="openai,azure,anthropic,google,custom"
 ```
+
+If the provider keys are omitted the backend falls back to safe, simulated responses so builders can test the UI without contacting external APIs.
 
 **frontend/.env**
 ```

@@ -38,16 +38,17 @@ scripts/   # Cross-platform helper scripts
 ### 3.1 AI provider integration (OpenAI, Anthropic, Gemini)
 When automated discovery is blocked, direct contributors to the official provider onboarding flows below. PromptPilot Pro reads standard environment variables, so no additional UI forms are required.
 
-| Provider | Steps | Env variable | Official docs |
-|----------|-------|--------------|---------------|
+| Provider | Steps | Env variable(s) | Official docs |
+|----------|-------|-----------------|---------------|
 | **OpenAI (GPT‑4/5 family)** | 1. Visit the [API Keys dashboard](https://platform.openai.com/api-keys) and create a key.<br>2. In `backend/.env`, add `OPENAI_API_KEY=sk-...` (or set globally via `setx OPENAI_API_KEY "sk-..."`).<br>3. Optionally pin a default model via `OPENAI_DEFAULT_MODEL=gpt-5`. | `OPENAI_API_KEY` | Quickstart + SDK install: <https://platform.openai.com/docs/quickstart><br>Rate limits & exponential backoff: <https://platform.openai.com/docs/guides/rate-limits> |
+| **Azure OpenAI Responses** | 1. Provision an Azure OpenAI resource and deployment.<br>2. Add `AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com` and `AZURE_OPENAI_API_KEY=azr-...` to `backend/.env`.<br>3. Leave `AZURE_OPENAI_API_VERSION` at the repo default (`2025-04-01-preview`) unless your region requires an earlier version. | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION` | Quickstart: <https://learn.microsoft.com/azure/ai-services/openai/> |
 | **Anthropic (Claude 3/4 family)** | 1. Generate a key in the [Anthropic Console](https://console.anthropic.com/account/keys).<br>2. Add `ANTHROPIC_API_KEY=sk-ant-...` to `backend/.env` (PowerShell: `setx ANTHROPIC_API_KEY "sk-ant-..."`).<br>3. Capture optional headers such as `ANTHROPIC_VERSION=2023-06-01`. | `ANTHROPIC_API_KEY` | Getting started: <https://docs.anthropic.com/en/api/getting-started><br>Error catalogue: <https://docs.anthropic.com/en/api/errors> |
 | **Google Gemini** | 1. Request an API key in [Google AI Studio](https://aistudio.google.com/app/apikey).<br>2. Store it as `GEMINI_API_KEY=AIza...` in `backend/.env` (PowerShell: `setx GEMINI_API_KEY "AIza..."`).<br>3. If using Google Cloud projects, ensure billing is enabled before production use. | `GEMINI_API_KEY` | Quickstart: <https://ai.google.dev/gemini-api/docs/get-started><br>Rate limits & tiers: <https://ai.google.dev/gemini-api/docs/rate-limits> |
 
 **Project configuration tips**
 - Check `.env` into `.gitignore`; never commit provider secrets.
 - Restart the backend after updating environment variables so the dispatcher refreshes credentials.
-- Document enabled providers per environment via `workflow.multiModel.providers=openai,anthropic,google` (final name TBD during implementation).
+- Restrict which providers appear in the UI by setting `ALLOWED_MODEL_PROVIDERS=openai,azure,anthropic,google,custom` in `backend/.env`.
 
 **Retry recommendations**
 - Default to exponential backoff with jitter for `429`, `500`, `502`, and provider-specific overload codes (`529` from Anthropic). Suggested baseline: initial delay 1s, multiplier 2.0, jitter 40%, max attempts 5.

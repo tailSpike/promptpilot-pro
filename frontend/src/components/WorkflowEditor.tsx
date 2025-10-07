@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback, useMemo, useContext } from 'react';
+import { useState, useEffect, useCallback, useMemo, useContext, type ReactNode } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { promptsAPI, workflowsAPI } from '../services/api';
 import type { Prompt } from '../types';
 import { AuthContext } from '../contexts/AuthContext';
 
-type PromptModelProvider = 'openai' | 'anthropic' | 'google' | 'custom';
+type PromptModelProvider = 'openai' | 'azure' | 'anthropic' | 'google' | 'custom';
 
 const MODEL_PROVIDER_OPTIONS: Array<{ value: PromptModelProvider; label: string; defaultModel: string }> = [
   { value: 'openai', label: 'OpenAI · GPT', defaultModel: 'gpt-4o-mini' },
-  { value: 'anthropic', label: 'Anthropic · Claude', defaultModel: 'claude-3.5-sonnet' },
+  { value: 'azure', label: 'Azure OpenAI · Responses', defaultModel: 'gpt-4o-mini' },
+  { value: 'anthropic', label: 'Anthropic · Claude', defaultModel: 'claude-3-haiku-20240307' },
   { value: 'google', label: 'Google · Gemini', defaultModel: 'gemini-2.0-flash' },
   { value: 'custom', label: 'Custom Provider', defaultModel: 'custom-model' },
 ];
@@ -17,7 +18,34 @@ const DEFAULT_MODEL_PARAMETERS: PromptModelParameters = {
   temperature: 0.7,
   topP: 0.9,
   maxTokens: 1024,
+  parallelToolCalls: true,
 };
+
+interface FieldLabelProps {
+  children: ReactNode;
+  tooltip?: string;
+  className?: string;
+}
+
+const FieldLabel = ({ children, tooltip, className }: FieldLabelProps) => (
+  <label
+    className={`block text-xs font-medium text-gray-700 mb-1 ${className ?? ''}`}
+  >
+    <span className="inline-flex items-center gap-1">
+      {children}
+      {tooltip ? (
+        <span
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600"
+          title={tooltip}
+          aria-label={typeof children === 'string' ? `${children} info` : 'Field information'}
+          role="note"
+        >
+          ?
+        </span>
+      ) : null}
+    </span>
+  </label>
+);
 
 const generateModelId = () => {
   if (typeof window !== 'undefined' && window.crypto && 'randomUUID' in window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -36,6 +64,7 @@ interface PromptModelParameters {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  parallelToolCalls?: boolean;
 }
 
 interface PromptModelConfig {
@@ -69,6 +98,9 @@ interface WorkflowStep {
       temperature?: number;
       maxTokens?: number;
       model?: string;
+      topP?: number;
+      parallelToolCalls?: boolean;
+      provider?: PromptModelProvider;
     };
     models?: PromptModelConfig[];
     modelRouting?: PromptModelRoutingConfig;
@@ -238,6 +270,10 @@ export default function WorkflowEditor() {
           ? existingModels.map((model, modelIndex) => ({
               ...model,
               id: model.id || `${step.id || 'step'}-model-${modelIndex}`,
+              parameters: {
+                ...DEFAULT_MODEL_PARAMETERS,
+                ...model.parameters,
+              },
             }))
           : [
               {
@@ -247,7 +283,8 @@ export default function WorkflowEditor() {
                 parameters: {
                   temperature: step.config?.modelSettings?.temperature ?? DEFAULT_MODEL_PARAMETERS.temperature,
                   maxTokens: step.config?.modelSettings?.maxTokens ?? DEFAULT_MODEL_PARAMETERS.maxTokens,
-                  topP: DEFAULT_MODEL_PARAMETERS.topP,
+                  topP: step.config?.modelSettings?.topP ?? DEFAULT_MODEL_PARAMETERS.topP,
+                  parallelToolCalls: step.config?.modelSettings?.parallelToolCalls ?? DEFAULT_MODEL_PARAMETERS.parallelToolCalls,
                 },
                 retry: {
                   maxAttempts: 2,
@@ -613,8 +650,8 @@ export default function WorkflowEditor() {
       ...models,
       {
         id: generateModelId(),
-        provider: providerOption.value,
-        model: providerOption.defaultModel,
+      provider: providerOption.value,
+      model: providerOption.defaultModel,
         parameters: { ...DEFAULT_MODEL_PARAMETERS },
         retry: {
           maxAttempts: 2,
@@ -1155,7 +1192,7 @@ export default function WorkflowEditor() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Temperature</label>
+                                    <FieldLabel tooltip="Controls randomness in generation. Lower values (~0) make outputs more deterministic; higher values (~1-2) produce more varied results.">Temperature</FieldLabel>
                                     <input
                                       type="number"
                                       min="0"
@@ -1172,7 +1209,7 @@ export default function WorkflowEditor() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Top P</label>
+                                    <FieldLabel tooltip="Applies nucleus sampling. Lower values restrict choices to the most probable tokens; higher values allow broader vocabulary.">Top P</FieldLabel>
                                     <input
                                       type="number"
                                       min="0"
@@ -1189,7 +1226,7 @@ export default function WorkflowEditor() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Max tokens</label>
+                                    <FieldLabel tooltip="Sets the maximum length of the model response. Higher limits allow longer outputs but consume more tokens and may take longer.">Max tokens</FieldLabel>
                                     <input
                                       type="number"
                                       min="1"
@@ -1206,9 +1243,28 @@ export default function WorkflowEditor() {
                                   </div>
                                 </div>
 
+                                {['openai', 'azure'].includes(model.provider) && (
+                                  <div className="md:col-span-3">
+                                    <FieldLabel tooltip="For providers that support tool/function calls, enabling this lets them execute helper calls concurrently for faster responses.">Parallel tool calls</FieldLabel>
+                                    <label className="flex items-center gap-2 text-xs text-gray-600 bg-white border border-gray-200 rounded-md px-3 py-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={model.parameters?.parallelToolCalls ?? true}
+                                        onChange={(e) =>
+                                          updateModelParameters(index, model.id!, {
+                                            parallelToolCalls: e.target.checked,
+                                          })
+                                        }
+                                        className="h-3.5 w-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                      />
+                                      Allow provider tool calls to run concurrently (OpenAI & Azure Responses)
+                                    </label>
+                                  </div>
+                                )}
+
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Retry attempts</label>
+                                    <FieldLabel tooltip="Maximum number of times to retry when the provider returns transient errors (e.g., rate limits or timeouts).">Retry attempts</FieldLabel>
                                     <input
                                       type="number"
                                       min="1"
@@ -1224,7 +1280,7 @@ export default function WorkflowEditor() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Base delay (ms)</label>
+                                    <FieldLabel tooltip="Initial wait time before the first retry in milliseconds. Subsequent retries increase exponentially from this base value.">Base delay (ms)</FieldLabel>
                                     <input
                                       type="number"
                                       min="100"
@@ -1240,7 +1296,7 @@ export default function WorkflowEditor() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Max delay (ms)</label>
+                                    <FieldLabel tooltip="Caps the exponential backoff between retries so delays never exceed this value.">Max delay (ms)</FieldLabel>
                                     <input
                                       type="number"
                                       min="100"
@@ -1301,7 +1357,7 @@ export default function WorkflowEditor() {
                           {(step.config.modelRouting?.mode || 'parallel') === 'parallel' ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Parallelism limit</label>
+                                <FieldLabel tooltip="How many models can execute at the same time in parallel mode. Lower values queue extra models until slots free up.">Parallelism limit</FieldLabel>
                                 <input
                                   type="number"
                                   min="1"
@@ -1327,7 +1383,7 @@ export default function WorkflowEditor() {
                           )}
 
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">On error</label>
+                            <FieldLabel tooltip="Choose whether to keep responses from successful models when others fail (Continue) or abort the step immediately (Abort).">On error</FieldLabel>
                             <select
                               value={step.config.modelRouting?.onError || 'continue'}
                               onChange={(e) => updatePromptStepRouting(index, { onError: e.target.value as 'abort' | 'continue' })}

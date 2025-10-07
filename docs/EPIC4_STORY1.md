@@ -105,9 +105,59 @@
 - Determine storage strategy for provider diagnostics (logs only vs persisted in execution output).
 
 ## Next steps checklist
-- [ ] Finalize schema changes and migrations (multi-model config).
-- [ ] Implement provider dispatcher + retry library.
-- [ ] Update backend preview/execution flows.
-- [ ] Build frontend configuration UI & previews.
-- [ ] Expand documentation & onboarding materials.
-- [ ] Ship automated + manual test coverage.
+
+## Manual verification checklist
+> Follow these steps after completing the setup in the run instructions below. Capture screenshots or console logs for any discrepancies.
+
+1. **Create baseline workflow**
+  - Launch the application and sign in with a test account.
+  - Navigate to *Workflows → New Workflow* and create a workflow named “Multi-model QA”.
+  - Expected: Workflow appears in the list with status `Active`.
+2. **Add multi-model prompt step**
+  - Open the workflow, click *Add Step → Prompt*.
+  - Enable *Multi-model execution* and add providers for OpenAI, Anthropic, and Gemini using default model presets.
+  - Expected: Provider badges render for each model, form validation prevents duplicate provider/model combos.
+3. **Configure per-model parameters**
+  - For each provider, adjust temperature (e.g., OpenAI `0.4`, Anthropic `0.2`, Gemini `0.3`) and set custom max token values.
+  - Expected: Parameter inputs persist per provider after saving and re-opening the step modal.
+4. **Set routing mode**
+  - Choose *Parallel* routing with concurrency `2` and preferred order matching the provider order.
+  - Expected: Routing pill summary updates to “Parallel · 3 providers · concurrency 2”.
+5. **Preview prompt execution**
+  - Click *Preview Outputs*, enter sample input text (e.g., “Summarize today’s release highlights”), and run preview.
+  - Expected: Three output cards render (one per provider) with latency and token metadata; warnings surface if credentials are missing.
+6. **Run full workflow execution**
+  - Return to workflow editor and click *Run Workflow* to store execution history.
+  - Expected: Execution completes without error; history detail view shows aggregated `modelOutputs` payload for all providers.
+7. **Retry handling sanity check**
+  - Temporarily unset one provider’s API key and repeat the preview.
+  - Expected: Failed provider shows retry warnings while other providers still return outputs; UI surfaces actionable guidance.
+
+Record actual results alongside each step. Flag any deviations as blockers for launch.
+
+## Local run instructions
+Use these commands to prepare an environment that mirrors automated verification. Run from the repository root unless noted.
+
+```powershell
+# Install workspace dependencies
+npm install
+
+# Seed databases and Prisma client
+env:NODE_ENV="development"; npm run db:setup
+
+# Launch backend in test mode (uses 3001 by default)
+npm run start:test
+
+# In a new terminal: launch frontend dev server
+npm run start:frontend:dev
+
+# Optional: execute automated test suites referenced in validation
+npm run test:backend
+npm run test:frontend -- --run
+```
+
+**Environment variables:**
+- `OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` — required for real provider calls. For manual smoke tests without live keys, leave unset to observe warning states in Step 7 above.
+- `DATABASE_URL`, `TEST_DATABASE_URL` default to the Prisma SQLite files checked into `backend/prisma` and generally require no changes for local validation.
+
+Ensure both backend and frontend servers continue running while performing the manual checklist. Stop processes with `Ctrl+C` when finished.

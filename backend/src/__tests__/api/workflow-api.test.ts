@@ -140,6 +140,73 @@ describe('Workflow API', () => {
       expect(response.body.executions).toBeInstanceOf(Array);
     });
 
+    it('should return prompt steps with parsed ensemble model config', async () => {
+      const stepData = {
+        name: 'Multi-model Step',
+        type: 'PROMPT' as const,
+        order: 1,
+        config: {
+          promptContent: 'Summarize the release highlights.',
+          models: [
+            {
+              id: 'model-openai',
+              provider: 'openai' as const,
+              model: 'gpt-4o-mini',
+              parameters: {
+                temperature: 0.2,
+                maxTokens: 256,
+                topP: 0.9,
+              },
+              retry: {
+                maxAttempts: 2,
+                baseDelayMs: 500,
+                maxDelayMs: 3000,
+              },
+            },
+            {
+              id: 'model-gemini',
+              provider: 'google' as const,
+              model: 'gemini-2.0-flash',
+              parameters: {
+                temperature: 0.3,
+                maxTokens: 512,
+              },
+            },
+          ],
+          modelRouting: {
+            mode: 'parallel',
+            onError: 'continue',
+            concurrency: 2,
+            preferredOrder: ['model-openai', 'model-gemini'],
+          },
+        },
+      };
+
+      await request(app)
+        .post(`/api/workflows/${testWorkflowId}/steps`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(stepData)
+        .expect(201);
+
+      const response = await request(app)
+        .get(`/api/workflows/${testWorkflowId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      const promptStep = response.body.steps.find((step: any) => step.name === stepData.name);
+      expect(promptStep).toBeDefined();
+      expect(promptStep.config).toBeDefined();
+      expect(Array.isArray(promptStep.config.models)).toBe(true);
+      expect(promptStep.config.models).toHaveLength(2);
+      expect(promptStep.config.models[0].provider).toBe('openai');
+      expect(promptStep.config.modelRouting).toMatchObject({
+        mode: 'parallel',
+        onError: 'continue',
+        concurrency: 2,
+        preferredOrder: ['model-openai', 'model-gemini'],
+      });
+    });
+
     it('should return 404 for non-existent workflow', async () => {
       await request(app)
         .get('/api/workflows/non-existent-id')

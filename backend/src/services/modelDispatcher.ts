@@ -1,7 +1,7 @@
 import https from 'https';
 import { performance } from 'perf_hooks';
 
-export type SupportedProvider = 'openai' | 'anthropic' | 'google' | 'custom';
+export type SupportedProvider = 'openai' | 'azure' | 'anthropic' | 'google' | 'custom';
 
 export interface ModelRetryOptions {
   maxAttempts?: number;
@@ -13,6 +13,7 @@ export interface ModelParameters {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  parallelToolCalls?: boolean;
   presencePenalty?: number;
   frequencyPenalty?: number;
   seed?: number;
@@ -207,6 +208,8 @@ export class ModelDispatcher {
     switch (model.provider) {
       case 'openai':
         return this.invokeOpenAI(model, prompt, instructions, variables);
+      case 'azure':
+        return this.invokeAzure(model, prompt, instructions, variables);
       case 'anthropic':
         return this.invokeAnthropic(model, prompt, instructions, variables);
       case 'google':
@@ -239,7 +242,7 @@ export class ModelDispatcher {
       Authorization: `Bearer ${apiKey}`,
     };
 
-    const body = {
+    const body: Record<string, unknown> = {
       model: model.model,
       input: [
         {
@@ -254,6 +257,14 @@ export class ModelDispatcher {
       max_output_tokens: model.parameters?.maxTokens,
       metadata: model.parameters?.metadata,
     };
+
+    if (instructions) {
+      body.instructions = instructions;
+    }
+
+    if (model.parameters?.parallelToolCalls !== undefined) {
+      body.parallel_tool_calls = model.parameters.parallelToolCalls;
+    }
 
     const response = await this.httpJsonRequest('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -278,6 +289,85 @@ export class ModelDispatcher {
       raw: response.body,
       metadata: {
         requestId: response.headers['x-request-id'],
+      },
+    };
+  }
+
+  private async invokeAzure(model: ModelConfig, prompt: string, instructions?: string, variables?: Record<string, unknown>): Promise<ProviderInvocationResult> {
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const apiKey = process.env.AZURE_OPENAI_API_KEY;
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2025-04-01-preview';
+
+    if (!endpoint || !apiKey) {
+      return {
+        provider: model.provider,
+        model: model.model,
+        label: model.label,
+        success: true,
+        outputText: this.buildSimulatedResponse('Azure OpenAI', prompt, variables),
+        tokensUsed: Math.floor((prompt.length ?? 0) / 4),
+        raw: { simulated: true },
+        metadata: { warning: 'AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY not set; returning simulated output.' },
+        warnings: ['AZURE_OPENAI credentials not set; response simulated.'],
+      };
+    }
+
+    const baseUrl = endpoint.replace(/\/$/, '');
+    const url = `${baseUrl}/openai/deployments/${encodeURIComponent(model.model)}/responses?api-version=${encodeURIComponent(apiVersion)}`;
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'api-key': apiKey,
+    };
+
+    const body: Record<string, unknown> = {
+      model: model.model,
+      input: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: prompt },
+          ],
+        },
+      ],
+      temperature: model.parameters?.temperature,
+      top_p: model.parameters?.topP,
+      max_output_tokens: model.parameters?.maxTokens,
+      metadata: model.parameters?.metadata,
+    };
+
+    if (instructions) {
+      body.instructions = instructions;
+    }
+
+    if (model.parameters?.parallelToolCalls !== undefined) {
+      body.parallel_tool_calls = model.parameters.parallelToolCalls;
+    }
+
+    const response = await this.httpJsonRequest(url, {
+      method: 'POST',
+      headers,
+      body,
+    });
+
+    if (response.statusCode >= 400) {
+      const message = response.body?.error?.message ?? `Azure OpenAI error (${response.statusCode})`;
+      throw new Error(message);
+    }
+
+    const outputText = response.body?.output_text ?? response.body?.output?.[0]?.content?.[0]?.text ?? '';
+    const tokensUsed = response.body?.usage?.total_tokens ?? response.body?.usage?.output_tokens;
+
+    return {
+      provider: model.provider,
+      model: model.model,
+      label: model.label,
+      success: true,
+      outputText,
+      tokensUsed,
+      raw: response.body,
+      metadata: {
+        requestId: response.headers['x-request-id'] ?? response.headers['apim-request-id'],
       },
     };
   }

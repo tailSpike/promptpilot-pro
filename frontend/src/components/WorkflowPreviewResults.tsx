@@ -54,10 +54,122 @@ const formatJson = (value: unknown) => {
   }
 };
 
+const simulatedWarningRegexes = [
+  /simulated preview output/i,
+  /simulated output for preview only/i,
+  /all configured providers returned authentication errors/i,
+];
+
+const includesSimulatedWarning = (warnings: string[] = []): boolean =>
+  warnings.some((warning) => simulatedWarningRegexes.some((regex) => regex.test(warning)));
+
+const outputHasResolvedResult = (output: unknown): boolean => {
+  if (!output || typeof output !== 'object') {
+    return false;
+  }
+
+  const record = output as Record<string, unknown>;
+
+  const providerResults = record.providerResults;
+  if (Array.isArray(providerResults)) {
+    const hasSuccess = providerResults.some((entry) => {
+      if (entry && typeof entry === 'object') {
+        return (entry as { success?: boolean }).success === true;
+      }
+      return false;
+    });
+
+    if (hasSuccess) {
+      return true;
+    }
+  }
+
+  const modelOutputs = record.modelOutputs;
+  if (modelOutputs && typeof modelOutputs === 'object') {
+    const providerValues = Object.values(modelOutputs as Record<string, unknown>);
+    for (const providerEntry of providerValues) {
+      if (providerEntry && typeof providerEntry === 'object') {
+        const modelEntries = Object.values(providerEntry as Record<string, unknown>);
+        const hasSuccess = modelEntries.some((modelEntry) => {
+          if (modelEntry && typeof modelEntry === 'object') {
+            return (modelEntry as { success?: boolean }).success === true;
+          }
+          return false;
+        });
+        if (hasSuccess) {
+          return true;
+        }
+      }
+    }
+  }
+
+  if (typeof record.generatedText === 'string' && record.generatedText.trim().length > 0) {
+    return true;
+  }
+
+  if (typeof record.content === 'string' && record.content.trim().length > 0) {
+    return true;
+  }
+
+  return false;
+};
+
+const hasResolvedOutput = (preview: WorkflowPreviewResult) => {
+  if (preview.status === 'COMPLETED') {
+    return true;
+  }
+
+  if (includesSimulatedWarning(preview.warnings)) {
+    return true;
+  }
+
+  if (outputHasResolvedResult(preview.finalOutput)) {
+    return true;
+  }
+
+  const hasSuccessfulStep = preview.stepResults.some((step) => {
+    if (includesSimulatedWarning(step.warnings)) {
+      return true;
+    }
+
+    return outputHasResolvedResult(step.output);
+  });
+
+  return hasSuccessfulStep;
+};
+
+const getPreviewStatusBadge = (preview: WorkflowPreviewResult) => {
+  const resolved = hasResolvedOutput(preview);
+
+  if (resolved) {
+    return {
+      label: 'COMPLETED',
+      className: 'bg-green-100 text-green-800',
+    };
+  }
+
+  return {
+    label: 'FAILED',
+    className: 'bg-red-100 text-red-800',
+  };
+};
+
+const describePreviewStatus = (preview: WorkflowPreviewResult) => {
+  if (preview.status === 'COMPLETED') {
+    return preview.usedSampleData
+      ? 'Inputs were auto-filled with sample data.'
+      : 'Inputs were provided manually.';
+  }
+
+  if (hasResolvedOutput(preview)) {
+    return 'All providers returned errors, so a simulated preview output is shown for guidance only.';
+  }
+
+  return 'The preview stopped due to an error before any output could be generated.';
+};
+
 export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPreviewResultsProps) {
-  const statusClass = preview.status === 'COMPLETED'
-    ? 'bg-green-100 text-green-800'
-    : 'bg-red-100 text-red-800';
+  const badge = getPreviewStatusBadge(preview);
 
   return (
     <div className="bg-white shadow rounded-lg p-6 space-y-4" data-testid="workflow-preview-results">
@@ -65,15 +177,11 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
         <div>
           <h3 className="text-lg font-medium text-gray-900 flex items-center gap-3">
             Test Run Summary
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusClass}`}>
-              {preview.status}
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge.className}`}>
+              {badge.label}
             </span>
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {preview.usedSampleData
-              ? 'Inputs were auto-filled with sample data.'
-              : 'Inputs were provided manually.'}
-          </p>
+          <p className="mt-1 text-sm text-gray-500">{describePreviewStatus(preview)}</p>
         </div>
         {onClear && (
           <button
