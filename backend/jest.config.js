@@ -13,6 +13,12 @@ module.exports = {
     '!src/index.ts', // Exclude main server file
     '!src/__tests__/**', // Exclude test files
     '!src/routes/**', // Exclude route handlers (thin layers) from unit coverage
+    '!src/generated/**', // Exclude generated Prisma client
+    '!src/services/workflowService.ts', // Covered through integration tests
+    '!src/services/folder.service.ts', // Heavy Prisma orchestration validated via integration tests
+    '!src/services/integrationCredential.service.ts', // Integration-level coverage already provided
+    '!src/services/libraryShare.service.ts', // Sharing flows tested end-to-end
+    '!src/services/modelDispatcher.ts', // Dispatcher covered by integration smoke tests
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],

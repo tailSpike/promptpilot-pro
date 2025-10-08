@@ -151,20 +151,20 @@ export default function IntegrationSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="bg-white shadow rounded-lg p-6" data-testid="integration-keys-header">
         <h1 className="text-2xl font-semibold text-gray-900">Integration Keys</h1>
         <p className="mt-2 text-gray-600">Securely manage provider API credentials used for workflow previews and live verifications.</p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" data-testid="integration-keys-error">
           {error}
         </div>
       )}
 
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="bg-white shadow rounded-lg p-6" data-testid="integration-keys-form">
         <h2 className="text-lg font-semibold text-gray-900">Add credential</h2>
-        <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+        <form className="mt-4 space-y-4" onSubmit={handleSubmit} data-testid="integration-keys-add-form">
           <div>
             <label className="block text-sm font-medium text-gray-700">Provider</label>
             <select
@@ -173,6 +173,7 @@ export default function IntegrationSettings() {
               onChange={handleChange('provider')}
               required
               disabled={submitting}
+              data-testid="integration-keys-provider"
             >
               <option value="">Select a provider</option>
               {providerOptions.map((option) => (
@@ -206,6 +207,7 @@ export default function IntegrationSettings() {
               placeholder="e.g. QA Sandbox"
               required
               disabled={submitting}
+              data-testid="integration-keys-label"
             />
           </div>
 
@@ -219,6 +221,7 @@ export default function IntegrationSettings() {
               placeholder="Paste provider API key"
               required
               disabled={submitting}
+              data-testid="integration-keys-secret"
             />
           </div>
 
@@ -231,6 +234,7 @@ export default function IntegrationSettings() {
               onChange={handleChange('metadata')}
               placeholder='{"sandbox": true, "usageTag": "ci-smoke"}'
               disabled={submitting}
+              data-testid="integration-keys-metadata"
             />
             <p className="mt-1 text-xs text-gray-500">JSON formatted metadata. Useful for tagging CI usage or marking sandbox keys.</p>
           </div>
@@ -240,6 +244,7 @@ export default function IntegrationSettings() {
               type="submit"
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               disabled={submitting}
+              data-testid="integration-keys-submit"
             >
               {submitting ? 'Saving...' : 'Save credential'}
             </button>
@@ -247,7 +252,7 @@ export default function IntegrationSettings() {
         </form>
       </div>
 
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-white shadow rounded-lg" data-testid="integration-keys-list">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Stored credentials</h2>
           <p className="mt-1 text-sm text-gray-500">Secrets are encrypted at rest. Rotate keys regularly to stay compliant.</p>
@@ -258,7 +263,7 @@ export default function IntegrationSettings() {
           <div className="px-6 py-8 text-sm text-gray-500">No credentials configured yet.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full divide-y divide-gray-200" data-testid="integration-keys-table">
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
@@ -270,7 +275,7 @@ export default function IntegrationSettings() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {credentials.map((credential) => (
-                  <tr key={credential.id}>
+                  <tr key={credential.id} data-testid={`integration-keys-row-${credential.id}`}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{credential.provider.replace('_', ' ')}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{credential.label}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -293,6 +298,7 @@ export default function IntegrationSettings() {
                         className="text-blue-600 hover:text-blue-800"
                         onClick={() => handleRotate(credential)}
                         disabled={submitting}
+                        data-testid="integration-keys-rotate"
                       >
                         Rotate
                       </button>
@@ -301,6 +307,7 @@ export default function IntegrationSettings() {
                         className="text-red-600 hover:text-red-800"
                         onClick={() => handleRevoke(credential)}
                         disabled={submitting || credential.status === 'REVOKED'}
+                        data-testid="integration-keys-revoke"
                       >
                         Revoke
                       </button>

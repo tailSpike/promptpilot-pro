@@ -177,7 +177,10 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
         <div>
           <h3 className="text-lg font-medium text-gray-900 flex items-center gap-3">
             Test Run Summary
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge.className}`}>
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge.className}`}
+              data-testid="workflow-preview-status"
+            >
               {badge.label}
             </span>
           </h3>
@@ -210,7 +213,10 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
       </div>
 
       {preview.warnings.length > 0 && (
-        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4">
+        <div
+          className="rounded-md border border-yellow-200 bg-yellow-50 p-4"
+          data-testid="workflow-preview-warnings"
+        >
           <h4 className="text-sm font-semibold text-yellow-800 mb-2">Warnings</h4>
           <ul className="list-disc list-inside text-sm text-yellow-900 space-y-1">
             {preview.warnings.map((warning, idx) => (

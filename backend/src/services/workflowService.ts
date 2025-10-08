@@ -7,6 +7,24 @@ import {
   ModelRoutingOptions,
   ModelExecutionResult,
 } from './modelDispatcher';
+import {
+  IntegrationCredentialService,
+  type ResolvedIntegrationCredential,
+} from './integrationCredential.service';
+
+const WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER: Record<string, string | null> = {
+  openai: 'openai',
+  azure: 'azure_openai',
+  anthropic: 'anthropic',
+  google: 'gemini',
+  custom: null,
+};
+
+interface StepExecutionContext {
+  allowSimulatedFallback?: boolean;
+  ownerId: string;
+  credentialCache: Map<string, ResolvedIntegrationCredential | null>;
+}
 
 // Define step types as constants (since SQLite doesn't support enums natively)
 export const StepTypes = {
@@ -161,6 +179,7 @@ export interface WorkflowWithRelations {
   id: string;
   name: string;
   description?: string | null;
+  userId: string;
   steps: (any & { prompt?: any; order: number; type: string; name: string; config: any })[];
   variables?: WorkflowVariable[];
   executions?: any[];
@@ -436,6 +455,7 @@ export class WorkflowService {
     }
 
     const stepResults: WorkflowPreviewStepResult[] = [];
+    const credentialCache = new Map<string, ResolvedIntegrationCredential | null>();
     let currentInput = this.cloneData(preparedInput);
     let tokensUsed = 0;
     let overallStatus: 'COMPLETED' | 'FAILED' = 'COMPLETED';
@@ -453,7 +473,11 @@ export class WorkflowService {
       let stepTokens = 0;
 
       try {
-        rawOutput = await this.executeStep(step, currentInput, { allowSimulatedFallback: true });
+        rawOutput = await this.executeStep(step, currentInput, {
+          allowSimulatedFallback: true,
+          ownerId: workflow.userId,
+          credentialCache,
+        });
         normalizedOutput = this.normalizePreviewOutput(rawOutput);
 
         if (!normalizedOutput || Object.keys(normalizedOutput).length === 0) {
@@ -685,18 +709,22 @@ export class WorkflowService {
 
     let currentInput = { ...initialInput };
     const stepResults: Record<string, any> = {};
+    const credentialCache = new Map<string, ResolvedIntegrationCredential | null>();
 
     try {
       // Execute steps in order
       for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
         // Execute the step based on its type
-  const stepOutput = await this.executeStep(step, currentInput);
+        const stepOutput = await this.executeStep(step, currentInput, {
+          ownerId: workflow.userId,
+          credentialCache,
+        });
         
         // Store step result for future steps
         stepResults[`step_${step.order}`] = stepOutput;
         
         // Merge step output into current input for next step
-        if (stepOutput && typeof stepOutput === 'object') {
+  if (stepOutput && typeof stepOutput === 'object') {
           currentInput = { ...currentInput, ...stepOutput };
         }
       }
@@ -736,7 +764,7 @@ export class WorkflowService {
   private async executeStep(
     step: any & { prompt?: any; order: number; type: string; name: string; config: any },
     input: Record<string, any>,
-    options: { allowSimulatedFallback?: boolean } = {}
+    context: StepExecutionContext,
   ): Promise<any> {
     let config: any = {};
     if (typeof step.config === 'string') {
@@ -758,7 +786,7 @@ export class WorkflowService {
         if (!hasPromptRecord && inlinePrompt.length === 0) {
           throw new Error(`Prompt step ${step.name} has no associated prompt`);
         }
-        return await this.executePromptStep(step, input, config, options);
+  return await this.executePromptStep(step, input, config, context);
       }
         
       case StepTypes.TRANSFORM:
@@ -788,7 +816,7 @@ export class WorkflowService {
     step: any,
     input: Record<string, any>,
     config: any,
-    options: { allowSimulatedFallback?: boolean } = {}
+    context: StepExecutionContext,
   ): Promise<any> {
     const promptRecord = step?.prompt ?? null;
     const inlineContent = typeof config?.promptContent === 'string' ? config.promptContent : undefined;
@@ -833,19 +861,52 @@ export class WorkflowService {
     const models = this.buildModelConfigs(config);
     const routing = this.buildRoutingConfig(config);
 
+    const integrationProviders = models
+      .map((model) => WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER[model.provider] ?? null)
+      .filter((providerId): providerId is string => Boolean(providerId));
+
+    const resolvedCredentials = await this.loadProviderCredentials(
+      context.ownerId,
+      integrationProviders,
+      context.credentialCache,
+    );
+
+  const dispatcherCredentials: Partial<Record<ModelConfig['provider'], ResolvedIntegrationCredential>> = {};
+    const missingCredentialProviders: Set<string> = new Set();
+
+    models.forEach((model) => {
+      const integrationProvider = WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER[model.provider] ?? null;
+      if (!integrationProvider) {
+        return;
+      }
+
+      const credential = resolvedCredentials[integrationProvider];
+      if (credential) {
+        dispatcherCredentials[model.provider] = credential;
+      } else {
+        missingCredentialProviders.add(model.provider);
+      }
+    });
+
     const dispatcherResult = await modelDispatcher.execute({
       prompt: content,
       instructions: config?.instructions,
       variables: input,
       models,
       routing,
-    });
+    }, { credentials: dispatcherCredentials });
 
     const providerResults: ModelExecutionResult[] = [...dispatcherResult.results];
     const providersByName: Record<string, Record<string, any>> = {};
     const warnings: string[] = [];
     const errorSummaries: string[] = [];
     const failureMessages: string[] = [];
+
+    if (missingCredentialProviders.size > 0) {
+      warnings.push(
+        `No active integration credential found for providers: ${Array.from(missingCredentialProviders).join(', ')}. Falling back to environment configuration or simulated output.`,
+      );
+    }
 
     providerResults.forEach((result) => {
       if (result.warnings && result.warnings.length > 0) {
@@ -878,7 +939,7 @@ export class WorkflowService {
     if (!primaryResult) {
       const authErrorRegex = /(api\s*key|api-key|authentication|unauthorized|forbidden|invalid key)/i;
       const authOnlyFailures =
-        options.allowSimulatedFallback &&
+        context.allowSimulatedFallback &&
         providerResults.length > 0 &&
         providerResults.every(
           (result) =>
@@ -958,6 +1019,44 @@ export class WorkflowService {
       resolvedVariables,
       warnings,
     };
+  }
+
+  private async loadProviderCredentials(
+    ownerId: string,
+    providers: string[],
+    cache: Map<string, ResolvedIntegrationCredential | null>,
+  ): Promise<Record<string, ResolvedIntegrationCredential>> {
+    const result: Record<string, ResolvedIntegrationCredential> = {};
+    const missingProviders: string[] = [];
+
+    providers.forEach((provider) => {
+      if (!provider) {
+        return;
+      }
+
+      if (cache.has(provider)) {
+        const cached = cache.get(provider);
+        if (cached) {
+          result[provider] = cached;
+        }
+        return;
+      }
+
+      missingProviders.push(provider);
+    });
+
+    if (missingProviders.length > 0) {
+      const resolved = await IntegrationCredentialService.resolveActiveCredentials(ownerId, missingProviders);
+      missingProviders.forEach((provider) => {
+        const credential = resolved[provider] ?? null;
+        cache.set(provider, credential);
+        if (credential) {
+          result[provider] = credential;
+        }
+      });
+    }
+
+    return result;
   }
 
   private buildSimulatedPreviewText(providerLabel: string, prompt: string, variables: Record<string, any>): string {

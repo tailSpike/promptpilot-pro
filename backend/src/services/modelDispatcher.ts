@@ -1,5 +1,6 @@
 import https from 'https';
 import { performance } from 'perf_hooks';
+import type { ResolvedIntegrationCredential } from './integrationCredential.service';
 
 export type SupportedProvider = 'openai' | 'azure' | 'anthropic' | 'google' | 'custom';
 
@@ -70,10 +71,27 @@ type ProviderInvocationResult = Omit<ModelExecutionResult, 'latencyMs' | 'retrie
   warnings?: string[];
 };
 
+export interface ModelDispatcherExecuteOptions {
+  credentials?: Partial<Record<SupportedProvider, ResolvedIntegrationCredential>>;
+}
+
+function getCredentialMetadataString(
+  credential: ResolvedIntegrationCredential | undefined,
+  key: string,
+): string | undefined {
+  const metadata = credential?.metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+
+  const value = metadata[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
 export class ModelDispatcher {
   constructor(private readonly logger: { warn: (...args: unknown[]) => void; error: (...args: unknown[]) => void } = console) {}
 
-  async execute(request: ModelExecutionRequest): Promise<DispatcherResult> {
+  async execute(request: ModelExecutionRequest, options: ModelDispatcherExecuteOptions = {}): Promise<DispatcherResult> {
     const activeModels = (request.models || []).filter((model) => !model.disabled);
     if (activeModels.length === 0) {
       throw new Error('No active models configured for prompt step.');
@@ -83,10 +101,17 @@ export class ModelDispatcher {
     const orderedModels = this.applyPreferredOrder(activeModels, request.routing?.preferredOrder);
 
     const results: ModelExecutionResult[] = [];
+    const credentialMap = options.credentials ?? {};
 
     if (routingMode === 'fallback') {
       for (const model of orderedModels) {
-        const result = await this.executeWithRetry(model, request.prompt, request.instructions, request.variables);
+        const result = await this.executeWithRetry(
+          model,
+          request.prompt,
+          request.instructions,
+          request.variables,
+          credentialMap[model.provider],
+        );
         results.push(result);
 
         if (result.success) {
@@ -107,7 +132,13 @@ export class ModelDispatcher {
         if (!model) {
           return;
         }
-        const result = await this.executeWithRetry(model, request.prompt, request.instructions, request.variables);
+        const result = await this.executeWithRetry(
+          model,
+          request.prompt,
+          request.instructions,
+          request.variables,
+          credentialMap[model.provider],
+        );
         parallelResults.push(result);
         if (queue.length > 0) {
           await runNext();
@@ -156,7 +187,13 @@ export class ModelDispatcher {
     return ordered;
   }
 
-  private async executeWithRetry(model: ModelConfig, prompt: string, instructions?: string, variables?: Record<string, unknown>): Promise<ModelExecutionResult> {
+  private async executeWithRetry(
+    model: ModelConfig,
+    prompt: string,
+    instructions?: string,
+    variables?: Record<string, unknown>,
+    credential?: ResolvedIntegrationCredential,
+  ): Promise<ModelExecutionResult> {
     const maxAttempts = Math.max(1, model.retry?.maxAttempts ?? 2);
     const baseDelay = model.retry?.baseDelayMs ?? 750;
     const maxDelay = model.retry?.maxDelayMs ?? 5000;
@@ -168,7 +205,7 @@ export class ModelDispatcher {
       attempt += 1;
       const start = performance.now();
       try {
-        const response = await this.invokeProvider(model, prompt, instructions, variables);
+        const response = await this.invokeProvider(model, prompt, instructions, variables, credential);
         const latencyMs = performance.now() - start;
         return {
           ...response,
@@ -204,16 +241,22 @@ export class ModelDispatcher {
     };
   }
 
-  private async invokeProvider(model: ModelConfig, prompt: string, instructions?: string, variables?: Record<string, unknown>): Promise<ProviderInvocationResult> {
+  private async invokeProvider(
+    model: ModelConfig,
+    prompt: string,
+    instructions: string | undefined,
+    variables: Record<string, unknown> | undefined,
+    credential: ResolvedIntegrationCredential | undefined,
+  ): Promise<ProviderInvocationResult> {
     switch (model.provider) {
       case 'openai':
-        return this.invokeOpenAI(model, prompt, instructions, variables);
+        return this.invokeOpenAI(model, prompt, instructions, variables, credential);
       case 'azure':
-        return this.invokeAzure(model, prompt, instructions, variables);
+        return this.invokeAzure(model, prompt, instructions, variables, credential);
       case 'anthropic':
-        return this.invokeAnthropic(model, prompt, instructions, variables);
+        return this.invokeAnthropic(model, prompt, instructions, variables, credential);
       case 'google':
-        return this.invokeGoogle(model, prompt, instructions, variables);
+        return this.invokeGoogle(model, prompt, instructions, variables, credential);
       case 'custom':
         return this.invokeCustom(model, prompt, instructions, variables);
       default:
@@ -221,8 +264,14 @@ export class ModelDispatcher {
     }
   }
 
-  private async invokeOpenAI(model: ModelConfig, prompt: string, instructions?: string, variables?: Record<string, unknown>): Promise<ProviderInvocationResult> {
-    const apiKey = process.env.OPENAI_API_KEY;
+  private async invokeOpenAI(
+    model: ModelConfig,
+    prompt: string,
+    instructions: string | undefined,
+    variables: Record<string, unknown> | undefined,
+    credential: ResolvedIntegrationCredential | undefined,
+  ): Promise<ProviderInvocationResult> {
+    const apiKey = credential?.secret ?? process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return {
         provider: model.provider,
@@ -237,10 +286,16 @@ export class ModelDispatcher {
       };
     }
 
-    const headers = {
+    const organization = getCredentialMetadataString(credential, 'organization') ?? process.env.OPENAI_ORGANIZATION;
+
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     };
+
+    if (organization) {
+      headers['OpenAI-Organization'] = organization;
+    }
 
     const body: Record<string, unknown> = {
       model: model.model,
@@ -293,10 +348,16 @@ export class ModelDispatcher {
     };
   }
 
-  private async invokeAzure(model: ModelConfig, prompt: string, instructions?: string, variables?: Record<string, unknown>): Promise<ProviderInvocationResult> {
-    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-    const apiKey = process.env.AZURE_OPENAI_API_KEY;
-    const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2025-04-01-preview';
+  private async invokeAzure(
+    model: ModelConfig,
+    prompt: string,
+    instructions: string | undefined,
+    variables: Record<string, unknown> | undefined,
+    credential: ResolvedIntegrationCredential | undefined,
+  ): Promise<ProviderInvocationResult> {
+    const endpoint = getCredentialMetadataString(credential, 'endpoint') ?? process.env.AZURE_OPENAI_ENDPOINT;
+    const apiKey = credential?.secret ?? process.env.AZURE_OPENAI_API_KEY;
+    const apiVersion = getCredentialMetadataString(credential, 'apiVersion') ?? process.env.AZURE_OPENAI_API_VERSION ?? '2025-04-01-preview';
 
     if (!endpoint || !apiKey) {
       return {
@@ -312,8 +373,9 @@ export class ModelDispatcher {
       };
     }
 
+    const deploymentName = getCredentialMetadataString(credential, 'deployment') ?? model.model;
     const baseUrl = endpoint.replace(/\/$/, '');
-    const url = `${baseUrl}/openai/deployments/${encodeURIComponent(model.model)}/responses?api-version=${encodeURIComponent(apiVersion)}`;
+    const url = `${baseUrl}/openai/deployments/${encodeURIComponent(deploymentName)}/responses?api-version=${encodeURIComponent(apiVersion)}`;
 
     const headers = {
       'Content-Type': 'application/json',
@@ -372,8 +434,15 @@ export class ModelDispatcher {
     };
   }
 
-  private async invokeAnthropic(model: ModelConfig, prompt: string, instructions?: string, variables?: Record<string, unknown>): Promise<ProviderInvocationResult> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+  private async invokeAnthropic(
+    model: ModelConfig,
+    prompt: string,
+    instructions: string | undefined,
+    variables: Record<string, unknown> | undefined,
+    credential: ResolvedIntegrationCredential | undefined,
+  ): Promise<ProviderInvocationResult> {
+    const apiKey = credential?.secret ?? process.env.ANTHROPIC_API_KEY;
+    const anthropicVersion = getCredentialMetadataString(credential, 'apiVersion') ?? '2023-06-01';
     if (!apiKey) {
       return {
         provider: model.provider,
@@ -391,11 +460,11 @@ export class ModelDispatcher {
     const headers = {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
+      'anthropic-version': anthropicVersion,
     };
 
     const body = {
-      model: model.model,
+      model: getCredentialMetadataString(credential, 'model') ?? model.model,
       max_tokens: model.parameters?.maxTokens ?? 1024,
       temperature: model.parameters?.temperature,
       top_p: model.parameters?.topP,
@@ -432,8 +501,14 @@ export class ModelDispatcher {
     };
   }
 
-  private async invokeGoogle(model: ModelConfig, prompt: string, instructions?: string, variables?: Record<string, unknown>): Promise<ProviderInvocationResult> {
-    const apiKey = process.env.GEMINI_API_KEY;
+  private async invokeGoogle(
+    model: ModelConfig,
+    prompt: string,
+    instructions: string | undefined,
+    variables: Record<string, unknown> | undefined,
+    credential: ResolvedIntegrationCredential | undefined,
+  ): Promise<ProviderInvocationResult> {
+    const apiKey = credential?.secret ?? process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return {
         provider: model.provider,
@@ -472,7 +547,8 @@ export class ModelDispatcher {
       body.generationConfig = generationConfig;
     }
 
-    const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model.model)}:generateContent`);
+  const modelId = getCredentialMetadataString(credential, 'model') ?? model.model;
+  const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`);
     const response = await this.httpJsonRequest(url.toString(), {
       method: 'POST',
       headers,

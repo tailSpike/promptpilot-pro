@@ -72,6 +72,7 @@
   - Captures latency, token usage, and response status; fails build if providers unreachable.
 - **Cypress updates:**
   - Add e2e spec `workflow-provider-keys.cy.ts` that provisions sandbox keys via UI, runs preview, validates live response banner.
+  - Spec now exercises credential rotation and revoke flows, ensuring preview failures surface actionable messages for revoked keys.
 - **Contract tests:**
   - Lightweight Jest suite hitting providers with pact-like assertions (status codes, schema, error handling).
 

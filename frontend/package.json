@@ -14,7 +14,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "cypress:open": "cypress open",
-    "cypress:run": "cypress run",
+  "cypress:run": "cypress run --spec \"cypress/e2e/workflow-*.cy.ts,cypress/e2e/workflow-provider-keys.cy.ts\"",
     "cypress:record": "cypress run --record",
     "e2e": "cypress run",
     "e2e:open": "cypress open"

@@ -1,5 +1,4 @@
-import type { Prisma } from '../generated/prisma/client';
-import { IntegrationCredentialStatus } from '../generated/prisma/client';
+import { Prisma, IntegrationCredentialStatus } from '../generated/prisma/client';
 import prisma from '../lib/prisma';
 import { KeyVaultService } from '../lib/keyVault';
 import { AuditService } from './audit.service';
@@ -31,6 +30,45 @@ function sanitiseProvider(provider: string): string {
   return provider.toLowerCase().trim();
 }
 
+function normaliseMetadata(
+  value: Prisma.InputJsonValue | Prisma.JsonValue | null | undefined,
+): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
+  if (typeof value === 'undefined') {
+    return undefined;
+  }
+
+  if (value === null) {
+    return Prisma.JsonNull;
+  }
+
+  return value as Prisma.InputJsonValue;
+}
+
+function toMetadataRecord(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+  if (value === null) {
+    return null;
+  }
+
+  if ((value as unknown) === Prisma.JsonNull) {
+    return null;
+  }
+
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return { value };
+}
+
+export interface ResolvedIntegrationCredential {
+  id: string;
+  provider: string;
+  label: string;
+  secret: string;
+  metadata: Record<string, unknown> | null;
+  lastRotatedAt?: Date | null;
+}
+
 export class IntegrationCredentialService {
   private static toResponse(record: Awaited<ReturnType<typeof prisma.integrationCredential.findUniqueOrThrow>>): CredentialResponse {
     return {
@@ -53,6 +91,55 @@ export class IntegrationCredentialService {
     });
 
     return credentials.map((credential) => this.toResponse(credential));
+  }
+
+  static async resolveActiveCredentials(
+    ownerId: string,
+    providers: string[],
+  ): Promise<Record<string, ResolvedIntegrationCredential>> {
+    const uniqueProviders = Array.from(new Set(providers.filter(Boolean)));
+    if (uniqueProviders.length === 0) {
+      return {};
+    }
+
+    const records = await prisma.integrationCredential.findMany({
+      where: {
+        ownerId,
+        provider: { in: uniqueProviders },
+        status: IntegrationCredentialStatus.ACTIVE,
+      },
+      orderBy: [
+        { lastRotatedAt: 'desc' },
+        { updatedAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    });
+
+    const resolved: Record<string, ResolvedIntegrationCredential> = {};
+    for (const record of records) {
+      if (resolved[record.provider]) {
+        continue;
+      }
+
+      resolved[record.provider] = {
+        id: record.id,
+        provider: record.provider,
+        label: record.label,
+        secret: KeyVaultService.decryptSecret(record.encryptedSecret),
+        metadata: toMetadataRecord(record.metadata),
+        lastRotatedAt: record.lastRotatedAt,
+      };
+    }
+
+    return resolved;
+  }
+
+  static async resolveActiveCredential(
+    ownerId: string,
+    provider: string,
+  ): Promise<ResolvedIntegrationCredential | null> {
+    const resolved = await this.resolveActiveCredentials(ownerId, [provider]);
+    return resolved[provider] ?? null;
   }
 
   static async create(input: {
@@ -134,7 +221,9 @@ export class IntegrationCredentialService {
       data: {
         encryptedSecret,
         secretFingerprint: fingerprint,
-        metadata: typeof input.metadata !== 'undefined' ? input.metadata : credential.metadata,
+        metadata: normaliseMetadata(
+          typeof input.metadata !== 'undefined' ? input.metadata : credential.metadata,
+        ),
         label: input.label ? sanitiseLabel(input.label) : credential.label,
         lastRotatedAt: new Date(),
         status: IntegrationCredentialStatus.ACTIVE,
@@ -171,7 +260,9 @@ export class IntegrationCredentialService {
     const updated = await prisma.integrationCredential.update({
       where: { id: credential.id },
       data: {
-        metadata: typeof input.metadata !== 'undefined' ? input.metadata : credential.metadata,
+        metadata: normaliseMetadata(
+          typeof input.metadata !== 'undefined' ? input.metadata : credential.metadata,
+        ),
         label: input.label ? sanitiseLabel(input.label) : credential.label,
       },
     });
