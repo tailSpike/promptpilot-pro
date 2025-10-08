@@ -6,6 +6,37 @@ import { workflowService } from '../services/workflowService';
 
 const router = Router();
 
+const parseStepConfig = <T extends { config?: unknown }>(step: T): T & { config: Record<string, any> } => {
+  let parsedConfig: Record<string, any> = {};
+
+  if (step?.config && typeof step.config === 'string') {
+    try {
+      parsedConfig = JSON.parse(step.config);
+    } catch (error) {
+      console.warn('[workflows] Failed to parse step config JSON', error);
+      parsedConfig = {};
+    }
+  } else if (step?.config && typeof step.config === 'object') {
+    parsedConfig = step.config as Record<string, any>;
+  }
+
+  return {
+    ...step,
+    config: parsedConfig,
+  };
+};
+
+const normalizeWorkflowResponse = <T extends { steps?: Array<{ config?: unknown }> }>(workflow: T) => {
+  if (!workflow?.steps) {
+    return workflow;
+  }
+
+  return {
+    ...workflow,
+    steps: workflow.steps.map((step) => parseStepConfig(step)),
+  };
+};
+
 // Validation schemas
 const CreateWorkflowSchema = z.object({
   name: z.string().min(1).max(200),
@@ -23,11 +54,46 @@ const UpdateWorkflowSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+const ModelRetrySchema = z.object({
+  maxAttempts: z.number().int().min(0).max(5).optional(),
+  baseDelayMs: z.number().int().min(0).max(60000).optional(),
+  maxDelayMs: z.number().int().min(0).max(300000).optional(),
+}).strict().optional();
+
+const ModelParametersSchema = z.object({
+  temperature: z.number().min(0).max(2).optional(),
+  topP: z.number().min(0).max(1).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  parallelToolCalls: z.boolean().optional(),
+  presencePenalty: z.number().min(-2).max(2).optional(),
+  frequencyPenalty: z.number().min(-2).max(2).optional(),
+  seed: z.number().int().optional(),
+  responseFormat: z.enum(['json', 'text']).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
+}).strict().optional();
+
+const ModelConfigSchema = z.object({
+  id: z.string().min(1).optional(),
+  provider: z.enum(['openai', 'azure', 'anthropic', 'google', 'custom']).default('openai'),
+  model: z.string().min(1),
+  label: z.string().min(1).optional(),
+  parameters: ModelParametersSchema,
+  retry: ModelRetrySchema,
+  disabled: z.boolean().optional(),
+});
+
+const ModelRoutingSchema = z.object({
+  mode: z.enum(['parallel', 'fallback']).default('parallel'),
+  onError: z.enum(['abort', 'continue']).default('abort'),
+  concurrency: z.number().int().min(1).max(5).optional(),
+  preferredOrder: z.array(z.string()).optional(),
+}).optional();
+
 const CreateStepSchema = z.object({
   name: z.string().min(1).max(200),
   type: z.enum(['PROMPT', 'CONDITION', 'TRANSFORM', 'DELAY', 'WEBHOOK', 'DECISION']),
   order: z.number().int().min(0),
-  promptId: z.string().optional(),
+  promptId: z.string().nullish(),
   config: z.object({
     // Common fields for all step types
     description: z.string().optional(),
@@ -40,6 +106,8 @@ const CreateStepSchema = z.object({
       maxTokens: z.number().int().positive().optional(),
       model: z.string().optional(),
     }).optional(),
+    models: z.array(ModelConfigSchema).min(1).optional(),
+    modelRouting: ModelRoutingSchema,
     
     // CONDITION step configuration
     condition: z.object({
@@ -241,7 +309,7 @@ router.get('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Workflow not found' });
     }
 
-    res.json(workflow);
+  res.json(normalizeWorkflowResponse(workflow));
 
   } catch (error) {
     console.error('Error fetching workflow:', error);
@@ -277,7 +345,7 @@ router.post('/', authenticate, async (req, res) => {
       }
     });
 
-    res.status(201).json(workflow);
+  res.status(201).json(normalizeWorkflowResponse(workflow));
 
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -329,7 +397,7 @@ router.put('/:id', authenticate, async (req, res) => {
       }
     });
 
-    res.json(workflow);
+  res.json(normalizeWorkflowResponse(workflow));
 
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -415,6 +483,7 @@ router.post('/:id/steps', authenticate, async (req, res) => {
 
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error('Invalid workflow step payload:', JSON.stringify(error.issues, null, 2));
       return res.status(400).json({ error: 'Invalid input', details: error.issues });
     }
     console.error('Error creating step:', error);
@@ -477,6 +546,7 @@ router.put('/:id/steps/:stepId', authenticate, async (req, res) => {
 
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error('Invalid workflow step payload:', JSON.stringify(error.issues, null, 2));
       return res.status(400).json({ error: 'Invalid input', details: error.issues });
     }
     console.error('Error updating step:', error);

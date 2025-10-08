@@ -1,6 +1,12 @@
 import { performance } from 'perf_hooks';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import {
+  modelDispatcher,
+  ModelConfig,
+  ModelRoutingOptions,
+  ModelExecutionResult,
+} from './modelDispatcher';
 
 // Define step types as constants (since SQLite doesn't support enums natively)
 export const StepTypes = {
@@ -171,6 +177,14 @@ export interface WorkflowWithRelations {
 }
 
 export class WorkflowService {
+  private readonly defaultModelByProvider: Record<ModelConfig['provider'], string> = {
+    openai: 'gpt-4o-mini',
+    azure: 'gpt-4o-mini',
+    anthropic: 'claude-3-haiku-20240307',
+    google: 'gemini-1.5-flash',
+    custom: 'custom-model',
+  };
+
   /**
    * Create a new workflow with steps and variables
    */
@@ -439,11 +453,15 @@ export class WorkflowService {
       let stepTokens = 0;
 
       try {
-        rawOutput = await this.executeStep(step, currentInput);
+        rawOutput = await this.executeStep(step, currentInput, { allowSimulatedFallback: true });
         normalizedOutput = this.normalizePreviewOutput(rawOutput);
 
         if (!normalizedOutput || Object.keys(normalizedOutput).length === 0) {
           stepWarnings.push('Step returned no output payload.');
+        }
+
+        if (rawOutput && typeof rawOutput === 'object' && Array.isArray((rawOutput as any).warnings)) {
+          stepWarnings.push(...(rawOutput as any).warnings);
         }
 
         if (rawOutput && typeof rawOutput === 'object' && 'tokens' in rawOutput) {
@@ -672,7 +690,7 @@ export class WorkflowService {
       // Execute steps in order
       for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
         // Execute the step based on its type
-        const stepOutput = await this.executeStep(step, currentInput);
+  const stepOutput = await this.executeStep(step, currentInput);
         
         // Store step result for future steps
         stepResults[`step_${step.order}`] = stepOutput;
@@ -715,15 +733,33 @@ export class WorkflowService {
   /**
    * Execute an individual workflow step
    */
-  private async executeStep(step: any & { prompt?: any; order: number; type: string; name: string; config: any }, input: Record<string, any>): Promise<any> {
-    const config = JSON.parse(step.config as string);
+  private async executeStep(
+    step: any & { prompt?: any; order: number; type: string; name: string; config: any },
+    input: Record<string, any>,
+    options: { allowSimulatedFallback?: boolean } = {}
+  ): Promise<any> {
+    let config: any = {};
+    if (typeof step.config === 'string') {
+      try {
+        config = step.config ? JSON.parse(step.config) : {};
+      } catch (error) {
+        throw new Error(`Invalid step configuration JSON for "${step.name}": ${(error as Error).message}`);
+      }
+    } else if (typeof step.config === 'object' && step.config !== null) {
+      config = step.config;
+    }
     
     switch (step.type) {
-      case StepTypes.PROMPT:
-        if (!step.prompt) {
+      case StepTypes.PROMPT: {
+        const hasPromptRecord = Boolean(step.prompt);
+        const inlinePrompt =
+          typeof config?.promptContent === 'string' ? config.promptContent.trim() : '';
+
+        if (!hasPromptRecord && inlinePrompt.length === 0) {
           throw new Error(`Prompt step ${step.name} has no associated prompt`);
         }
-        return await this.executePromptStep(step.prompt, input, config);
+        return await this.executePromptStep(step, input, config, options);
+      }
         
       case StepTypes.TRANSFORM:
         return this.executeTransformStep(input, config);
@@ -748,24 +784,284 @@ export class WorkflowService {
   /**
    * Execute a prompt step with variable substitution
    */
-  private async executePromptStep(prompt: any, input: Record<string, any>, config: any): Promise<any> {
-    // This is a simplified implementation - in a real system, you'd integrate with AI models
-    const variables = JSON.parse(prompt.variables || '[]');
-    let content = prompt.content;
+  private async executePromptStep(
+    step: any,
+    input: Record<string, any>,
+    config: any,
+    options: { allowSimulatedFallback?: boolean } = {}
+  ): Promise<any> {
+    const promptRecord = step?.prompt ?? null;
+    const inlineContent = typeof config?.promptContent === 'string' ? config.promptContent : undefined;
+    const promptContent = promptRecord?.content ?? inlineContent;
 
-    // Simple variable substitution
-    for (const variable of variables) {
-      const value = input[variable.name] || variable.defaultValue || '';
-      content = content.replace(new RegExp(`{{${variable.name}}}`, 'g'), value);
+    if (!promptContent || !promptContent.trim()) {
+      const stepName = step?.name ?? 'Prompt step';
+      throw new Error(`Prompt step "${stepName}" has no prompt content configured`);
     }
 
-    // Simulate AI model execution
+    const variables = this.parsePromptVariables(promptRecord?.variables);
+    let content = promptContent;
+    const resolvedVariables: Record<string, any> = {};
+
+    for (const variable of variables) {
+      const mappedValue = config?.variables?.[variable.name];
+      const value = input[variable.name] ?? mappedValue ?? variable.defaultValue ?? '';
+      resolvedVariables[variable.name] = value;
+      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+      content = content.replace(new RegExp(`{{${variable.name}}}`, 'g'), stringValue);
+    }
+
+    if (!promptRecord && config?.variables && typeof config.variables === 'object') {
+      Object.entries(config.variables).forEach(([key, value]) => {
+        const resolvedValue = input[key] ?? value ?? '';
+        resolvedVariables[key] = resolvedValue;
+        const stringValue = typeof resolvedValue === 'string' ? resolvedValue : JSON.stringify(resolvedValue);
+        content = content.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
+      });
+    }
+
+    if (!promptRecord) {
+      Object.entries(input).forEach(([key, value]) => {
+        if (resolvedVariables[key] === undefined) {
+          resolvedVariables[key] = value;
+        }
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+        content = content.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
+      });
+    }
+
+    const models = this.buildModelConfigs(config);
+    const routing = this.buildRoutingConfig(config);
+
+    const dispatcherResult = await modelDispatcher.execute({
+      prompt: content,
+      instructions: config?.instructions,
+      variables: input,
+      models,
+      routing,
+    });
+
+    const providerResults: ModelExecutionResult[] = [...dispatcherResult.results];
+    const providersByName: Record<string, Record<string, any>> = {};
+    const warnings: string[] = [];
+    const errorSummaries: string[] = [];
+    const failureMessages: string[] = [];
+
+    providerResults.forEach((result) => {
+      if (result.warnings && result.warnings.length > 0) {
+        warnings.push(...result.warnings);
+      }
+
+      if (!result.success) {
+        const failureMessage = result.error ?? 'unknown error';
+        errorSummaries.push(`${result.provider}:${result.model} → ${failureMessage}`);
+        failureMessages.push(failureMessage);
+      }
+
+      const providerKey = result.provider;
+      providersByName[providerKey] = providersByName[providerKey] || {};
+      providersByName[providerKey][result.model] = {
+        label: result.label,
+        text: result.outputText,
+        success: result.success,
+        tokens: result.tokensUsed,
+        latencyMs: result.latencyMs,
+        metadata: result.metadata,
+        error: result.error,
+        warnings: result.warnings,
+      };
+
+    });
+
+    let primaryResult = this.selectPrimaryResult(providerResults);
+
+    if (!primaryResult) {
+      const authErrorRegex = /(api\s*key|api-key|authentication|unauthorized|forbidden|invalid key)/i;
+      const authOnlyFailures =
+        options.allowSimulatedFallback &&
+        providerResults.length > 0 &&
+        providerResults.every(
+          (result) =>
+            !result.success &&
+            typeof result.error === 'string' &&
+            authErrorRegex.test(result.error),
+        );
+
+      if (authOnlyFailures && models.length > 0) {
+        const fallbackModel = (models.find((model) => !model.disabled) ?? models[0])!;
+        const simulatedText = this.buildSimulatedPreviewText(
+          fallbackModel.label ?? fallbackModel.provider,
+          content,
+          resolvedVariables,
+        );
+
+        const simulatedResult: ModelExecutionResult = {
+          provider: fallbackModel.provider,
+          model: fallbackModel.model,
+          label: fallbackModel.label,
+          success: true,
+          outputText: simulatedText,
+          tokensUsed: 0,
+          latencyMs: 0,
+          warnings: ['Simulated preview output because provider authentication failed.'],
+          raw: { simulated: true, reason: 'auth-fallback' },
+          error: undefined,
+          retries: 0,
+          metadata: { simulated: true },
+        };
+
+        providerResults.push(simulatedResult);
+        const providerKey = simulatedResult.provider;
+        providersByName[providerKey] = providersByName[providerKey] || {};
+        providersByName[providerKey][simulatedResult.model] = {
+          label: simulatedResult.label,
+          text: simulatedResult.outputText,
+          success: true,
+          tokens: simulatedResult.tokensUsed,
+          latencyMs: simulatedResult.latencyMs,
+          metadata: simulatedResult.metadata,
+          error: undefined,
+          warnings: simulatedResult.warnings,
+        };
+
+        primaryResult = simulatedResult;
+        const fallbackWarning = 'All configured providers returned authentication errors. Showing simulated output for preview only.';
+        warnings.push(fallbackWarning);
+      }
+    }
+
+    if (!primaryResult) {
+      const stepName = step?.name ?? 'Prompt step';
+      const failureMessage = failureMessages[0] ?? 'All configured providers failed to generate output.';
+      const error = new Error(`Prompt step "${stepName}" failed: ${failureMessage}`);
+      if (errorSummaries.length > 0) {
+        warnings.push(...errorSummaries);
+      }
+      throw error;
+    }
+
+    const primaryText = primaryResult.outputText ?? `Generated response for: ${content.substring(0, 100)}...`;
+    const primaryModel = primaryResult.model ?? models[0]?.model ?? 'unknown-model';
+
+    if (errorSummaries.length > 0) {
+      warnings.push(...errorSummaries);
+    }
+
     return {
       content,
-      generatedText: `Generated response for: ${content.substring(0, 100)}...`,
-      model: config.model || 'gpt-3.5-turbo',
-      tokens: Math.floor(Math.random() * 1000) + 100,
+      generatedText: primaryText,
+      model: primaryModel,
+      tokens: dispatcherResult.aggregatedTokens,
+      primaryProvider: primaryResult.provider ?? models[0]?.provider ?? 'openai',
+      modelOutputs: providersByName,
+  providerResults,
+      resolvedVariables,
+      warnings,
     };
+  }
+
+  private buildSimulatedPreviewText(providerLabel: string, prompt: string, variables: Record<string, any>): string {
+    const truncatedPrompt = prompt.length > 160 ? `${prompt.slice(0, 157)}...` : prompt;
+    const entries = Object.entries(variables ?? {});
+    const variableSummary = entries.length > 0
+      ? entries
+          .slice(0, 3)
+          .map(([key, value]) => {
+            if (typeof value === 'string') {
+              return `${key}: ${value}`;
+            }
+            try {
+              return `${key}: ${JSON.stringify(value)}`;
+            } catch {
+              return `${key}: [unserializable]`;
+            }
+          })
+          .join(', ')
+      : '';
+
+    const suffix = variableSummary
+      ? ` | variables → ${variableSummary}${entries.length > 3 ? ', …' : ''}`
+      : '';
+
+    return `[Simulated ${providerLabel} preview] ${truncatedPrompt}${suffix}`;
+  }
+
+  private buildModelConfigs(config: any): ModelConfig[] {
+    const rawModels = Array.isArray(config?.models) ? config.models : [];
+    const allowedProviders = (process.env.ALLOWED_MODEL_PROVIDERS || 'openai,azure,anthropic,google,custom')
+      .split(',')
+      .map((provider) => provider.trim())
+      .filter(Boolean);
+
+    const normalized = rawModels
+      .filter((candidate: any) => !!candidate)
+      .map((candidate: any, index: number): ModelConfig => ({
+        id: candidate.id || `model-${index}`,
+        provider: (candidate.provider || 'openai') as ModelConfig['provider'],
+        model:
+          candidate.model ||
+          config?.modelSettings?.model ||
+          this.defaultModelByProvider[(candidate.provider || 'openai') as ModelConfig['provider']],
+        label: candidate.label,
+        disabled: candidate.disabled ?? false,
+        parameters: candidate.parameters,
+        retry: candidate.retry,
+      }))
+      .filter((model: ModelConfig) => {
+        if (!allowedProviders.includes(model.provider)) {
+          console.warn(`Model provider ${model.provider} is not allowed by ALLOWED_MODEL_PROVIDERS.`);
+          return false;
+        }
+        return true;
+      });
+
+    if (normalized.length > 0) {
+      return normalized;
+    }
+
+    return [
+      {
+        id: 'legacy-default-model',
+        provider: (config?.modelSettings?.provider || config?.provider || 'openai') as ModelConfig['provider'],
+        model:
+          config?.modelSettings?.model ||
+          this.defaultModelByProvider[(config?.modelSettings?.provider || config?.provider || 'openai') as ModelConfig['provider']],
+        parameters: {
+          temperature: config?.modelSettings?.temperature,
+          topP: config?.modelSettings?.topP,
+          maxTokens: config?.modelSettings?.maxTokens,
+          parallelToolCalls: config?.modelSettings?.parallelToolCalls,
+          metadata: config?.modelSettings?.metadata,
+        },
+      },
+    ];
+  }
+
+  private buildRoutingConfig(config: any): ModelRoutingOptions | undefined {
+    if (!config?.modelRouting) {
+      return undefined;
+    }
+
+    const routing = config.modelRouting;
+    return {
+      mode: routing.mode,
+      onError: routing.onError,
+      concurrency: routing.concurrency,
+      preferredOrder: routing.preferredOrder,
+    };
+  }
+
+  private selectPrimaryResult(results: ModelExecutionResult[]): ModelExecutionResult | undefined {
+    if (!results || results.length === 0) {
+      return undefined;
+    }
+
+    const successful = results.filter((result) => result.success && !!result.outputText);
+    if (successful.length > 0) {
+      return successful[0];
+    }
+
+    return undefined;
   }
 
   /**
@@ -978,6 +1274,32 @@ export class WorkflowService {
     }
 
     return { value };
+  }
+
+  private parsePromptVariables(raw: unknown): Array<Record<string, any>> {
+    if (!raw) {
+      return [];
+    }
+
+    if (Array.isArray(raw)) {
+      return raw as Array<Record<string, any>>;
+    }
+
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return [];
+      }
+
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? (parsed as Array<Record<string, any>>) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
   }
 
   private cloneData<T>(value: T): T {
