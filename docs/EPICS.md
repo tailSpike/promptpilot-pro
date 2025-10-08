@@ -188,15 +188,35 @@ Epic 3 unlocks collaborative workflows so teams can co-manage prompt assets, exc
 
 ## 🧠 Epic 4: AI Model Integration
 
-### User Stories
-- As a user, I want to run prompts across multiple AI models so I can compare outputs.
-- As a user, I want to set model-specific parameters like temperature and context window.
-- As a user, I want to switch models mid-flow to optimize performance and cost.
+### Story Overview
+Epic 4 pushes PromptPilot Pro from mocked model orchestration to production-ready, multi-provider execution. Stories build sequentially so each slice lays the groundwork for the next capability.
 
-### Acceptance Criteria
-- Model selector supports GPT-4, Claude, Gemini, etc.
-- Parameters are configurable per step
-- Execution engine supports multi-model chaining
+### Story 1: Multi-Model Prompt Execution ✅ COMPLETE
+**User Story:** As a user, I want to run prompts across multiple AI models so I can compare outputs.
+📄 **[View Full Story Details](./EPIC4_STORY1.md)**
+
+**Highlights:**
+- Prompt steps fan out to several providers with shared variable context.
+- UI exposes per-model parameters (temperature, max tokens, etc.).
+- Execution engine records outputs for each selected provider.
+
+### Story 2: Provider Integration Keys & Live Verification 🚧 DISCOVERY
+**User Story:** As a prompt engineer, I want to register provider API keys so workflows and automated tests can hit real models.
+📄 **[View Full Story Details](./EPIC4_STORY2.md)**
+
+**Scope:**
+- Secure storage, rotation, and auditing for workspace credentials.
+- Workflow execution pipeline resolves encrypted keys at runtime.
+- CI smoke suites and Cypress flows validate live provider connectivity.
+
+### Story 3: Adaptive Model Routing & Cost Guardrails 📝 PLANNED
+**User Story:** As an operations lead, I want adaptive routing with budget and latency guardrails to control spend.
+📄 **[View Full Story Details](./EPIC4_STORY3.md)**
+
+**Upcoming Focus:**
+- Budget and latency limits per model with telemetry dashboards.
+- Adaptive selection heuristics (ε-greedy, fallback) driven by live metrics.
+- Alerts when guardrails breach or providers degrade.
 
 ---
 
