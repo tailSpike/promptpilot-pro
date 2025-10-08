@@ -84,8 +84,10 @@ describe('Workflow - Create with all step types (UI)', () => {
       cy.contains('Prompt Content').parent().find('textarea').type('Write a haiku about {{topic}}', { parseSpecialCharSequences: false });
       cy.contains('Prompt Content').parent().find('textarea').should('have.value', 'Write a haiku about {{topic}}');
       cy.contains('Temperature').parent().find('input[type="number"]').clear().type('0.7');
-      cy.contains('Max Tokens').parent().find('input[type="number"]').clear().type('256');
-      cy.contains('Model').parent().find('select').select('gpt-3.5-turbo');
+      cy.contains(/Max tokens/i).parent().find('input[type="number"]').clear().type('256');
+      cy.contains('Provider').parent().find('select').select('openai');
+      cy.contains('Model name').parent().find('input').clear().type('gpt-4o-mini');
+      cy.contains('Display label').parent().find('input').clear().type('OpenAI Primary');
     });
 
     // Step 2: CONDITION
