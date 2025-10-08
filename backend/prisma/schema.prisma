@@ -27,6 +27,8 @@ model User {
   librarySharesRevoked  PromptLibraryShare[] @relation("LibrarySharesRevoked")
   auditLogs             AuditLog[]
   promptComments        PromptComment[]
+  integrationCredentials IntegrationCredential[] @relation("CredentialOwner")
+  credentialsCreated    IntegrationCredential[] @relation("CredentialCreator")
 
   @@map("users")
 }
@@ -338,6 +340,28 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model IntegrationCredential {
+  id                String                        @id @default(cuid())
+  provider          String
+  label             String
+  encryptedSecret   String
+  secretFingerprint String
+  status            IntegrationCredentialStatus   @default(ACTIVE)
+  metadata          Json?
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+  lastRotatedAt     DateTime?
+  revokedAt         DateTime?
+  ownerId           String
+  createdBy         String
+  owner             User                          @relation("CredentialOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  creator           User                          @relation("CredentialCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, provider, label])
+  @@index([ownerId, provider, status])
+  @@map("integration_credentials")
+}
+
 enum Role {
   USER
   ADMIN
@@ -377,4 +401,10 @@ enum VersionChangeType {
   PATCH
   MINOR
   MAJOR
+}
+
+enum IntegrationCredentialStatus {
+  ACTIVE
+  EXPIRING
+  REVOKED
 }

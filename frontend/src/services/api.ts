@@ -11,6 +11,9 @@ import type {
   Prompt,
   PromptComment,
   PromptCommentsResult,
+  IntegrationCredential,
+  IntegrationCredentialStatus,
+  IntegrationProviderConfig,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -73,6 +76,9 @@ export type {
   UserSummary,
   PromptComment,
   PromptCommentsResult,
+  IntegrationCredential,
+  IntegrationCredentialStatus,
+  IntegrationProviderConfig,
 } from '../types';
 
 // Auth API
@@ -376,6 +382,46 @@ export const workflowsAPI = {
 
   reorderSteps: async (workflowId: string, stepIds: string[]) => {
     const response = await api.put(`/api/workflows/${workflowId}/steps/reorder`, { stepIds });
+    return response.data;
+  },
+};
+
+export const integrationsAPI = {
+  getProviders: async (): Promise<{ providers: IntegrationProviderConfig[] }> => {
+    const response = await api.get('/api/integrations/providers');
+    return response.data;
+  },
+
+  getCredentials: async (): Promise<{ credentials: IntegrationCredential[] }> => {
+    const response = await api.get('/api/integrations/credentials');
+    return response.data;
+  },
+
+  createCredential: async (payload: {
+    provider: string;
+    label: string;
+    secret: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ credential: IntegrationCredential }> => {
+    const response = await api.post('/api/integrations/credentials', payload);
+    return response.data;
+  },
+
+  updateCredential: async (
+    credentialId: string,
+    payload: {
+      secret?: string;
+      label?: string;
+      status?: IntegrationCredentialStatus;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<{ credential: IntegrationCredential }> => {
+    const response = await api.patch(`/api/integrations/credentials/${credentialId}`, payload);
+    return response.data;
+  },
+
+  revokeCredential: async (credentialId: string): Promise<{ credential: IntegrationCredential }> => {
+    const response = await api.delete(`/api/integrations/credentials/${credentialId}`);
     return response.data;
   },
 };

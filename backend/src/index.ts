@@ -15,6 +15,7 @@ import libraryShareRoutes from './routes/libraryShares';
 import featureFlagRoutes from './routes/featureFlags';
 import usersRoutes from './routes/users';
 import promptCommentRoutes from './routes/promptComments';
+import integrationCredentialRoutes from './routes/integrationCredentials';
 
 // Load environment variables
 dotenv.config();
@@ -142,6 +143,7 @@ app.use('/api/libraries', libraryShareRoutes);
 app.use('/api/feature-flags', featureFlagRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/comments', promptCommentRoutes);
+app.use('/api/integrations', integrationCredentialRoutes);
 app.use('/api', versionRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/workflows', triggerRoutes);

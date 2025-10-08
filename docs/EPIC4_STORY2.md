@@ -2,8 +2,9 @@
 
 ## Story snapshot
 - **User story:** As a prompt engineer, I want to register provider API keys inside PromptPilot Pro so workflows can run against real models during development and automated tests.
+- **Primary touchpoint:** Dedicated web settings page that lets users paste provider secrets, review status, and manage rotations without leaving the browser.
 - **Acceptance criteria:**
-  - Secure UI and API for storing encrypted provider credentials per workspace (OpenAI, Anthropic, Gemini, Azure OpenAI, etc.).
+  - Secure web UI (paste-in form) and API for storing encrypted provider credentials per workspace (OpenAI, Anthropic, Gemini, Azure OpenAI, etc.).
   - Backend can inject decrypted keys into runtime when executing preview, test, and full workflow runs.
   - Automated test matrix exercises live providers (or sandbox tenants) at least once per CI cycle and surfaces failures with actionable diagnostics.
 
@@ -147,7 +148,17 @@ npm --prefix frontend run cypress:run -- --spec cypress/e2e/workflow-provider-ke
 **Environment variables:**
 - `KMS_DRIVER` (`aws`, `azure`, `gcp`, `local`)
 - `KMS_MASTER_KEY` (required for `local` driver)
-- `FEATURE_PROVIDER_CREDENTIALS=1` (gates UI + API routes)
 - Provider-specific keys (sandbox friendly) for manual smoke tests.
+
+## Development API keys per provider
+
+We rely on vendor-issued sandbox or non-production keys so engineers can verify integrations without touching production secrets:
+
+- **OpenAI**: Generate a personal API key from the OpenAI dashboard (<https://platform.openai.com/api-keys>). Use an organization-scoped key tied to the shared "PromptPilot Dev" org when possible; otherwise create a temporary key with the *Pay-as-you-go* tier and cap spend via usage limits.
+- **Azure OpenAI**: Request access in the Azure portal, then create a resource in the shared `promptpilot-dev` subscription. Capture the *Keys and Endpoint* pair (`OPENAI_API_KEY`, `OPENAI_API_BASE`). Limit key scope to `deployment=dev-gpt-4o-mini` and regenerate after the sprint.
+- **Anthropic**: Use the sandbox project issued under our Anthropic account (<https://console.anthropic.com>). Create a standard API key with the "Development" label so Anthropic throttles usage appropriately. Keys expire monthly; set a calendar reminder to refresh.
+- **Google Gemini**: Enable the *Generative Language API* in the internal `promptpilot-dev` Google Cloud project and create an API key via the Credentials screen. Restrict the key to the Gemini API and toggle the *Test* quota profile.
+
+Document any new providers (e.g., Cohere, Mistral) by adding similar acquisition notes and linking to their developer portals. Always prefer provider-specific test tenants with enforced spend caps.
 
 Stop servers with `Ctrl+C` when finished. Rotate any temporary keys created during testing.

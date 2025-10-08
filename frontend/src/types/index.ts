@@ -160,3 +160,27 @@ export interface SharedLibrarySummary {
   };
   invitedBy: UserSummary;
 }
+
+export type IntegrationCredentialStatus = 'ACTIVE' | 'EXPIRING' | 'REVOKED';
+
+export interface IntegrationCredential {
+  id: string;
+  provider: string;
+  label: string;
+  status: IntegrationCredentialStatus;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  lastRotatedAt?: string | null;
+  revokedAt?: string | null;
+}
+
+export interface IntegrationProviderConfig {
+  id: string;
+  name: string;
+  description: string;
+  documentationUrl: string;
+  sandbox?: boolean;
+  scopes: string[];
+  tags?: string[];
+}
