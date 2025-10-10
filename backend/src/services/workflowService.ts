@@ -1009,35 +1009,46 @@ export class WorkflowService {
       throw new Error(`Prompt step "${stepName}" has no prompt content configured`);
     }
 
-    const variables = this.parsePromptVariables(promptRecord?.variables);
+  const variables = this.parsePromptVariables(promptRecord?.variables);
     let content = promptContent;
     const resolvedVariables: Record<string, any> = {};
+
+    const escapeRegex = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const replaceAllPlaceholders = (tmpl: string, key: string, value: unknown): string => {
+      const pattern = new RegExp(`{{\\s*${escapeRegex(key)}\\s*}}`, 'g');
+      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+      return tmpl.replace(pattern, stringValue ?? '');
+    };
 
     for (const variable of variables) {
       const mappedValue = config?.variables?.[variable.name];
       const value = input[variable.name] ?? mappedValue ?? variable.defaultValue ?? '';
       resolvedVariables[variable.name] = value;
-      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-      content = content.replace(new RegExp(`{{${variable.name}}}`, 'g'), stringValue);
+      content = replaceAllPlaceholders(content, variable.name, value);
     }
-
-    if (!promptRecord && config?.variables && typeof config.variables === 'object') {
+    // Apply config variable mappings as fallback for unresolved placeholders
+    if (config?.variables && typeof config.variables === 'object') {
       Object.entries(config.variables).forEach(([key, value]) => {
-        const resolvedValue = input[key] ?? value ?? '';
-        resolvedVariables[key] = resolvedValue;
-        const stringValue = typeof resolvedValue === 'string' ? resolvedValue : JSON.stringify(resolvedValue);
-        content = content.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
+        if (resolvedVariables[key] === undefined) {
+          const resolvedValue = input[key] ?? value ?? '';
+          resolvedVariables[key] = resolvedValue;
+          content = replaceAllPlaceholders(content, key, resolvedValue);
+        }
       });
     }
 
-    if (!promptRecord) {
-      Object.entries(input).forEach(([key, value]) => {
-        if (resolvedVariables[key] === undefined) {
-          resolvedVariables[key] = value;
-        }
-        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-        content = content.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
-      });
+    // Always allow direct input-based replacement for any remaining placeholders
+    Object.entries(input).forEach(([key, value]) => {
+      if (resolvedVariables[key] === undefined) {
+        resolvedVariables[key] = value;
+      }
+      content = replaceAllPlaceholders(content, key, value);
+    });
+
+    // Detect unresolved placeholders after all substitutions
+    const unresolvedPattern = /{{\s*[^}]+\s*}}/g;
+    if (unresolvedPattern.test(content)) {
+      // We'll append a warning later to the warnings array
     }
 
     const models = this.buildModelConfigs(config);
@@ -1116,6 +1127,11 @@ export class WorkflowService {
     });
 
     let primaryResult = this.selectPrimaryResult(providerResults);
+
+    // If unresolved placeholders exist, add an explicit warning for visibility
+    if (unresolvedPattern.test(content)) {
+      warnings.push('Unresolved template variables detected in prompt content. Some placeholders may not have been replaced.');
+    }
 
     if (!primaryResult) {
       const authErrorRegex = /(api\s*key|api-key|authentication|unauthorized|forbidden|invalid key)/i;
@@ -1581,6 +1597,14 @@ export class WorkflowService {
         return Array.isArray(parsed) ? (parsed as Array<Record<string, any>>) : [];
       } catch {
         return [];
+      }
+    }
+    // Support objects like { items: [...] } or { variables: [...] }
+    if (typeof raw === 'object' && raw !== null) {
+      const obj = raw as Record<string, any>;
+      const items = Array.isArray(obj.items) ? obj.items : Array.isArray(obj.variables) ? obj.variables : null;
+      if (Array.isArray(items)) {
+        return items as Array<Record<string, any>>;
       }
     }
 

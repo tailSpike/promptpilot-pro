@@ -28,6 +28,33 @@ const api = axios.create({
   timeout: 10000, // 10 second timeout
 });
 
+// --- Helpers to normalize backend DTOs into UI-friendly shapes ---
+function normalizeVariablesValue(value: unknown): any[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value as any[];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : normalizeVariablesValue(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const items = Array.isArray(obj.items) ? obj.items : (Array.isArray((obj as any).variables) ? (obj as any).variables : []);
+    return Array.isArray(items) ? items : [];
+  }
+  return [];
+}
+
+function normalizePrompt<T extends Partial<Prompt>>(prompt: T): T {
+  if (!prompt) return prompt;
+  const normalized: any = { ...prompt };
+  normalized.variables = normalizeVariablesValue((prompt as any).variables);
+  return normalized as T;
+}
+
 const AUTH_REDIRECT_EXCLUSIONS = ['/api/auth/login', '/api/auth/register'];
 
 // Request interceptor to add auth token
@@ -109,11 +136,17 @@ export const promptsAPI = {
     folderId?: string;
   }) => {
     const response = await api.get('/api/prompts', { params });
+    if (response.data && Array.isArray(response.data.prompts)) {
+      response.data.prompts = response.data.prompts.map((p: any) => normalizePrompt(p));
+    }
     return response.data;
   },
 
   getPrompt: async (id: string) => {
     const response = await api.get(`/api/prompts/${id}`);
+    if (response.data && response.data.prompt) {
+      response.data.prompt = normalizePrompt(response.data.prompt);
+    }
     return response.data;
   },
 

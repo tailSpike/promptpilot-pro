@@ -23,6 +23,8 @@ interface WorkflowTrigger {
 interface WorkflowTriggersProps {
   workflowId: string;
   onTriggerExecuted?: (triggerId: string) => void;
+  // Optional input payload to send when executing a trigger manually
+  inputForTrigger?: Record<string, unknown>;
 }
 
 interface ToastMessage {
@@ -31,7 +33,7 @@ interface ToastMessage {
   message: string;
 }
 
-export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: WorkflowTriggersProps) {
+export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputForTrigger }: WorkflowTriggersProps) {
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -285,7 +287,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(inputForTrigger ? { input: inputForTrigger } : {})
       });
 
       if (response.ok) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { workflowsAPI } from '../services/api';
@@ -60,6 +60,28 @@ interface Workflow {
     email: string;
   };
   variables?: WorkflowVariable[];
+}
+
+// Normalize prompt.variables shape to a flat array
+function normalizePromptVariables(value: unknown): Array<{ name: string; type?: string; isRequired?: boolean }> {
+  if (!value) return [];
+  let v: unknown = value;
+  if (typeof v === 'string') {
+    try { v = JSON.parse(v); } catch { return []; }
+  }
+  if (Array.isArray(v)) {
+    return v
+      .map((item: any) => ({ name: item?.name, type: item?.dataType || item?.type, isRequired: Boolean(item?.isRequired || item?.required) }))
+      .filter((x: { name?: string }) => Boolean(x?.name));
+  }
+  if (typeof v === 'object' && v) {
+    const obj = v as any;
+    const arr = Array.isArray(obj.items) ? obj.items : Array.isArray(obj.variables) ? obj.variables : [];
+    return arr
+      .map((item: any) => ({ name: item?.name, type: item?.dataType || item?.type, isRequired: Boolean(item?.isRequired || item?.required) }))
+      .filter((x: { name?: string }) => Boolean(x?.name));
+  }
+  return [];
 }
 
 // Helper function to syntax highlight JSON
@@ -135,6 +157,9 @@ export default function WorkflowDetail() {
   const [jsonModal, setJsonModal] = useState<{ open: boolean; title?: string; data?: unknown }>({ open: false });
   // Pagination limit
   const [execLimit, setExecLimit] = useState(10);
+  // Smart form state for small variable sets
+  const [formInputs, setFormInputs] = useState<Record<string, unknown>>({});
+  const [copiedCurl, setCopiedCurl] = useState(false);
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -223,6 +248,84 @@ export default function WorkflowDetail() {
       setPreviewResult(null);
       setPreviewError(null);
     }
+  };
+
+  // Compute first prompt step placeholders (for display only)
+  const firstPromptPlaceholders = useMemo(() => {
+    if (!workflow?.steps) return [] as Array<{ name: string; isRequired?: boolean }>;
+    const firstPrompt = [...workflow.steps].sort((a, b) => a.order - b.order).find((s) => s.type === 'PROMPT' && s.prompt);
+    if (!firstPrompt?.prompt) return [];
+    const vars = normalizePromptVariables(firstPrompt.prompt.variables);
+    return vars;
+  }, [workflow?.steps]);
+
+  // Smart form should appear when there are 1–3 input variables and all are simple types
+  const inputVariables = useMemo(() => (workflow?.variables || []).filter(v => v.type === 'input'), [workflow?.variables]);
+  const showSmartForm = useMemo(() => {
+    if (!inputVariables || inputVariables.length === 0) return false;
+    if (inputVariables.length > 3) return false;
+    // Only simple types supported inline
+    return inputVariables.every(v => ['string', 'number', 'boolean'].includes(v.dataType));
+  }, [inputVariables]);
+
+  // Sync JSON textarea -> smart form values (for known keys)
+  useEffect(() => {
+    if (!showSmartForm) return;
+    try {
+      const parsed = JSON.parse(executionInput || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const next: Record<string, unknown> = { ...formInputs };
+        for (const v of inputVariables) {
+          if (Object.prototype.hasOwnProperty.call(parsed, v.name)) {
+            next[v.name] = (parsed as any)[v.name];
+          }
+        }
+        setFormInputs(next);
+      }
+    } catch {
+      // ignore invalid JSON
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [executionInput, showSmartForm, inputVariables.map(v => v.name).join('|')]);
+
+  // Helper to update both formInputs and JSON text coherently
+  const updateFormValue = (name: string, raw: unknown, dataType: string) => {
+    let value: unknown = raw;
+    if (dataType === 'number') {
+      const n = typeof raw === 'string' ? Number(raw) : Number(raw);
+      value = Number.isFinite(n) ? n : undefined;
+    } else if (dataType === 'boolean') {
+      value = Boolean(raw);
+    } else {
+      // string
+      value = raw as string;
+    }
+    const nextForm = { ...formInputs, [name]: value };
+    setFormInputs(nextForm);
+    // Merge into JSON
+    let current: any = {};
+    try { current = JSON.parse(executionInput || '{}'); } catch { current = {}; }
+    if (value === undefined) {
+      delete current[name];
+    } else {
+      current[name] = value;
+    }
+    setExecutionInput(JSON.stringify(current, null, 2));
+  };
+
+  const buildCurlCommand = () => {
+    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
+    const token = localStorage.getItem('token') || '<YOUR_TOKEN>';
+    let body: string;
+    try {
+      const parsed = JSON.parse(executionInput || '{}');
+      body = JSON.stringify({ input: parsed, triggerType: 'manual' });
+    } catch {
+      body = JSON.stringify({ input: {}, triggerType: 'manual' });
+    }
+    const url = `${apiUrl}/api/workflows/${workflow?.id}/execute`;
+    // Use single quotes for most shells; escaping handled minimally
+    return `curl -X POST "${url}" -H "Content-Type: application/json" -H "Authorization: Bearer ${token}" -d '${body.replace(/'/g, "'\\''")}'`;
   };
 
   useEffect(() => {
@@ -533,6 +636,14 @@ export default function WorkflowDetail() {
           {/* Workflow Triggers */}
           <WorkflowTriggers 
             workflowId={workflow.id} 
+            inputForTrigger={((): Record<string, any> | undefined => {
+              try {
+                const parsed = JSON.parse(executionInput || '{}');
+                return parsed && typeof parsed === 'object' ? parsed : undefined;
+              } catch {
+                return undefined; // ignore parse errors, backend will sample inputs
+              }
+            })()}
             onTriggerExecuted={() => {
               fetchWorkflow({ silent: true }); // Refresh executions list silently
             }}
@@ -546,6 +657,61 @@ export default function WorkflowDetail() {
             <h2 className="text-lg font-medium text-gray-900 mb-4">Execute Workflow</h2>
             
             <div className="space-y-4">
+              {/* Required placeholders quick view from first prompt */}
+              {firstPromptPlaceholders.length > 0 && (
+                <div className="rounded border border-purple-100 bg-purple-50 p-3 text-xs text-purple-900">
+                  <div className="font-medium mb-1">Placeholders used in first prompt:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {firstPromptPlaceholders.map((v) => {
+                      const ph = `{{${v.name}}}`;
+                      return (
+                        <span key={v.name} className="inline-flex items-center rounded-full bg-white border border-purple-200 px-2 py-0.5">
+                          <span className="font-mono text-[11px] text-purple-700">{ph}</span>
+                          {v.isRequired ? <span className="ml-1 text-[10px] text-rose-600">*</span> : null}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Smart form for small/simple input variables */}
+              {showSmartForm && (
+                <div className="space-y-3">
+                  <div className="text-xs text-gray-600">Quick inputs</div>
+                  {inputVariables.map((v) => (
+                    <div key={v.id} className="grid grid-cols-3 gap-2 items-center">
+                      <label className="text-xs text-gray-700" htmlFor={`wfvar-${v.name}`}>
+                        {v.name} {v.isRequired ? <span className="text-rose-600">*</span> : null}
+                      </label>
+                      {v.dataType === 'boolean' ? (
+                        <input
+                          id={`wfvar-${v.name}`}
+                          type="checkbox"
+                          className="h-4 w-4 text-purple-600 border-gray-300 rounded"
+                          checked={Boolean(formInputs[v.name])}
+                          onChange={(e) => updateFormValue(v.name, e.target.checked, 'boolean')}
+                        />
+                      ) : (
+                        <input
+                          id={`wfvar-${v.name}`}
+                          type={v.dataType === 'number' ? 'number' : 'text'}
+                          value={
+                            v.dataType === 'number'
+                              ? (typeof formInputs[v.name] === 'number' || typeof formInputs[v.name] === 'string' ? String(formInputs[v.name] ?? '') : '')
+                              : (typeof formInputs[v.name] === 'string' ? (formInputs[v.name] as string) : (formInputs[v.name] != null ? String(formInputs[v.name]) : ''))
+                          }
+                          onChange={(e) => updateFormValue(v.name, e.target.value, v.dataType)}
+                          placeholder={v.dataType === 'number' ? '0' : 'Enter text...'}
+                          className="col-span-2 text-xs border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                        />
+                      )}
+                    </div>
+                  ))}
+                  <div className="text-[11px] text-gray-500">These fields sync with the JSON input below.</div>
+                </div>
+              )}
+
               <div>
                 <label htmlFor="input" className="block text-sm font-medium text-gray-700">
                   Input Data (JSON)
@@ -595,6 +761,22 @@ export default function WorkflowDetail() {
                   className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {executing ? 'Executing...' : 'Execute Workflow'}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(buildCurlCommand());
+                      setCopiedCurl(true);
+                      setTimeout(() => setCopiedCurl(false), 1500);
+                    } catch {
+                      setCopiedCurl(false);
+                    }
+                  }}
+                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  title="Copy a ready-to-run cURL command"
+                >
+                  {copiedCurl ? 'Copied cURL!' : 'Copy cURL'}
                 </button>
               </div>
 

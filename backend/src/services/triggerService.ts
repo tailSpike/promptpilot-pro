@@ -54,6 +54,90 @@ export class TriggerService {
   }
 
   /**
+   * Execute a trigger by ID, creating a workflow execution and starting it.
+   * If input is not provided, this will build sample input from required workflow variables.
+   */
+  async runTrigger(triggerId: string, requestedByUserId?: string, options?: { input?: Record<string, any>; triggerTypeOverride?: string }) {
+    // Load trigger with workflow and ensure ownership if requestedByUserId is provided
+    const trigger = await prisma.workflowTrigger.findFirst({
+      where: {
+        id: triggerId,
+        ...(requestedByUserId ? { workflow: { userId: requestedByUserId } } : {}),
+      },
+      include: {
+        workflow: {
+          include: {
+            steps: {
+              orderBy: { order: 'asc' },
+              include: {
+                // Ensure prompt content/variables are available for PROMPT steps
+                prompt: { select: { id: true, name: true, content: true, variables: true } },
+              },
+            },
+            variables: true,
+          }
+        }
+      }
+    });
+
+    if (!trigger || !trigger.workflow) {
+      throw new Error('Trigger not found or access denied');
+    }
+
+    // Prepare input
+    const provided = options?.input || {};
+    const inputVars = (trigger.workflow.variables || []).filter((v: any) => v.type === 'input');
+    const buildPlaceholder = (dt: string, name: string): any => {
+      switch (dt) {
+        case 'number': return 1;
+        case 'boolean': return false;
+        case 'array': return [];
+        case 'object': return { example: `${name}Value` };
+        default: return `Sample ${name}`;
+      }
+    };
+    const input: Record<string, any> = { ...provided };
+    for (const v of inputVars) {
+      const has = Object.prototype.hasOwnProperty.call(input, v.name);
+      if (!has) {
+        // Prefer defaultValue when present
+        let def: any = undefined;
+        try { def = v.defaultValue; } catch { def = undefined; }
+        input[v.name] = def !== undefined && def !== null ? def : buildPlaceholder(v.dataType, v.name);
+      }
+    }
+
+    // Create execution record and launch
+    const execution = await prisma.workflowExecution.create({
+      data: {
+        workflowId: trigger.workflowId,
+        triggerId: trigger.id,
+        input: JSON.stringify(input),
+        output: JSON.stringify({}),
+        status: 'PENDING',
+        metadata: JSON.stringify({
+          stepCount: trigger.workflow.steps.length,
+          triggerType: (options?.triggerTypeOverride || String(trigger.type || 'manual')).toLowerCase(),
+          triggerName: trigger.name,
+        }),
+      }
+    });
+
+    // Fire-and-forget execution using dynamic import to avoid circular/early load issues in tests
+    const { workflowService } = await import('./workflowService');
+    workflowService.executeWorkflowSteps(execution.id, trigger.workflow as any, input)
+      .catch((error: any) => {
+        // Log but do not throw
+        console.error(`Error executing workflow via trigger ${trigger.id}:`, error);
+      });
+
+    // Update lastTriggeredAt
+    await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { lastTriggeredAt: new Date() } });
+
+    return execution;
+  }
+
+  /**
    * Create a new workflow trigger
    */
   async createTrigger(workflowId: string, userId: string, data: any) {
@@ -329,17 +413,7 @@ export class TriggerService {
       async () => {
         try {
           console.log(`Executing scheduled trigger: ${trigger.name}`);
-          
-          const userId = trigger.workflowId ? 
-            (await prisma.workflow.findUnique({ 
-              where: { id: trigger.workflowId }, 
-              select: { userId: true } 
-            }))?.userId || '' : '';
-          
-          // For now, just log that we would execute
-          // TODO: Implement workflow execution
-          console.log(`Would execute workflow ${trigger.workflowId} for user ${userId}`);
-          
+          await this.runTrigger(trigger.id, undefined, { triggerTypeOverride: 'scheduled' });
           console.log(`Scheduled trigger ${trigger.name} executed successfully`);
         } catch (error) {
           console.error(`Error executing scheduled trigger ${trigger.name}:`, error);

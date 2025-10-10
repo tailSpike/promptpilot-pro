@@ -138,18 +138,10 @@ router.post('/triggers/:id/execute', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Trigger ID is required' });
     }
 
-    // For now, just acknowledge the request
-    // TODO: Implement actual trigger execution
-    const trigger = await triggerService.getTriggerById(id, userId);
-    if (!trigger) {
-      return res.status(404).json({ error: 'Trigger not found' });
-    }
-
-    res.json({ 
-      message: 'Trigger execution requested', 
-      triggerId: id,
-      status: 'pending'
-    });
+    // Execute the trigger now and return the execution record
+    const { input } = req.body || {};
+    const execution = await triggerService.runTrigger(id, userId, { input, triggerTypeOverride: 'manual' });
+    res.status(201).json(execution);
 
   } catch (error) {
     console.error('Error executing trigger:', error);
