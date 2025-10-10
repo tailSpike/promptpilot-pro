@@ -359,6 +359,9 @@ export const workflowsAPI = {
     order: number;
     config: Record<string, unknown>;
     promptId?: string;
+    inputs?: Record<string, unknown>;
+    outputs?: Record<string, unknown>;
+    conditions?: Record<string, unknown>;
   }) => {
     const response = await api.post(`/api/workflows/${workflowId}/steps`, stepData);
     return response.data;
@@ -370,6 +373,9 @@ export const workflowsAPI = {
     order?: number;
     config?: Record<string, unknown>;
     promptId?: string;
+    inputs?: Record<string, unknown>;
+    outputs?: Record<string, unknown>;
+    conditions?: Record<string, unknown>;
   }) => {
     const response = await api.put(`/api/workflows/${workflowId}/steps/${stepId}`, stepData);
     return response.data;

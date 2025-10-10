@@ -156,6 +156,10 @@ const CreateStepSchema = z.object({
       choices: z.record(z.string(), z.string()).optional(), // Choice -> next step mapping
     }).optional(),
   }).default({}),
+  // Optional wiring for step I/O and conditions stored alongside config
+  inputs: z.record(z.string(), z.any()).optional(),
+  outputs: z.record(z.string(), z.any()).optional(),
+  conditions: z.record(z.string(), z.any()).optional(),
 });
 
 const ExecuteWorkflowSchema = z.object({
@@ -464,7 +468,10 @@ router.post('/:id/steps', authenticate, async (req, res) => {
         type: validatedData.type,
         order: validatedData.order,
         promptId: validatedData.promptId || undefined,
-        config: JSON.stringify(validatedData.config)
+        config: JSON.stringify(validatedData.config),
+        inputs: validatedData.inputs ? JSON.stringify(validatedData.inputs) : undefined,
+        outputs: validatedData.outputs ? JSON.stringify(validatedData.outputs) : undefined,
+        conditions: validatedData.conditions ? JSON.stringify(validatedData.conditions) : undefined,
       },
       include: {
         prompt: {
@@ -527,7 +534,10 @@ router.put('/:id/steps/:stepId', authenticate, async (req, res) => {
         type: validatedData.type,
         order: validatedData.order,
         promptId: validatedData.promptId || undefined,
-        config: JSON.stringify(validatedData.config)
+        config: JSON.stringify(validatedData.config),
+        inputs: validatedData.inputs ? JSON.stringify(validatedData.inputs) : undefined,
+        outputs: validatedData.outputs ? JSON.stringify(validatedData.outputs) : undefined,
+        conditions: validatedData.conditions ? JSON.stringify(validatedData.conditions) : undefined,
       },
       include: {
         prompt: {
@@ -642,26 +652,18 @@ router.post('/:id/execute', authenticate, async (req, res) => {
     // Start async workflow execution (don't block response)
     const executeWorkflowAsync = async () => {
       try {
-        // Simulate execution time
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
         // Check if execution still exists (may have been cleaned up by tests)
         const existingExecution = await prisma.workflowExecution.findUnique({
           where: { id: execution.id }
         });
         
         if (existingExecution) {
-          await prisma.workflowExecution.update({
-            where: { id: execution.id },
-            data: {
-              status: 'COMPLETED',
-              output: JSON.stringify({
-                message: 'Workflow completed successfully',
-                steps: workflow.steps.length,
-                finalResult: normalizedInput
-              })
-            }
-          });
+          // Actually execute the workflow using the workflow service
+          await workflowService.executeWorkflowSteps(
+            execution.id,
+            workflow,
+            normalizedInput
+          );
         }
       } catch (error) {
         // Silently handle errors to prevent test cleanup issues

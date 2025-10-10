@@ -54,6 +54,9 @@ export interface ModelExecutionResult {
   success: boolean;
   outputText?: string;
   tokensUsed?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  finishReason?: string;
   latencyMs: number;
   warnings: string[];
   raw?: Record<string, unknown> | null;
@@ -264,6 +267,30 @@ export class ModelDispatcher {
     }
   }
 
+  /**
+   * Resolve the max completion tokens to request from the provider.
+   * - If the step specifies maxTokens, honor it but raise to MIN_COMPLETION_TOKENS if set and larger.
+   * - If unspecified, use DEFAULT_MAX_COMPLETION_TOKENS env var when present, otherwise fall back to a provider-safe default.
+   */
+  private resolveMaxTokens(stepMaxTokens: number | undefined, providerFallback: number): number | undefined {
+    const parseIntSafe = (v: string | undefined): number | undefined => {
+      if (!v) return undefined;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+
+    const envDefault = parseIntSafe(process.env.DEFAULT_MAX_COMPLETION_TOKENS);
+    const envMin = parseIntSafe(process.env.MIN_COMPLETION_TOKENS);
+
+    if (typeof stepMaxTokens === 'number' && Number.isFinite(stepMaxTokens) && stepMaxTokens > 0) {
+      const raised = envMin && stepMaxTokens < envMin ? envMin : stepMaxTokens;
+      return raised;
+    }
+
+    // Unspecified: prefer env default, then provider fallback
+    return envDefault ?? providerFallback;
+  }
+
   private async invokeOpenAI(
     model: ModelConfig,
     prompt: string,
@@ -299,51 +326,144 @@ export class ModelDispatcher {
 
     const body: Record<string, unknown> = {
       model: model.model,
-      input: [
+      messages: [
+        {
+          role: 'system',
+          content: instructions ?? 'You are a helpful assistant.',
+        },
         {
           role: 'user',
-          content: [
-            { type: 'input_text', text: prompt },
-          ],
+          content: prompt,
         },
       ],
       temperature: model.parameters?.temperature,
       top_p: model.parameters?.topP,
-      max_output_tokens: model.parameters?.maxTokens,
-      metadata: model.parameters?.metadata,
+      // Default to a reasonably high max unless explicitly set; can be controlled via env
+      max_tokens: this.resolveMaxTokens(model.parameters?.maxTokens, 2048),
     };
 
-    if (instructions) {
-      body.instructions = instructions;
+    if (model.parameters?.presencePenalty !== undefined) {
+      body.presence_penalty = model.parameters.presencePenalty;
     }
 
-    if (model.parameters?.parallelToolCalls !== undefined) {
-      body.parallel_tool_calls = model.parameters.parallelToolCalls;
+    if (model.parameters?.frequencyPenalty !== undefined) {
+      body.frequency_penalty = model.parameters.frequencyPenalty;
     }
 
-    const response = await this.httpJsonRequest('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers,
-      body,
-    });
-
-    if (response.statusCode >= 400) {
-      throw new Error(response.body?.error?.message ?? `OpenAI error (${response.statusCode})`);
+    if (model.parameters?.seed !== undefined) {
+      body.seed = model.parameters.seed;
     }
 
-    const outputText = response.body?.output_text ?? response.body?.output?.[0]?.content?.[0]?.text ?? '';
-    const tokensUsed = response.body?.usage?.total_tokens ?? response.body?.usage?.output_tokens;
+    if (model.parameters?.responseFormat) {
+      body.response_format = model.parameters.responseFormat === 'json' 
+        ? { type: 'json_object' }
+        : { type: 'text' };
+    }
+
+    // Perform the initial request and, if truncated by length, auto-continue up to a safe cap
+    const aggregate: {
+      text: string;
+      tokens: number;
+      promptTokens?: number;
+      completionTokens?: number;
+      lastFinishReason?: string;
+      rawResponses: any[];
+      requestIds: string[];
+    } = { text: '', tokens: 0, rawResponses: [], requestIds: [] };
+
+    const systemText = (typeof instructions === 'string' && instructions.trim().length > 0)
+      ? instructions
+      : 'You are a helpful assistant.';
+    let messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: systemText },
+      { role: 'user', content: prompt },
+    ];
+
+    const continuationCap = Math.max(1, Math.min(10, Number(process.env.OPENAI_CONTINUATION_MAX_SEGMENTS ?? 5)));
+    let segments = 0;
+    let continueLoop = true;
+
+    while (continueLoop) {
+      const requestBody = {
+        model: body.model,
+        messages,
+        temperature: body.temperature,
+        top_p: body.top_p,
+        max_tokens: body.max_tokens,
+        presence_penalty: (body as any).presence_penalty,
+        frequency_penalty: (body as any).frequency_penalty,
+        seed: (body as any).seed,
+        response_format: (body as any).response_format,
+      } as Record<string, unknown>;
+
+      const response = await this.httpJsonRequest('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers,
+        body: requestBody,
+      });
+
+      if (response.statusCode >= 400) {
+        const errorMessage = response.body?.error?.message ?? `OpenAI error (${response.statusCode})`;
+        console.error('OpenAI API error:', { statusCode: response.statusCode, body: response.body });
+        throw new Error(errorMessage);
+      }
+
+      // Prefer chat.completions shape, but fallback to generic `output_text` if present (some tests mock this)
+      const piece = response.body?.choices?.[0]?.message?.content
+        ?? response.body?.output_text
+        ?? '';
+      const finishReason = response.body?.choices?.[0]?.finish_reason as string | undefined;
+      const pieceTotal = Number(response.body?.usage?.total_tokens) || 0;
+
+      aggregate.text += piece;
+      aggregate.tokens += pieceTotal;
+      // Capture prompt/completion tokens from the first segment; for subsequent segments we add to completion tokens
+      if (segments === 0) {
+        aggregate.promptTokens = response.body?.usage?.prompt_tokens ?? aggregate.promptTokens;
+        aggregate.completionTokens = (aggregate.completionTokens ?? 0) + (response.body?.usage?.completion_tokens ?? 0);
+      } else {
+        aggregate.completionTokens = (aggregate.completionTokens ?? 0) + (response.body?.usage?.completion_tokens ?? 0);
+      }
+      aggregate.lastFinishReason = finishReason;
+      aggregate.rawResponses.push(response.body);
+      if (response.headers['x-request-id']) {
+        aggregate.requestIds.push(response.headers['x-request-id']);
+      }
+
+      segments += 1;
+
+      // Continue if the model stopped due to max token limit; append the assistant output and a user 'continue' cue
+      if (finishReason === 'length' && segments < continuationCap) {
+        const sys = messages.find(m => m.role === 'system')?.content ?? systemText;
+        const firstUser = messages.find(m => m.role === 'user')?.content ?? prompt;
+        messages = [
+          { role: 'system', content: sys },
+          // Maintain minimal context to encourage continuation
+          { role: 'user', content: firstUser },
+          { role: 'assistant', content: piece },
+          { role: 'user', content: 'continue' },
+        ];
+        continueLoop = true;
+      } else {
+        continueLoop = false;
+      }
+    }
 
     return {
       provider: model.provider,
       model: model.model,
       label: model.label,
       success: true,
-      outputText,
-      tokensUsed,
-      raw: response.body,
+      outputText: aggregate.text,
+      tokensUsed: aggregate.tokens || undefined,
+      promptTokens: aggregate.promptTokens,
+      completionTokens: aggregate.completionTokens,
+      finishReason: aggregate.lastFinishReason,
+      raw: { segments: aggregate.rawResponses },
       metadata: {
-        requestId: response.headers['x-request-id'],
+        requestId: aggregate.requestIds.join(', '),
+        segments,
+        continued: segments > 1,
       },
     };
   }
@@ -394,7 +514,7 @@ export class ModelDispatcher {
       ],
       temperature: model.parameters?.temperature,
       top_p: model.parameters?.topP,
-      max_output_tokens: model.parameters?.maxTokens,
+      max_output_tokens: this.resolveMaxTokens(model.parameters?.maxTokens, 2048),
       metadata: model.parameters?.metadata,
     };
 
@@ -465,7 +585,7 @@ export class ModelDispatcher {
 
     const body = {
       model: getCredentialMetadataString(credential, 'model') ?? model.model,
-      max_tokens: model.parameters?.maxTokens ?? 1024,
+      max_tokens: this.resolveMaxTokens(model.parameters?.maxTokens, 2048),
       temperature: model.parameters?.temperature,
       top_p: model.parameters?.topP,
       messages: [
@@ -531,7 +651,10 @@ export class ModelDispatcher {
     const generationConfig: Record<string, unknown> = {};
     if (model.parameters?.temperature !== undefined) generationConfig.temperature = model.parameters.temperature;
     if (model.parameters?.topP !== undefined) generationConfig.topP = model.parameters.topP;
-    if (model.parameters?.maxTokens !== undefined) generationConfig.maxOutputTokens = model.parameters.maxTokens;
+    {
+      const resolved = this.resolveMaxTokens(model.parameters?.maxTokens, 2048);
+      if (resolved !== undefined) generationConfig.maxOutputTokens = resolved;
+    }
 
     const body: Record<string, unknown> = {
       contents: [

@@ -14,6 +14,7 @@
     "db:studio": "prisma studio",
     "db:reset": "npm run db:generate && prisma db push --force-reset",
     "db:reset:test": "cross-env DATABASE_URL=file:./prisma/test.db PRISMA_SQLITE_BASE_DIR=./prisma prisma db push --force-reset",
+  "db:seed": "npm run db:generate && ts-node scripts/seed.ts",
     "start:test": "cross-env DATABASE_URL=file:./prisma/test.db PRISMA_SQLITE_BASE_DIR=./prisma NODE_ENV=e2e node dist/index.js",
     "test": "jest --runInBand",
     "test:unit": "jest --config jest.config.unit.js --runInBand",
