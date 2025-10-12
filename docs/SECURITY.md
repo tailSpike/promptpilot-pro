@@ -48,7 +48,7 @@ When previewing a workflow, if all targeted providers only have revoked credenti
     "message": "Credential revoked",
     "providers": ["openai", "anthropic"]
   },
-  "warnings": ["Credential revoked. Re-authorise before running this workflow."]
+  "warnings": ["Credential revoked. Re-authorize before running this workflow."]
 }
 ```
 

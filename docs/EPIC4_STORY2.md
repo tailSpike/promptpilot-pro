@@ -209,5 +209,5 @@ npm --prefix backend run test:integration
 - Secrets: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_*`
 
 Expected results:
-- Provider Keys spec passes; revoked preview returns 409 with `provider.credentials.revoked` and standard warning.
-- Live Providers spec returns non-simulated provider outputs with success=true; top-level status may be COMPLETED or FAILED due to quotas/safety filters.
+- Provider Keys test passes; revoked preview returns 409 with `provider.credentials.revoked` and standard warning.
+- Live Providers test returns non-simulated provider outputs with success=true; top-level status may be COMPLETED or FAILED due to quotas/safety filters.

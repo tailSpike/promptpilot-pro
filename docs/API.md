@@ -234,7 +234,7 @@ When all targeted providers for the preview only have revoked credentials for th
   "usedSampleData": false,
   "totalDurationMs": 0,
   "stats": { "stepsExecuted": 0, "tokensUsed": 0 },
-  "warnings": ["Credential revoked. Re-authorise before running this workflow."],
+  "warnings": ["Credential revoked. Re-authorize before running this workflow."],
   "stepResults": [],
   "finalOutput": null,
   "error": {

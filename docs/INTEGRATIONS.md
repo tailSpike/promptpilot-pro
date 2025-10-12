@@ -118,7 +118,7 @@ Status: 409 Conflict
   "usedSampleData": false,
   "totalDurationMs": 0,
   "stats": { "stepsExecuted": 0, "tokensUsed": 0 },
-  "warnings": ["Credential revoked. Re-authorise before running this workflow."],
+  "warnings": ["Credential revoked. Re-authorize before running this workflow."],
   "stepResults": [],
   "finalOutput": null,
   "error": {
@@ -132,4 +132,4 @@ Status: 409 Conflict
 Notes
 - Applies when preview runs would require external provider calls and `simulateOnly` is not set.
 - If at least one ACTIVE credential exists for any targeted provider, the preview continues using available credentials.
-- Use Integration Keys to rotate a new credential, then re-run the preview to clear this warning.
+- Use Integration Keys to rotate a new credential, then rerun the preview to clear this warning.
