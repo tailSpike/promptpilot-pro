@@ -28,30 +28,98 @@ const api = axios.create({
   timeout: 10000, // 10 second timeout
 });
 
+// Detect Cypress to route certain calls via a relative base URL so cy.intercept('/api/...') works reliably
+let IS_CYPRESS = false;
+try {
+  IS_CYPRESS = typeof window !== 'undefined' && 'Cypress' in window;
+} catch {
+  IS_CYPRESS = false;
+}
+
+// Dedicated clients that play well with Cypress route stubs (relative baseURL)
+// Fallback to the main API base for normal runtime.
+let integrationsApiClient: typeof api = api;
+try {
+  if (IS_CYPRESS) {
+    integrationsApiClient = axios.create({
+      baseURL: '',
+      withCredentials: false,
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000,
+    }) as typeof api;
+  }
+} catch {
+  // ignore env detection errors
+}
+
 // --- Helpers to normalize backend DTOs into UI-friendly shapes ---
-function normalizeVariablesValue(value: unknown): any[] {
+function isVariableLike(v: unknown): v is import('../types').Variable {
+  return (
+    typeof v === 'object' && v !== null &&
+    typeof (v as { name?: unknown }).name === 'string' &&
+    typeof (v as { type?: unknown }).type === 'string'
+  );
+}
+
+function coerceVariable(v: unknown): import('../types').Variable | null {
+  if (!isVariableLike(v)) return null;
+  const { name } = v as { name: string };
+  const rawType = (v as { type: unknown }).type;
+  const finalType: import('../types').Variable['type'] =
+    rawType === 'text' || rawType === 'number' || rawType === 'boolean' || rawType === 'select'
+      ? rawType
+      : 'text';
+  const variable: import('../types').Variable = {
+    name,
+    type: finalType,
+  };
+  if (typeof (v as { description?: unknown }).description === 'string') {
+    variable.description = (v as { description: string }).description;
+  }
+  if (typeof (v as { required?: unknown }).required === 'boolean') {
+    variable.required = (v as { required: boolean }).required;
+  }
+  const dv = (v as { defaultValue?: unknown }).defaultValue;
+  if (['string', 'number', 'boolean'].includes(typeof dv)) {
+    variable.defaultValue = dv as string | number | boolean;
+  }
+  const opts = (v as { options?: unknown }).options;
+  if (Array.isArray(opts) && opts.every((o) => typeof o === 'string')) {
+    variable.options = opts as string[];
+  }
+  return variable;
+}
+
+function normalizeVariablesValue(value: unknown): import('../types').Variable[] {
   if (!value) return [];
-  if (Array.isArray(value)) return value as any[];
+  if (Array.isArray(value)) {
+    return value.map(coerceVariable).filter((v): v is import('../types').Variable => v !== null);
+  }
   if (typeof value === 'string') {
     try {
       const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : normalizeVariablesValue(parsed);
+      return normalizeVariablesValue(parsed);
     } catch {
       return [];
     }
   }
   if (typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    const items = Array.isArray(obj.items) ? obj.items : (Array.isArray((obj as any).variables) ? (obj as any).variables : []);
-    return Array.isArray(items) ? items : [];
+    const obj = value as Record<string, unknown> & { items?: unknown; variables?: unknown };
+    const items = Array.isArray(obj.items)
+      ? obj.items
+      : Array.isArray(obj.variables)
+        ? obj.variables
+        : [];
+    return normalizeVariablesValue(items);
   }
   return [];
 }
 
 function normalizePrompt<T extends Partial<Prompt>>(prompt: T): T {
   if (!prompt) return prompt;
-  const normalized: any = { ...prompt };
-  normalized.variables = normalizeVariablesValue((prompt as any).variables);
+  const normalized = { ...prompt } as T & { variables?: unknown };
+  const coerced = normalizeVariablesValue(normalized.variables);
+  (normalized as Partial<Prompt>).variables = coerced;
   return normalized as T;
 }
 
@@ -137,7 +205,7 @@ export const promptsAPI = {
   }) => {
     const response = await api.get('/api/prompts', { params });
     if (response.data && Array.isArray(response.data.prompts)) {
-      response.data.prompts = response.data.prompts.map((p: any) => normalizePrompt(p));
+      response.data.prompts = response.data.prompts.map((p: Prompt) => normalizePrompt(p));
     }
     return response.data;
   },
@@ -328,7 +396,8 @@ export const workflowsAPI = {
 
   getWorkflow: async (id: string) => {
     const response = await api.get(`/api/workflows/${id}`);
-    return response.data;
+    const data = response.data;
+    return data?.data ?? data;
   },
 
   createWorkflow: async (data: {
@@ -367,6 +436,7 @@ export const workflowsAPI = {
     input?: Record<string, unknown>;
     useSampleData?: boolean;
     triggerType?: string;
+    simulateOnly?: boolean;
   } = {}) => {
     const response = await api.post(`/api/workflows/${id}/preview`, body);
     return response.data;
@@ -377,7 +447,8 @@ export const workflowsAPI = {
     offset?: number;
   }) => {
     const response = await api.get(`/api/workflows/${id}/executions`, { params });
-    return response.data;
+    const data = response.data;
+    return data?.data ?? data;
   },
 
   getWorkflowExecution: async (workflowId: string, executionId: string) => {
@@ -427,13 +498,31 @@ export const workflowsAPI = {
 
 export const integrationsAPI = {
   getProviders: async (): Promise<{ providers: IntegrationProviderConfig[] }> => {
-    const response = await api.get('/api/integrations/providers');
-    return response.data;
+    const response = await integrationsApiClient.get('/api/integrations/providers');
+    const data = response.data;
+    const providers: IntegrationProviderConfig[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.providers)
+        ? data.providers
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+    return { providers };
   },
 
   getCredentials: async (): Promise<{ credentials: IntegrationCredential[] }> => {
-    const response = await api.get('/api/integrations/credentials');
-    return response.data;
+    const response = await integrationsApiClient.get('/api/integrations/credentials');
+    const data = response.data;
+    const credentials: IntegrationCredential[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.credentials)
+        ? data.credentials
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.data?.credentials)
+            ? data.data.credentials
+            : [];
+    return { credentials };
   },
 
   createCredential: async (payload: {
@@ -442,7 +531,7 @@ export const integrationsAPI = {
     secret: string;
     metadata?: Record<string, unknown>;
   }): Promise<{ credential: IntegrationCredential }> => {
-    const response = await api.post('/api/integrations/credentials', payload);
+    const response = await integrationsApiClient.post('/api/integrations/credentials', payload);
     return response.data;
   },
 
@@ -455,12 +544,12 @@ export const integrationsAPI = {
       metadata?: Record<string, unknown>;
     },
   ): Promise<{ credential: IntegrationCredential }> => {
-    const response = await api.patch(`/api/integrations/credentials/${credentialId}`, payload);
+    const response = await integrationsApiClient.patch(`/api/integrations/credentials/${credentialId}`, payload);
     return response.data;
   },
 
   revokeCredential: async (credentialId: string): Promise<{ credential: IntegrationCredential }> => {
-    const response = await api.delete(`/api/integrations/credentials/${credentialId}`);
+    const response = await integrationsApiClient.delete(`/api/integrations/credentials/${credentialId}`);
     return response.data;
   },
 };

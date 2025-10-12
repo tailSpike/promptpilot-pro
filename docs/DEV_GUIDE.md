@@ -57,6 +57,104 @@ When automated discovery is blocked, direct contributors to the official provide
 
 ---
 
+## 3.2 Local live provider smoke (optional)
+
+You can run a lightweight Cypress spec against provider public endpoints without starting the app. Each test SKIPS if its required env var(s) aren’t present.
+
+Environment variables (PowerShell examples for Windows):
+
+- OpenAI:
+	- Set: `setx CYPRESS_OPENAI_API_KEY "sk-..."`
+	- Test hits: `GET https://api.openai.com/v1/models` with `Authorization: Bearer ...`
+- Anthropic:
+	- Set: `setx CYPRESS_ANTHROPIC_API_KEY "sk-ant-..."`
+	- Test hits: `POST https://api.anthropic.com/v1/messages` with headers `x-api-key` and `anthropic-version: 2023-06-01`
+- Google Gemini:
+	- Set: `setx CYPRESS_GEMINI_API_KEY "AIza..."`
+	- Test hits: `GET https://generativelanguage.googleapis.com/v1beta/models?key=...`
+- Azure OpenAI:
+	- Set endpoint: `setx CYPRESS_AZURE_OPENAI_ENDPOINT "https://your-resource.openai.azure.com"`
+	- Set key: `setx CYPRESS_AZURE_OPENAI_API_KEY "azr-..."`
+	- Optional version: `setx CYPRESS_AZURE_OPENAI_API_VERSION "2024-10-21"`
+	- Test hits: `GET {endpoint}/openai/deployments?api-version=...` and asserts a `value` array is returned
+
+Then run from the repo root:
+
+- Headless: `npm run cypress:run -- --spec "frontend/cypress/e2e/provider-smoke.cy.ts"`
+- Interactive: `cd frontend; npm run cypress:open` and run “Provider Smoke - External Connectivity (optional)”
+
+References (verified):
+- Anthropic Messages: https://docs.anthropic.com/en/api/messages
+- Gemini Models list: https://ai.google.dev/api/rest/v1beta/models
+- Azure OpenAI data plane versioning + endpoints: https://learn.microsoft.com/azure/ai-foundry/openai/reference#data-plane-inference
+
+Notes
+- On Windows, `setx` writes to the user environment; restart your terminal for the change to take effect.
+- These checks are for connectivity only; they do not depend on the app’s Integration Keys console.
+
+---
+
+## 3.3 Live providers via app E2E (Integration Keys)
+
+The spec `frontend/cypress/e2e/workflow-live-providers.cy.ts` runs a full in-app flow that:
+- Registers a temporary user via the API.
+- Stores provider credentials using the Integration Keys API (encrypted-at-rest).
+- Creates a simple one-step prompt workflow per provider.
+- Runs a workflow preview and asserts that the provider result is not simulated, `success === true`, and `outputText` is non-empty. This ensures the provider actually returned content and not just a 200 with an empty payload.
+
+Per-provider prerequisites (self-skipping when missing):
+- Anthropic: `setx CYPRESS_ANTHROPIC_API_KEY "sk-ant-..."`
+- Gemini: `setx CYPRESS_GEMINI_API_KEY "AIza..."`
+- OpenAI: `setx CYPRESS_OPENAI_API_KEY "sk-..."`
+
+Model notes
+- The Gemini test uses `gemini-2.0-flash` by default to align with current v1beta availability. If your account has different access, adjust the model via Integration Keys metadata or by editing the spec. You can always verify availability via the Models list endpoint in section 3.2.
+ - The OpenAI test uses `gpt-4o-mini` by default. You can change the model via Integration Keys metadata or by editing the spec.
+
+Run the spec headless from the repo root:
+- `npm run cypress:run -- --spec "frontend/cypress/e2e/workflow-live-providers.cy.ts"`
+
+Or open Cypress UI and choose the spec:
+- `cd frontend; npm run cypress:open`
+
+Notes
+- The tests permit top-level statuses of COMPLETED or FAILED due to transient rate limits/safety filters, but they require that the provider entry is non-simulated, success=true, and contains non-empty text when a key is present.
+- The workflow uses safe prompts to avoid content filters and keeps token usage minimal.
+
+### 3.3.1 Windows convenience launcher for Cypress
+
+To avoid Cypress UI skipping tests due to missing env at process start, use the root script `open-cypress.ps1`. It injects `CYPRESS_baseUrl`, `CYPRESS_apiUrl`, and passes through provider keys from either base vars or `CYPRESS_*`.
+
+Examples (PowerShell, run from repo root):
+
+```powershell
+# Open Cypress UI with env injected
+./open-cypress.ps1
+
+# Open a specific spec interactively
+./open-cypress.ps1 -Spec "frontend/cypress/e2e/workflow-live-providers.cy.ts"
+
+# Run headless with a specific spec
+./open-cypress.ps1 -Headless -Spec "frontend/cypress/e2e/workflow-live-providers.cy.ts"
+
+# Override URLs if needed
+./open-cypress.ps1 -ApiUrl "http://127.0.0.1:3001" -BaseUrl "http://127.0.0.1:4173"
+
+# Start servers automatically then open Cypress UI (avoids baseUrl warning)
+./open-cypress.ps1 -StartServers
+
+# Start servers then run headless with a specific spec
+./open-cypress.ps1 -StartServers -Headless -Spec "frontend/cypress/e2e/workflow-live-providers.cy.ts"
+```
+
+Provider key resolution:
+- Uses `CYPRESS_*` values if already set in the current process.
+- Otherwise, copies from base env vars if present: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_*`.
+
+Tip: If you used `setx` to set user-level variables, open a new terminal or the script will read them from the User environment automatically.
+
+---
+
 ## 4. Coding standards
 - Use TypeScript everywhere; keep types close to usage.
 - Run `npm run lint` before pushing—pre-push hooks enforce lint + tests.

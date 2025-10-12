@@ -196,6 +196,12 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
   const fetchTriggers = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
+      // If there's no token or it doesn't look like a JWT (header.payload.signature), skip fetching
+      if (!token || token.split('.').length !== 3) {
+        setTriggers([]);
+        setLoading(false);
+        return;
+      }
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const response = await fetch(`${apiUrl}/api/workflows/${workflowId}/triggers`, {
         headers: {

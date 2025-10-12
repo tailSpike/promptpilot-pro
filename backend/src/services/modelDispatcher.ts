@@ -643,10 +643,12 @@ export class ModelDispatcher {
       };
     }
 
+    // Include API key in both header and query param for compatibility and easier testing
+    // (tests assert the presence of the x-goog-api-key header specifically).
     const headers = {
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey,
-    };
+    } as Record<string, string>;
 
     const generationConfig: Record<string, unknown> = {};
     if (model.parameters?.temperature !== undefined) generationConfig.temperature = model.parameters.temperature;
@@ -659,6 +661,7 @@ export class ModelDispatcher {
     const body: Record<string, unknown> = {
       contents: [
         {
+          role: 'user',
           parts: [
             { text: prompt },
           ],
@@ -666,12 +669,20 @@ export class ModelDispatcher {
       ],
     };
 
+    if (typeof instructions === 'string' && instructions.trim().length > 0) {
+      (body as any).systemInstruction = {
+        parts: [{ text: instructions }],
+      };
+    }
+
     if (Object.keys(generationConfig).length > 0) {
       body.generationConfig = generationConfig;
     }
 
-  const modelId = getCredentialMetadataString(credential, 'model') ?? model.model;
+    const modelId = getCredentialMetadataString(credential, 'model') ?? model.model;
   const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`);
+  // Keep query param as well since it is the primary documented mechanism.
+  url.searchParams.set('key', apiKey);
     const response = await this.httpJsonRequest(url.toString(), {
       method: 'POST',
       headers,

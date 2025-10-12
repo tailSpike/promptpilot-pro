@@ -54,7 +54,7 @@ describe('Integration keys workflow', () => {
     cy.clearLocalStorage();
     seedAuthSession();
 
-    cy.intercept('GET', '/api/integrations/providers', {
+  cy.intercept('GET', '**/api/integrations/providers', {
       statusCode: 200,
       body: {
         providers: [
@@ -76,24 +76,24 @@ describe('Integration keys workflow', () => {
       },
     }).as('getProviders');
 
-    cy.intercept('GET', '/api/auth/me', {
+  cy.intercept('GET', '**/api/auth/me', {
       statusCode: 200,
       body: { user: authenticatedUser },
     }).as('getProfile');
 
-    cy.intercept('GET', '/api/feature-flags', {
+  cy.intercept('GET', '**/api/feature-flags', {
       statusCode: 200,
       body: { flags: { 'workflow.multiModel': true } },
     }).as('getFeatureFlags');
 
-    cy.intercept('GET', '/api/integrations/credentials', (req) => {
+  cy.intercept('GET', '**/api/integrations/credentials', (req) => {
       req.reply({
         statusCode: 200,
         body: { data: credentials },
       });
     }).as('getCredentials');
 
-    cy.intercept('POST', '/api/integrations/credentials', (req) => {
+  cy.intercept('POST', '**/api/integrations/credentials', (req) => {
       const credential: StubCredential = {
         id: `cred-${Date.now()}`,
         provider: req.body.provider,
@@ -117,7 +117,7 @@ describe('Integration keys workflow', () => {
       });
     }).as('createCredential');
 
-    cy.intercept('PATCH', /\/api\/integrations\/credentials\/.+/, (req) => {
+  cy.intercept('PATCH', /https?:\/\/[^\s]+\/api\/integrations\/credentials\/.+|\/api\/integrations\/credentials\/.+/, (req) => {
       const id = req.url.split('/').pop() ?? '';
       const index = credentials.findIndex((credential) => credential.id === id);
       if (index >= 0) {
@@ -135,7 +135,7 @@ describe('Integration keys workflow', () => {
       });
     }).as('rotateCredential');
 
-    cy.intercept('DELETE', /\/api\/integrations\/credentials\/.+/, (req) => {
+  cy.intercept('DELETE', /https?:\/\/[^\s]+\/api\/integrations\/credentials\/.+|\/api\/integrations\/credentials\/.+/, (req) => {
       const id = req.url.split('/').pop() ?? '';
       const index = credentials.findIndex((credential) => credential.id === id);
       if (index >= 0) {
@@ -150,7 +150,7 @@ describe('Integration keys workflow', () => {
       });
     }).as('revokeCredential');
 
-    cy.intercept('GET', '/api/workflows/wf-provider-smoke', {
+  cy.intercept('GET', '**/api/workflows/wf-provider-smoke', {
       statusCode: 200,
       body: {
         data: {
@@ -180,7 +180,7 @@ describe('Integration keys workflow', () => {
       },
     }).as('getWorkflow');
 
-    cy.intercept('GET', '/api/workflows/wf-provider-smoke/executions', {
+  cy.intercept('GET', '**/api/workflows/wf-provider-smoke/executions', {
       statusCode: 200,
       body: { data: [] },
     }).as('getExecutions');
@@ -197,7 +197,7 @@ describe('Integration keys workflow', () => {
       cy.findByTestId('integration-keys-provider').select('openai');
       cy.findByTestId('integration-keys-label').clear().type('QA Sandbox');
       cy.findByTestId('integration-keys-secret').clear().type('sk-sandbox-123');
-      cy.findByTestId('integration-keys-metadata').clear().type('{"usageTag":"ci"}');
+  cy.findByTestId('integration-keys-metadata').clear().type('{"usageTag":"ci"}', { parseSpecialCharSequences: false });
       cy.findByTestId('integration-keys-submit').click();
     });
 
@@ -208,9 +208,9 @@ describe('Integration keys workflow', () => {
     cy.visit('/workflows/wf-provider-smoke', {
       onBeforeLoad: seedAuthSession,
     });
-    cy.wait(['@getWorkflow', '@getExecutions']);
+    cy.wait(['@getProfile', '@getFeatureFlags', '@getWorkflow', '@getExecutions']);
 
-    cy.intercept('POST', '/api/workflows/wf-provider-smoke/preview', (req) => {
+  cy.intercept('POST', '**/api/workflows/wf-provider-smoke/preview', (req) => {
       expect(req.body.credentials).to.have.property('openai');
       req.reply({
         statusCode: 200,
@@ -234,10 +234,16 @@ describe('Integration keys workflow', () => {
       });
     }).as('previewWithCredential');
 
-    cy.findByTestId('workflow-preview-button').click();
-    cy.wait('@previewWithCredential');
-
-    cy.findByTestId('workflow-preview-status').should('contain.text', 'COMPLETED');
+  cy.findByTestId('workflow-preview-button').click();
+  // The page fetches credentials again before preview; wait for it to avoid race conditions
+  cy.wait('@getCredentials');
+  // Placeholder should render immediately with Loading status
+  cy.findByTestId('workflow-preview-results', { timeout: 15000 }).should('be.visible');
+  cy.findByTestId('workflow-preview-status').should('exist');
+  // Now wait for the actual preview response and validate final status
+  cy.wait('@previewWithCredential');
+  cy.location('pathname').should('contain', '/workflows/wf-provider-smoke');
+  cy.contains('[data-testid="workflow-preview-status"]', 'COMPLETED', { timeout: 15000 }).should('be.visible');
     cy.findByTestId('workflow-preview-warnings').should('contain.text', 'QA Sandbox');
 
     cy.visit('/settings/integration-keys');
@@ -269,9 +275,9 @@ describe('Integration keys workflow', () => {
     cy.visit('/workflows/wf-provider-smoke', {
       onBeforeLoad: seedAuthSession,
     });
-    cy.wait(['@getWorkflow', '@getExecutions']);
+    cy.wait(['@getProfile', '@getFeatureFlags', '@getWorkflow', '@getExecutions']);
 
-    cy.intercept('POST', '/api/workflows/wf-provider-smoke/preview', {
+  cy.intercept('POST', '**/api/workflows/wf-provider-smoke/preview', {
       statusCode: 409,
       body: {
         status: 'FAILED',
@@ -294,10 +300,13 @@ describe('Integration keys workflow', () => {
       },
     }).as('previewRevoked');
 
-    cy.findByTestId('workflow-preview-button').click();
-    cy.wait('@previewRevoked');
-
-    cy.findByTestId('workflow-preview-status').should('contain.text', 'FAILED');
+  cy.findByTestId('workflow-preview-button').click();
+  cy.wait('@getCredentials');
+  cy.findByTestId('workflow-preview-results', { timeout: 15000 }).should('be.visible');
+  cy.findByTestId('workflow-preview-status').should('exist');
+  cy.wait('@previewRevoked');
+  cy.location('pathname').should('contain', '/workflows/wf-provider-smoke');
+  cy.contains('[data-testid="workflow-preview-status"]', 'FAILED', { timeout: 15000 }).should('be.visible');
     cy.findByTestId('workflow-preview-warnings').should('contain.text', 'Credential revoked');
   });
 });

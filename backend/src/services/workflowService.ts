@@ -11,6 +11,7 @@ import {
   IntegrationCredentialService,
   type ResolvedIntegrationCredential,
 } from './integrationCredential.service';
+import { ProviderCredentialRevokedError } from '../lib/errors';
 
 const WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER: Record<string, string | null> = {
   openai: 'openai',
@@ -24,6 +25,8 @@ interface StepExecutionContext {
   allowSimulatedFallback?: boolean;
   ownerId: string;
   credentialCache: Map<string, ResolvedIntegrationCredential | null>;
+  // When true, do not perform any external provider calls or real delays; return simulated outputs fast
+  simulateOnly?: boolean;
 }
 
 // Define step types as constants (since SQLite doesn't support enums natively)
@@ -149,6 +152,8 @@ export interface WorkflowPreviewResult {
     tokensUsed: number;
   };
   warnings: string[];
+  // Indicates preview ran in simulate-only mode (no external API calls)
+  simulationMode?: boolean;
 }
 
 // Since the Prisma generated types aren't available yet, we'll define them manually
@@ -425,6 +430,7 @@ export class WorkflowService {
       input?: Record<string, any>;
       useSampleData?: boolean;
       triggerType?: string;
+      simulateOnly?: boolean;
     } = {}
   ): Promise<WorkflowPreviewResult | null> {
     const workflow = await this.getWorkflowById(workflowId, userId);
@@ -466,7 +472,7 @@ export class WorkflowService {
     let overallStatus: 'COMPLETED' | 'FAILED' = 'COMPLETED';
     const previewStart = performance.now();
 
-    for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
+  for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
       const stepWarnings: string[] = [];
       const chainVars: Record<string, any> = {};
       if (lastPromptOutput && typeof lastPromptOutput === 'object') {
@@ -494,6 +500,7 @@ export class WorkflowService {
           allowSimulatedFallback: true,
           ownerId: workflow.userId,
           credentialCache,
+          simulateOnly: options.simulateOnly === true,
         });
         normalizedOutput = this.normalizePreviewOutput(rawOutput);
 
@@ -604,6 +611,8 @@ export class WorkflowService {
         tokensUsed,
       },
       warnings,
+      // Not part of the persisted execution; indicates this preview avoided external calls
+      simulationMode: options.simulateOnly === true,
     };
   }
 
@@ -978,7 +987,7 @@ export class WorkflowService {
         return this.executeConditionStep(input, config);
         
       case StepTypes.DELAY:
-        return this.executeDelayStep(config);
+        return this.executeDelayStep(config, context);
         
       case StepTypes.WEBHOOK:
         return this.executeWebhookStep(input, config);
@@ -1054,9 +1063,89 @@ export class WorkflowService {
     const models = this.buildModelConfigs(config);
     const routing = this.buildRoutingConfig(config);
 
+    // If simulation-only mode is enabled, skip dispatcher and synthesize a result
+    if (context.simulateOnly) {
+      const fallbackModel = (models.find((m) => !m.disabled) ?? models[0]) ?? {
+        provider: 'openai',
+        model: this.defaultModelByProvider.openai,
+        label: 'OpenAI',
+      } as any;
+      const simulatedText = this.buildSimulatedPreviewText(
+        fallbackModel.label ?? fallbackModel.provider,
+        content,
+        resolvedVariables,
+      );
+      const providerResults: ModelExecutionResult[] = [
+        {
+          provider: fallbackModel.provider,
+          model: fallbackModel.model,
+          label: fallbackModel.label,
+          success: true,
+          outputText: simulatedText,
+          tokensUsed: 0,
+          latencyMs: 0,
+          warnings: ['Simulated preview output (no external API calls made).'],
+          raw: { simulated: true, reason: 'simulate-only' },
+          error: undefined,
+          retries: 0,
+          metadata: { simulated: true },
+        },
+      ];
+
+      const providersByName: Record<string, Record<string, any>> = {};
+      const pr = providerResults[0]!;
+      providersByName[pr.provider] = {
+        [pr.model]: {
+          label: pr.label,
+          text: pr.outputText,
+          success: true,
+          tokens: 0,
+          latencyMs: 0,
+          metadata: pr.metadata,
+          error: undefined,
+          warnings: pr.warnings,
+        },
+      };
+
+      // Detect unresolved placeholders after substitutions and include as warnings via model outputs
+      const warnings: string[] = [];
+      const unresolvedPattern = /{{\s*[^}]+\s*}}/g;
+      if (unresolvedPattern.test(content)) {
+        warnings.push('Unresolved template variables detected in prompt content. Some placeholders may not have been replaced.');
+      }
+
+      return {
+        content,
+        generatedText: simulatedText,
+        model: pr.model,
+        tokensUsed: 0,
+        tokens: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        finishReason: 'stop',
+        primaryProvider: pr.provider,
+        modelOutputs: providersByName,
+        providerResults,
+        resolvedVariables,
+        warnings,
+      };
+    }
+
     const integrationProviders = models
       .map((model) => WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER[model.provider] ?? null)
       .filter((providerId): providerId is string => Boolean(providerId));
+
+    // If simulateOnly is false, and all targeted providers have only revoked credentials,
+    // throw an explicit error to surface a clear message in the UI/specs.
+    if (!context.simulateOnly && integrationProviders.length > 0) {
+      const revokedOnly = await IntegrationCredentialService.detectRevokedOnlyProviders(
+        context.ownerId,
+        integrationProviders,
+      )
+      if (revokedOnly.length === integrationProviders.length) {
+        throw new ProviderCredentialRevokedError('Credential revoked', revokedOnly)
+      }
+    }
 
     const resolvedCredentials = await this.loadProviderCredentials(
       context.ownerId,
@@ -1421,8 +1510,12 @@ export class WorkflowService {
   /**
    * Execute a delay step
    */
-  private async executeDelayStep(config: any): Promise<any> {
+  private async executeDelayStep(config: any, context?: StepExecutionContext): Promise<any> {
     const delayMs = config.delayMs || 1000;
+    if (context?.simulateOnly) {
+      // Skip real delay in simulate-only mode
+      return { delayed: true, delayMs, simulated: true };
+    }
     await new Promise(resolve => setTimeout(resolve, delayMs));
     return { delayed: true, delayMs };
   }

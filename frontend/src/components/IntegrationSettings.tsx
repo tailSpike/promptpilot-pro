@@ -20,7 +20,9 @@ function formatDate(value?: string | null): string {
     return '—';
   }
   try {
-    return new Date(value).toLocaleString();
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString();
   } catch {
     return value;
   }
@@ -151,9 +153,24 @@ export default function IntegrationSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white shadow rounded-lg p-6" data-testid="integration-keys-header">
-        <h1 className="text-2xl font-semibold text-gray-900">Integration Keys</h1>
-        <p className="mt-2 text-gray-600">Securely manage provider API credentials used for workflow previews and live verifications.</p>
+      <div className="bg-white shadow rounded-lg p-6 flex items-start justify-between" data-testid="integration-keys-header">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Integration Keys</h1>
+          <p className="mt-2 text-gray-600">Securely manage provider API credentials used for workflow previews and live verifications.</p>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            onClick={() => {
+              const el = document.querySelector('[data-testid="integration-keys-form"]') as HTMLElement | null;
+              el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            data-testid="integration-keys-add"
+          >
+            Add credential
+          </button>
+        </div>
       </div>
 
       {error && (

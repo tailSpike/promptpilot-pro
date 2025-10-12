@@ -90,7 +90,7 @@ export class IntegrationCredentialService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return credentials.map((credential) => this.toResponse(credential));
+  return credentials.map((credential: any) => this.toResponse(credential));
   }
 
   static async resolveActiveCredentials(
@@ -132,6 +132,49 @@ export class IntegrationCredentialService {
     }
 
     return resolved;
+  }
+
+  /**
+   * Returns the subset of provider IDs for which the latest credential is revoked
+   * and there is no ACTIVE credential available. Used to block preview runs with
+   * an explicit error instead of silently falling back.
+   */
+  static async detectRevokedOnlyProviders(
+    ownerId: string,
+    providers: string[],
+  ): Promise<string[]> {
+    const uniqueProviders = Array.from(new Set(providers.filter(Boolean)))
+    if (uniqueProviders.length === 0) return []
+
+    // Fetch latest credential per provider (by lastRotatedAt/updatedAt/createdAt)
+    const records = await prisma.integrationCredential.findMany({
+      where: { ownerId, provider: { in: uniqueProviders } },
+      orderBy: [
+        { lastRotatedAt: 'desc' },
+        { updatedAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    })
+
+    const latestByProvider = new Map<string, typeof records[number]>()
+    for (const rec of records) {
+      if (!latestByProvider.has(rec.provider)) {
+        latestByProvider.set(rec.provider, rec)
+      }
+    }
+
+    const revokedOnly: string[] = []
+    for (const provider of uniqueProviders) {
+      const latest = latestByProvider.get(provider)
+      if (!latest) continue
+      if (latest.status === IntegrationCredentialStatus.REVOKED) {
+        // Ensure there is no ACTIVE credential for this provider
+  const active = records.find((r: any) => r.provider === provider && r.status === IntegrationCredentialStatus.ACTIVE)
+        if (!active) revokedOnly.push(provider)
+      }
+    }
+
+    return revokedOnly
   }
 
   static async resolveActiveCredential(

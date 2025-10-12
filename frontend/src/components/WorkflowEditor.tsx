@@ -264,9 +264,23 @@ export default function WorkflowEditor() {
       }
 
       const data = await workflowsAPI.getWorkflow(id);
-  const normalizedSteps = (data.steps || []).map((step: WorkflowStep) => {
+      const parseMaybe = (v: unknown): Record<string, unknown> | undefined => {
+        if (!v) return undefined;
+        if (typeof v === 'string') {
+          try { return JSON.parse(v) as Record<string, unknown>; } catch { return undefined; }
+        }
+        if (typeof v === 'object') return v as Record<string, unknown>;
+        return undefined;
+      };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const normalizedSteps = (data.steps || []).map((step: WorkflowStep & Record<string, any>) => {
         if (step.type !== 'PROMPT') {
-          return step;
+          return {
+            ...step,
+            inputs: parseMaybe(step.inputs) ?? step.inputs,
+            outputs: parseMaybe(step.outputs) ?? step.outputs,
+            conditions: parseMaybe(step.conditions) ?? step.conditions,
+          } as WorkflowStep;
         }
 
         const existingModels = Array.isArray(step.config?.models) ? step.config.models : undefined;
@@ -314,6 +328,9 @@ export default function WorkflowEditor() {
               preferredOrder,
             },
           },
+          inputs: parseMaybe(step.inputs) ?? step.inputs,
+          outputs: parseMaybe(step.outputs) ?? step.outputs,
+          conditions: parseMaybe(step.conditions) ?? step.conditions,
         };
       });
 

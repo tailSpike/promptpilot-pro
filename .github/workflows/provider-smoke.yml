@@ -1,0 +1,66 @@
+name: Provider Smoke (Live Providers)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 05:00 UTC
+    - cron: '0 5 * * *'
+
+jobs:
+  provider-smoke:
+    runs-on: ubuntu-latest
+    name: Cypress provider-smoke (optional)
+    env:
+      NPM_CONFIG_PRODUCTION: 'false'
+      # Map GitHub secrets to Cypress env vars. Each test will SKIP if its key(s) are not set.
+      CYPRESS_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CYPRESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CYPRESS_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CYPRESS_AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      CYPRESS_AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      CYPRESS_AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci --include=dev
+
+      - name: Run provider smoke spec
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: frontend
+          spec: cypress/e2e/provider-smoke.cy.ts
+          install: false
+          # These tests are headless and do not require starting the app
+          publish-summary: true
+
+      - name: Publish provider smoke summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f frontend/cypress/results/provider-smoke-summary.md ]; then
+            echo "Appending provider smoke summary to job output"
+            cat frontend/cypress/results/provider-smoke-summary.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No provider smoke summary file found"
+          fi
+
+      - name: Upload Cypress artifacts (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-smoke-artifacts
+          path: |
+            frontend/cypress/screenshots
+            frontend/cypress/videos
+            frontend/cypress/results/provider-smoke-summary.md
+          if-no-files-found: ignore

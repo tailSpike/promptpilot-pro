@@ -28,6 +28,7 @@ export interface WorkflowPreviewResult {
     tokensUsed: number;
   };
   warnings: string[];
+  simulationMode?: boolean;
 }
 
 interface WorkflowPreviewResultsProps {
@@ -169,7 +170,23 @@ const describePreviewStatus = (preview: WorkflowPreviewResult) => {
 };
 
 export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPreviewResultsProps) {
-  const badge = getPreviewStatusBadge(preview);
+  // Defensive defaults to handle partially shaped preview payloads
+  const safePreview: WorkflowPreviewResult = {
+    workflowId: preview.workflowId,
+    status: preview.status,
+    usedSampleData: Boolean(preview.usedSampleData),
+    input: preview.input ?? {},
+    finalOutput: preview.finalOutput ?? null,
+    totalDurationMs: typeof preview.totalDurationMs === 'number' && Number.isFinite(preview.totalDurationMs)
+      ? preview.totalDurationMs
+      : 0,
+    stepResults: Array.isArray(preview.stepResults) ? preview.stepResults : [],
+    stats: preview.stats ?? { stepsExecuted: 0, tokensUsed: 0 },
+    warnings: Array.isArray(preview.warnings) ? preview.warnings : [],
+    simulationMode: preview.simulationMode ?? false,
+  };
+
+  const badge = getPreviewStatusBadge(safePreview);
 
   return (
     <div className="bg-white shadow rounded-lg p-6 space-y-4" data-testid="workflow-preview-results">
@@ -183,8 +200,16 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
             >
               {badge.label}
             </span>
+            {safePreview.simulationMode && (
+              <span
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800"
+                title="No external API calls were made for this preview"
+              >
+                Simulated
+              </span>
+            )}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">{describePreviewStatus(preview)}</p>
+          <p className="mt-1 text-sm text-gray-500">{describePreviewStatus(safePreview)}</p>
         </div>
         {onClear && (
           <button
@@ -200,26 +225,26 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="rounded-md border border-gray-200 p-4">
           <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Total duration</dt>
-          <dd className="mt-1 text-lg font-semibold text-gray-900">{formatDuration(preview.totalDurationMs)}</dd>
+          <dd className="mt-1 text-lg font-semibold text-gray-900">{formatDuration(safePreview.totalDurationMs)}</dd>
         </div>
         <div className="rounded-md border border-gray-200 p-4">
           <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Steps executed</dt>
-          <dd className="mt-1 text-lg font-semibold text-gray-900">{preview.stats.stepsExecuted}</dd>
+          <dd className="mt-1 text-lg font-semibold text-gray-900">{safePreview.stats.stepsExecuted}</dd>
         </div>
         <div className="rounded-md border border-gray-200 p-4">
           <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Estimated tokens</dt>
-          <dd className="mt-1 text-lg font-semibold text-gray-900">{preview.stats.tokensUsed}</dd>
+          <dd className="mt-1 text-lg font-semibold text-gray-900">{safePreview.stats.tokensUsed}</dd>
         </div>
       </div>
 
-      {preview.warnings.length > 0 && (
+      {safePreview.warnings.length > 0 && (
         <div
           className="rounded-md border border-yellow-200 bg-yellow-50 p-4"
           data-testid="workflow-preview-warnings"
         >
           <h4 className="text-sm font-semibold text-yellow-800 mb-2">Warnings</h4>
           <ul className="list-disc list-inside text-sm text-yellow-900 space-y-1">
-            {preview.warnings.map((warning, idx) => (
+            {safePreview.warnings.map((warning, idx) => (
               <li key={idx}>{warning}</li>
             ))}
           </ul>
@@ -229,13 +254,13 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
       <section>
         <h4 className="text-sm font-semibold text-gray-900 mb-2">Final output</h4>
         <pre className="bg-gray-900 text-green-200 text-xs rounded-md p-4 overflow-auto" data-testid="workflow-preview-final-output">
-          {formatJson(preview.finalOutput)}
+          {formatJson(safePreview.finalOutput)}
         </pre>
       </section>
 
       <section className="space-y-3">
         <h4 className="text-sm font-semibold text-gray-900">Step breakdown</h4>
-        {preview.stepResults.map((step) => (
+        {safePreview.stepResults.map((step) => (
           <details key={step.stepId} className="rounded-md border border-gray-200">
             <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-gray-900 flex items-center justify-between">
               <span className="flex items-center gap-2">
@@ -287,7 +312,7 @@ export default function WorkflowPreviewResults({ preview, onClear }: WorkflowPre
           </details>
         ))}
 
-        {preview.stepResults.length === 0 && (
+        {safePreview.stepResults.length === 0 && (
           <p className="text-sm text-gray-500">No steps were executed in this preview run.</p>
         )}
       </section>
