@@ -140,8 +140,9 @@ router.post('/triggers/:id/execute', authenticate, async (req, res) => {
 
     // Execute the trigger now and return the execution record
     const { input } = req.body || {};
-    const execution = await triggerService.runTrigger(id, userId, { input, triggerTypeOverride: 'manual' });
-    res.status(201).json(execution);
+  const execution = await triggerService.runTrigger(id, userId, { input, triggerTypeOverride: 'manual' });
+  // Return 200 OK for manual execute to align with API usage and tests
+  res.status(200).json(execution);
 
   } catch (error) {
     console.error('Error executing trigger:', error);
