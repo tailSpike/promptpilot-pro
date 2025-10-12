@@ -93,6 +93,25 @@ describe('TriggerService utility behaviour', () => {
     expect((triggerService as any).scheduledTasks.size).toBe(0);
   });
 
+  it('computes and persists nextRunAt when setting up a scheduled task', async () => {
+    const task = { start: jest.fn(), stop: jest.fn() } as unknown as cron.ScheduledTask;
+    jest.spyOn(cron, 'schedule').mockImplementation(() => task);
+    const updateSpy = jest.spyOn(prisma.workflowTrigger, 'update').mockResolvedValue({} as any);
+
+    await (triggerService as any).setupScheduledTask({
+      id: 'trg-next',
+      name: 'with tz',
+      config: JSON.stringify({ cron: '0 9 * * *', timezone: 'America/New_York' }),
+      workflowId: 'wf-1',
+    });
+
+    expect(task.start).toHaveBeenCalledTimes(1);
+    // One update for the initial nextRunAt persistence
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'trg-next' }, data: expect.objectContaining({ nextRunAt: expect.any(Date) }) })
+    );
+  });
+
   it('creates scheduled triggers and normalizes config payloads', async () => {
     const workflowSpy = jest.spyOn(prisma.workflow, 'findFirst').mockResolvedValue({ id: 'wf-1', userId: 'user-1' } as any);
     const triggerCreateSpy = jest.spyOn(prisma.workflowTrigger, 'create').mockResolvedValue({

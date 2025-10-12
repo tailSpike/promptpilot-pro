@@ -304,9 +304,8 @@ Create a trigger. Config requirements vary by `type`.
   }
 }
 ```
-- Scheduled triggers require a valid cron expression.
-- Webhook triggers auto-generate `secret` if omitted.
-- API triggers auto-generate `apiKey` if omitted.
+ When creating or updating a scheduled trigger, include a timezone (IANA name, e.g., "America/New_York"). If omitted, the server defaults to UTC.
+ Scheduled triggers will expose nextRunAt computed from cron + timezone; clients should treat this as read-only.
 
 ### GET `/api/triggers/:id`
 Fetch trigger details with the latest executions.

@@ -188,6 +188,7 @@ Tip: If you used `setx` to set user-level variables, open a new terminal or the 
 - 🚧 Component tests for `WorkflowTriggers` UI slated for follow-up.
 - 🚧 Component snapshot tests for `WorkflowPreviewResults` are pending to catch layout regressions.
 - 🚧 `TriggerService` currently logs scheduled executions; integrate with `WorkflowService` before marking the feature fully delivered.
+ - The scheduler computes and persists `nextRunAt` for scheduled triggers using cron + timezone via cron-parser. This powers a friendly "Next run" label in the UI. The frontend may store lightweight UI-only metadata in `config.__ui` (e.g., last used schedule mode) which is ignored by the backend.
 
 ---
 

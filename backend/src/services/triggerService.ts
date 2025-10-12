@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import * as cron from 'node-cron';
+import { CronExpressionParser } from 'cron-parser';
 import crypto from 'crypto';
 
 import prisma from '../lib/prisma';
@@ -24,7 +25,7 @@ export const CreateTriggerSchema = z.object({
     // EVENT trigger config
     eventType: z.string().optional(), // Type of event to listen for
     conditions: z.record(z.string(), z.any()).optional(), // Event conditions
-  }).optional(),
+  }).passthrough().optional(),
 });
 
 export const UpdateTriggerSchema = z.object({
@@ -39,6 +40,23 @@ export const UpdateTriggerSchema = z.object({
  */
 export class TriggerService {
   private scheduledTasks = new Map<string, cron.ScheduledTask>();
+
+  // Compute the next run time for a cron expression honoring timezone
+  private computeNextRunAt(cronExpr: string, tz?: string, fromDate?: Date): Date | null {
+    try {
+      const interval = CronExpressionParser.parse(cronExpr, {
+        currentDate: fromDate ?? new Date(),
+        tz: tz || 'UTC',
+      });
+      const nextVal = interval.next() as unknown as { toString: () => string } | Date;
+      // Cron-parser returns CronDate; convert via toString() to ensure native Date
+      const asDate = nextVal instanceof Date ? nextVal : new Date(nextVal.toString());
+      return asDate;
+    } catch {
+      // If we cannot compute, return null rather than throwing
+      return null;
+    }
+  }
   
   private normalizeTrigger<T>(trigger: T): T {
     if (!trigger) return trigger;
@@ -171,6 +189,11 @@ export class TriggerService {
     // Set up scheduled task if it's a scheduled trigger
     if (trigger.type === 'SCHEDULED' && trigger.isActive) {
       await this.setupScheduledTask(trigger);
+    } else {
+      // Ensure nextRunAt is cleared for non-scheduled triggers
+      if (trigger.nextRunAt) {
+        await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { nextRunAt: null } });
+      }
     }
 
     return this.normalizeTrigger(trigger);
@@ -276,6 +299,9 @@ export class TriggerService {
     // Restart scheduled task if it's active and scheduled
     if (updatedTrigger.type === 'SCHEDULED' && updatedTrigger.isActive) {
       await this.setupScheduledTask(updatedTrigger);
+    } else {
+      // Clear nextRunAt if no longer scheduled or deactivated
+      await prisma.workflowTrigger.update({ where: { id: updatedTrigger.id }, data: { nextRunAt: null } });
     }
 
     return this.normalizeTrigger(updatedTrigger);
@@ -415,6 +441,15 @@ export class TriggerService {
           console.log(`Executing scheduled trigger: ${trigger.name}`);
           await this.runTrigger(trigger.id, undefined, { triggerTypeOverride: 'scheduled' });
           console.log(`Scheduled trigger ${trigger.name} executed successfully`);
+          // After firing, compute and persist the next run time
+          const next = this.computeNextRunAt(config.cron, config.timezone);
+          if (next) {
+            try {
+              await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { nextRunAt: next } });
+            } catch {
+              // ignore if trigger not persisted/mocked in unit tests
+            }
+          }
         } catch (error) {
           console.error(`Error executing scheduled trigger ${trigger.name}:`, error);
         }
@@ -426,8 +461,18 @@ export class TriggerService {
 
     task.start();
     this.scheduledTasks.set(trigger.id, task);
-
-    console.log(`Next run time for ${trigger.name}: ${new Date(Date.now() + 60000)}`);
+    // Compute immediate next run and persist it for UI display
+    const next = this.computeNextRunAt(config.cron, config.timezone);
+    if (next) {
+      try {
+        await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { nextRunAt: next } });
+      } catch {
+        // ignore if trigger not persisted/mocked in unit tests
+      }
+      console.log(`Next run time for ${trigger.name}: ${next.toISOString()} (${config.timezone || 'UTC'})`);
+    } else {
+      console.log(`Next run time for ${trigger.name}: unavailable (invalid expression or tz)`);
+    }
   }
 
   /**
