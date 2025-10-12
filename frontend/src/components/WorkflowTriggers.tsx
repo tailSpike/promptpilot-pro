@@ -89,6 +89,40 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
     return new Date(y, m - 1, d);
   };
 
+  // Helper function to get human-readable schedule description
+  const getScheduleDescription = (cron: string) => {
+    if (!cron) return '';
+    // Common cron patterns with descriptions
+    const patterns: Record<string, string> = {
+      '0 0 * * *': 'Daily at midnight',
+      '0 9 * * *': 'Daily at 9:00 AM',
+      '0 9 * * 1-5': 'Weekdays at 9:00 AM',
+      '0 0 * * 0': 'Weekly on Sunday at midnight',
+      '0 0 1 * *': 'Monthly on the 1st at midnight',
+      '*/15 * * * *': 'Every 15 minutes',
+      '0 */6 * * *': 'Every 6 hours',
+      '0 8-17 * * 1-5': 'Every hour during business hours (8 AM - 5 PM, weekdays)'
+    };
+
+    if (patterns[cron]) return patterns[cron];
+
+    // Basic parsing for common patterns
+    const parts = cron.split(' ');
+    if (parts.length === 5) {
+      const [minute, hour, day, month, weekday] = parts;
+      if (minute === '0' && hour !== '*' && day === '*' && month === '*' && weekday === '*') {
+        return `Daily at ${hour}:00`;
+      }
+      if (minute === '0' && hour !== '*' && day === '*' && month === '*' && weekday !== '*') {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        if (weekday === '1-5') return `Weekdays at ${hour}:00`;
+        if (weekday.length === 1) return `Weekly on ${days[parseInt(weekday)]} at ${hour}:00`;
+      }
+    }
+
+    return 'Custom schedule';
+  };
+
   // Toast notification system
   const showToast = (type: 'success' | 'error', message: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -755,7 +789,17 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
                 </div>
                 {trigger.type === 'SCHEDULED' && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
-                    <p className="text-xs text-gray-600">
+                    {trigger.config?.cron && (
+                      <>
+                        <p className="text-xs text-gray-600">
+                          Schedule: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config.cron}</code>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {getScheduleDescription(trigger.config.cron)}
+                        </p>
+                      </>
+                    )}
+                    <p className="text-xs text-gray-600 mt-1">
                       Timezone: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config?.timezone || 'UTC'}</code>
                     </p>
                   </div>
