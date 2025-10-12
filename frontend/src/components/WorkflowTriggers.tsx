@@ -3,6 +3,7 @@ import { Clock, Zap, Globe, Key, Calendar, Play, Pause, Trash2, Plus, X, Info, H
 
 interface TriggerConfig {
   cron?: string;
+  timezone?: string;
   secret?: string;
   timeout?: number;
   retries?: number;
@@ -62,6 +63,16 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
     time: '',
     frequency: 'once' as 'once' | 'daily' | 'weekly' | 'monthly'
   });
+
+  // Determine user's local IANA timezone once; fallback to UTC if unavailable
+  const localTimezone = (() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return tz || 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  })();
 
   // Toast notification system
   const showToast = (type: 'success' | 'error', message: string) => {
@@ -241,7 +252,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
           }
           finalFormData = {
             ...finalFormData,
-            config: { ...finalFormData.config, cron: generatedCron },
+            // Ensure timezone is set; default to local timezone for user expectations
+            config: { timezone: localTimezone, ...finalFormData.config, cron: generatedCron },
           };
         } else {
           // Advanced mode must provide cron
@@ -249,6 +261,11 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
             showToast('error', 'Cron expression is required for scheduled triggers');
             return;
           }
+          // Default timezone if not provided in advanced mode
+          finalFormData = {
+            ...finalFormData,
+            config: { timezone: localTimezone, ...finalFormData.config },
+          };
         }
       }
 
@@ -425,7 +442,15 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
       if (editFormData.type === 'SCHEDULED' && editScheduleMode === 'simple') {
         const generatedCron = generateCronFromEditSimple();
         if (generatedCron) {
-          finalFormData.config = { ...finalFormData.config, cron: generatedCron };
+          finalFormData.config = { timezone: localTimezone, ...finalFormData.config, cron: generatedCron };
+        }
+      }
+
+      // For advanced mode, ensure timezone is present
+      if (editFormData.type === 'SCHEDULED' && editScheduleMode === 'advanced') {
+        if (!finalFormData.config) finalFormData.config = {} as TriggerConfig;
+        if (!finalFormData.config.timezone) {
+          finalFormData.config = { timezone: localTimezone, ...finalFormData.config };
         }
       }
 
