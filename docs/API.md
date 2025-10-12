@@ -226,6 +226,28 @@ Preview workflow execution without persisting results.
 }
 ```
 
+#### 409 — Revoked provider credentials
+When all targeted providers for the preview only have revoked credentials for the requester, the API fails fast with a structured conflict response:
+```json
+{
+  "status": "FAILED",
+  "usedSampleData": false,
+  "totalDurationMs": 0,
+  "stats": { "stepsExecuted": 0, "tokensUsed": 0 },
+  "warnings": ["Credential revoked. Re-authorise before running this workflow."],
+  "stepResults": [],
+  "finalOutput": null,
+  "error": {
+    "code": "provider.credentials.revoked",
+    "message": "Credential revoked",
+    "providers": ["openai", "anthropic"]
+  }
+}
+```
+Notes
+- Applies when `simulateOnly` is false (default) and the preview would need external provider calls.
+- If at least one provider has an ACTIVE credential, the preview continues using available credentials.
+
 ---
 
 ## 6. Libraries & sharing
@@ -337,5 +359,4 @@ Errors follow a consistent shape:
 - Add reverse proxies (Nginx/Cloudflare) for rate limiting and TLS termination in production.
 
 Refer to [`docs/WORKFLOW_ENGINE.md`](WORKFLOW_ENGINE.md) for trigger lifecycle details and [`docs/DEV_GUIDE.md`](DEV_GUIDE.md) for testing expectations.
-````
-This is the final rewritten file, incorporating the suggested code change. The document has been updated to reflect the current backend routes and payloads for PromptPilot Pro. All sections have been carefully revised to ensure accuracy and completeness.
+```

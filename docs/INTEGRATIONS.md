@@ -70,3 +70,66 @@ If you plan to implement an integration, document the usage pattern in this file
 ```
 
 ---
+
+### 5. CI: Live provider smoke checks (optional)
+
+The repository includes a scheduled and on-demand GitHub Actions workflow to verify external model providers are reachable with your CI-injected secrets. This runs a lightweight Cypress spec that only hits public provider endpoints; it does not start the app.
+
+- Workflow file: `.github/workflows/provider-smoke.yml`
+- Cypress spec: `frontend/cypress/e2e/provider-smoke.cy.ts`
+
+Secrets to configure in your repository (Settings → Secrets and variables → Actions → New repository secret):
+
+- `OPENAI_API_KEY` (maps to `CYPRESS_OPENAI_API_KEY`)
+- `ANTHROPIC_API_KEY` (maps to `CYPRESS_ANTHROPIC_API_KEY`)
+- `GEMINI_API_KEY` (maps to `CYPRESS_GEMINI_API_KEY`)
+- `AZURE_OPENAI_API_KEY` (maps to `CYPRESS_AZURE_OPENAI_API_KEY`)
+- `AZURE_OPENAI_ENDPOINT` (maps to `CYPRESS_AZURE_OPENAI_ENDPOINT`, e.g., `https://your-resource.openai.azure.com`)
+- `AZURE_OPENAI_API_VERSION` (maps to `CYPRESS_AZURE_OPENAI_API_VERSION`, optional)
+
+Notes
+- Tests are self-skipping: if a provider’s secret(s) aren’t present, that provider’s test is skipped instead of failing.
+- Azure API version default in the spec is `2024-02-15-preview`. If your region/resource requires a different version (for example, a newer GA), set `AZURE_OPENAI_API_VERSION` accordingly in repo secrets.
+- The Azure test calls `GET {endpoint}/openai/deployments?api-version=...` and expects a response with a `value` array.
+- Artifacts (screenshots/videos) are uploaded only if present.
+
+Manual runs
+- From the Actions tab, select “Provider Smoke (Live Providers)” → “Run workflow”.
+- Cron schedule runs daily at 05:00 UTC.
+
+Security of stored keys
+- Keys saved via the Integration Keys console are encrypted at-rest using AES-256-GCM by the backend KeyVault service.
+- CI secrets remain within GitHub Actions and are injected only for the smoke workflow job. They are not persisted in the app database.
+
+Runbook note
+- After rotating any CI provider secrets (in GitHub → Settings → Secrets and variables → Actions), manually trigger the “Provider Smoke (Live Providers)” workflow to validate connectivity immediately. The job summary will display a per-provider table with status, latency, and tokens (when available).
+
+---
+
+### 6. Revoked credentials behavior (Preview runs)
+
+When all targeted providers for a workflow preview have only revoked credentials for the current user/workspace, the backend fails fast with an explicit 409 response so the UI can surface an actionable message instead of silently simulating.
+
+Status: 409 Conflict
+
+```json
+{
+  "status": "FAILED",
+  "usedSampleData": false,
+  "totalDurationMs": 0,
+  "stats": { "stepsExecuted": 0, "tokensUsed": 0 },
+  "warnings": ["Credential revoked. Re-authorise before running this workflow."],
+  "stepResults": [],
+  "finalOutput": null,
+  "error": {
+    "code": "provider.credentials.revoked",
+    "message": "Credential revoked",
+    "providers": ["openai", "anthropic"]
+  }
+}
+```
+
+Notes
+- Applies when preview runs would require external provider calls and `simulateOnly` is not set.
+- If at least one ACTIVE credential exists for any targeted provider, the preview continues using available credentials.
+- Use Integration Keys to rotate a new credential, then re-run the preview to clear this warning.

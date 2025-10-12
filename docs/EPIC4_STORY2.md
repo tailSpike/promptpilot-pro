@@ -163,3 +163,51 @@ We rely on vendor-issued sandbox or non-production keys so engineers can verify 
 Document any new providers (e.g., Cohere, Mistral) by adding similar acquisition notes and linking to their developer portals. Always prefer provider-specific test tenants with enforced spend caps.
 
 Stop servers with `Ctrl+C` when finished. Rotate any temporary keys created during testing.
+
+---
+
+## Testing
+
+This story is validated via Cypress acceptance tests and backend unit tests, following STANDARD_WORKFLOW.
+
+### Acceptance tests (Cypress UI)
+- Specs:
+  - `frontend/cypress/e2e/workflow-provider-keys.cy.ts` (add → rotate → revoke; preview shows 409 failure on revoked-only)
+  - `frontend/cypress/e2e/workflow-live-providers.cy.ts` (Anthropic/Gemini/OpenAI live run; self-skips if key missing)
+
+Run headless with servers auto-started and env injection (Windows PowerShell):
+```powershell
+./open-cypress.ps1 -StartServers -Headless -Spec "frontend/cypress/e2e/workflow-provider-keys.cy.ts"
+./open-cypress.ps1 -StartServers -Headless -Spec "frontend/cypress/e2e/workflow-live-providers.cy.ts"
+```
+
+Interactive:
+```powershell
+./open-cypress.ps1
+# Choose a spec in the Cypress UI
+```
+
+### Unit tests (backend)
+- File: `backend/src/__tests__/unit/integrationCredential.revokedOnly.test.ts`
+
+Run:
+```powershell
+npm --prefix backend install
+npm --prefix backend run test:unit
+# Or a single test file:
+npm --prefix backend run test:unit -- --runTestsByPath src/__tests__/unit/integrationCredential.revokedOnly.test.ts
+```
+
+### Integration tests (backend)
+```powershell
+npm --prefix backend run test:integration
+```
+
+### CI smoke (optional)
+- Workflow: `.github/workflows/provider-smoke.yml`
+- Spec: `frontend/cypress/e2e/provider-smoke.cy.ts`
+- Secrets: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_*`
+
+Expected results:
+- Provider Keys spec passes; revoked preview returns 409 with `provider.credentials.revoked` and standard warning.
+- Live Providers spec returns non-simulated provider outputs with success=true; top-level status may be COMPLETED or FAILED due to quotas/safety filters.
