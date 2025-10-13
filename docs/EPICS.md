@@ -12,8 +12,8 @@ Phase 0 — Foundation (Complete)
 - ✅ Epic 1: Prompt Creation & Management
 - ✅ Epic 2: Workflow Automation — Story 1 (Builder), Story 2 (Triggers), Story 3 (Preview)
 
-Phase 1 — Live model keys & connectivity (Next)
-- 🚧 Epic 4: Story 2 — Provider Integration Keys & Live Verification (stabilize keys storage, preview/run resolution, live smoke/E2E)
+Phase 1 — Live model keys & connectivity (Complete)
+- ✅ Epic 4: Story 2 — Provider Integration Keys & Live Verification (keys storage, preview/run resolution, live smoke/E2E)
 
 Phase 2 — Workflow Builder V2 (UX) — ship in slices
 - 🆕 Epic 8: Story 1 — Linear Builder V2 (authoring, mapping, preview)
@@ -234,7 +234,7 @@ Epic 4 pushes PromptPilot Pro from mocked model orchestration to production-read
 - UI exposes per-model parameters (temperature, max tokens, etc.).
 - Execution engine records outputs for each selected provider.
 
-### Story 2: Provider Integration Keys & Live Verification 🚧 DISCOVERY
+### Story 2: Provider Integration Keys & Live Verification ✅ COMPLETE
 **User Story:** As a prompt engineer, I want to register provider API keys so workflows and automated tests can hit real models.
 📄 **[View Full Story Details](./EPIC4_STORY2.md)**
 
