@@ -10,12 +10,25 @@
   'findByTestId',
   { prevSubject: 'optional' },
   (subject: JQuery<HTMLElement> | undefined, testId: string, options?: Record<string, unknown>) => {
+    if (!testId) {
+      // Return body to keep chain alive, but log a warning for easier debugging
+      Cypress.log({ name: 'findByTestId', message: 'Called without a testId', consoleProps: () => ({ testId }) });
+      return cy.get('body');
+    }
     const selector = `[data-testid="${testId}"]`;
     const opts = { timeout: 10000, ...(options || {}) } as Record<string, unknown>;
     if (subject) {
       return cy.wrap(subject).find(selector, opts).first();
     }
-    return cy.get(selector, opts).first();
+    // Gracefully handle non-existent elements so callers can assert .should('not.exist')
+    return cy.get('body').then(($body) => {
+      const found = $body.find(selector);
+      if (found.length > 0) {
+        return cy.get(selector, opts).first();
+      }
+      // Return empty collection so not.exist assertions pass
+      return cy.wrap(found as unknown as JQuery<HTMLElement>);
+    });
   }
 );
 

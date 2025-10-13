@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { promptsAPI, workflowsAPI } from '../services/api';
 import type { Prompt } from '../types';
 import { AuthContext } from '../contexts/AuthContext';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
+import LinearBuilderV2 from './LinearBuilderV2';
 
 type PromptModelProvider = 'openai' | 'azure' | 'anthropic' | 'google' | 'custom';
 
@@ -168,6 +170,9 @@ export default function WorkflowEditor() {
   const location = useLocation();
   const isEditing = Boolean(id);
   const auth = useContext(AuthContext);
+  const { isEnabled } = useFeatureFlags();
+  const builderV2Enabled = isEnabled('builder.v2.linear');
+  const [useBuilderV2, setUseBuilderV2] = useState(false);
   const fallbackUserId = useMemo(() => {
     if (typeof window === 'undefined') {
       return null;
@@ -788,6 +793,45 @@ export default function WorkflowEditor() {
     );
   }
 
+  // Feature-flagged Linear Builder V2 early render path
+  if (builderV2Enabled && useBuilderV2) {
+    return (
+      <div className="px-4 py-6 sm:px-0">
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {isEditing ? 'Edit Workflow' : 'Create New Workflow'}
+              </h1>
+              <p className="mt-2 text-gray-600">Design automated workflows to chain prompts together</p>
+            </div>
+            <Link
+              to="/workflows"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              ← Back to Workflows
+            </Link>
+          </div>
+        </div>
+
+        {builderV2Enabled && (
+          <div className="mb-4">
+            <button
+              type="button"
+              className="px-3 py-1 border rounded"
+              data-testid="builder-v2-toggle"
+              onClick={() => setUseBuilderV2((v) => !v)}
+            >
+              {useBuilderV2 ? 'Builder V1' : 'Builder V2'}
+            </button>
+          </div>
+        )}
+
+        <LinearBuilderV2 workflowId={typeof id === 'string' ? id : undefined} />
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-6 sm:px-0">
       <div className="mb-8">
@@ -808,6 +852,19 @@ export default function WorkflowEditor() {
           </Link>
         </div>
       </div>
+
+      {builderV2Enabled && (
+        <div className="mb-4">
+          <button
+            type="button"
+            className="px-3 py-1 border rounded"
+            data-testid="builder-v2-toggle"
+            onClick={() => setUseBuilderV2((v) => !v)}
+          >
+            {useBuilderV2 ? 'Builder V1' : 'Builder V2'}
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
