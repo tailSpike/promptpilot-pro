@@ -25,9 +25,16 @@ This guide walks through manual verification of the Linear Builder V2 experience
    - Click a variable/binding token (`data-testid="binding-expression"`, e.g., name) and confirm it toggles into the prompt field as `{{name}}`.
 
 4. Data Inspector
-   - Open the Data Inspector drawer (`data-testid="data-inspector-toggle"`, then verify `data-testid="data-inspector"`).
-   - Provide sample input data if supported (e.g., `{ "name": "Ada" }`).
-   - Drawer should remain visible while interacting with the step card.
+    - Open the Data Inspector drawer (`data-testid="data-inspector-toggle"`, then verify `data-testid="data-inspector"`).
+    - Verify sections:
+       - Header shows "Data Inspector".
+   - "Input (workflow.input)" textarea is present (`data-testid="data-inspector-input"`). Type a message that your prompt can use, e.g., "Hello". This maps to `workflow.input`.
+       - "Additional variables" list allows adding key/value pairs. Click "Add variable" and add key `name` with value `Ada`. These map to `workflow.name`, `workflow.<key>`.
+    - Advanced JSON modal:
+       - Click the "Advanced JSON…" button. A modal appears (`data-testid="data-inspector-advanced-modal"`) with title "Advanced Inputs (JSON)" and a JSON textarea prefilled from the composed inputs.
+       - Edit the JSON (for example, set `workflow.input` or add another key) and click Save (`data-testid="data-inspector-advanced-save"`). The plain text input and variables list should update accordingly.
+       - Cancel (`data-testid="data-inspector-advanced-cancel"`) should close without applying changes.
+    - Drawer should remain visible while interacting with the step card.
 
 5. Inline validation
    - Intentionally break validation (e.g., clear prompt content) and confirm inline warnings appear (`data-testid="validation-inline"`).
@@ -43,6 +50,7 @@ This guide walks through manual verification of the Linear Builder V2 experience
 - Feature flag toggle renders Linear Builder V2 UI.
 - Step creation and prompt content entry are smooth.
 - Variable and Data Inspectors function as described.
+   - Data Inspector plain text + additional variables compose into preview inputs. Advanced JSON modal stays in sync both directions.
 - Preview runs show deterministic placeholder/timeline feedback in dev.
 
 ## Troubleshooting

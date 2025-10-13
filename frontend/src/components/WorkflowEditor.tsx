@@ -822,7 +822,7 @@ export default function WorkflowEditor() {
               data-testid="builder-v2-toggle"
               onClick={() => setUseBuilderV2((v) => !v)}
             >
-              {useBuilderV2 ? 'Builder V1' : 'Builder V2'}
+              {useBuilderV2 ? 'Switch to Builder V1' : 'Switch to Builder V2'}
             </button>
           </div>
         )}
@@ -861,7 +861,7 @@ export default function WorkflowEditor() {
             data-testid="builder-v2-toggle"
             onClick={() => setUseBuilderV2((v) => !v)}
           >
-            {useBuilderV2 ? 'Builder V1' : 'Builder V2'}
+            {useBuilderV2 ? 'Switch to Builder V1' : 'Switch to Builder V2'}
           </button>
         </div>
       )}

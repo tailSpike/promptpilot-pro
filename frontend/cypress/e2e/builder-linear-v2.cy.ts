@@ -78,11 +78,17 @@ describe('Workflow Builder V2 - Linear mode (feature flagged)', () => {
     // Re-run step
     cy.get('[data-testid="timeline-rerun-step"]').first().click();
     cy.get('[data-testid="execution-timeline-status"]').should('contain.text', 'success');
-    // Open Data Inspector and verify sample IO sections
+    // Open Data Inspector and verify sections + Advanced JSON modal
     cy.get('[data-testid="data-inspector-toggle"]').click();
     cy.get('[data-testid="data-inspector"]').within(() => {
-      cy.contains('Inputs');
-      cy.contains('Outputs');
+      cy.contains('Data Inspector');
+      cy.contains('Input (workflow.input)');
+      cy.get('[data-testid="data-inspector-input"]').should('exist');
+      cy.contains('Additional variables');
+      cy.contains('Advanced JSON').click();
     });
+    cy.get('[data-testid="data-inspector-advanced-modal"]').should('be.visible');
+    cy.contains('Advanced Inputs (JSON)').should('be.visible');
+    cy.get('[data-testid="data-inspector-advanced-cancel"]').click();
   });
 });
