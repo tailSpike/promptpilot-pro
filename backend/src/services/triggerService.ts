@@ -54,6 +54,72 @@ export class TriggerService {
   }
 
   /**
+   * Execute a trigger by ID, creating a workflow execution and starting it.
+   * If input is not provided, this will build sample input from required workflow variables (future work).
+   */
+  async runTrigger(triggerId: string, requestedByUserId?: string, options?: { input?: Record<string, any>; triggerTypeOverride?: string }) {
+    // Load trigger with workflow and ensure ownership if requestedByUserId is provided
+    const trigger = await prisma.workflowTrigger.findFirst({
+      where: {
+        id: triggerId,
+        ...(requestedByUserId ? { workflow: { userId: requestedByUserId } } : {}),
+      },
+      include: {
+        workflow: {
+          include: {
+            steps: {
+              orderBy: { order: 'asc' },
+            },
+            variables: true,
+          }
+        }
+      }
+    });
+
+    if (!trigger || !(trigger as any).workflow) {
+      throw new Error('Trigger not found or access denied');
+    }
+
+    // Prepare input (for now, trust provided input)
+    const input: Record<string, any> = { ...(options?.input || {}) };
+
+    // Create execution record (workflowExecution table assumed)
+    const execution = await prisma.workflowExecution.create({
+      data: {
+        workflowId: (trigger as any).workflowId,
+        triggerId: (trigger as any).id,
+        input: JSON.stringify(input),
+        output: JSON.stringify({}),
+        status: 'PENDING',
+        metadata: JSON.stringify({
+          stepCount: ((trigger as any).workflow?.steps || []).length,
+          triggerType: (options?.triggerTypeOverride || String((trigger as any).type || 'manual')).toLowerCase(),
+          triggerName: (trigger as any).name,
+        }),
+      }
+    });
+
+    // Fire-and-forget actual execution
+    try {
+      const { workflowService } = await import('./workflowService');
+      // Access private method via any to avoid circular validation issues; acceptable for internal service wiring
+      await (workflowService as any).executeWorkflowSteps(execution.id, (trigger as any).workflow, input)
+        .catch((err: any) => console.error('Workflow execution failed:', err));
+    } catch (err) {
+      console.error('Failed to start workflow execution:', err);
+    }
+
+    // Optionally update lastTriggeredAt
+    try {
+      await prisma.workflowTrigger.update({ where: { id: (trigger as any).id }, data: { lastTriggeredAt: new Date() } });
+    } catch {
+      console.warn('Failed to update lastTriggeredAt for trigger', (trigger as any).id);
+    }
+
+    return execution;
+  }
+
+  /**
    * Create a new workflow trigger
    */
   async createTrigger(workflowId: string, userId: string, data: any) {
@@ -161,7 +227,12 @@ export class TriggerService {
 
     // Prepare new config depending on whether type changed
     const existingConfig = (() => {
-      try { return JSON.parse(existingTrigger.config as string) || {}; } catch { return {}; }
+      const raw = (existingTrigger as any).config;
+      if (!raw) return {} as Record<string, any>;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw) || {}; } catch { return {}; }
+      }
+      return raw as Record<string, any>;
     })();
     let nextConfig: Record<string, any> | undefined = undefined;
     if (validated.config || typeChanged) {
@@ -315,7 +386,14 @@ export class TriggerService {
    * Private method to setup a scheduled task
    */
   private async setupScheduledTask(trigger: any): Promise<void> {
-    const config = JSON.parse(trigger.config as string);
+    // Handle Prisma Json returning object or string
+    const config = (() => {
+      const raw = (trigger as any).config;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return {}; }
+      }
+      return raw || {};
+    })();
     
     if (!config.cron) {
       throw new Error('Cron expression not found in trigger config');

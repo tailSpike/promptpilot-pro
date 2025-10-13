@@ -296,17 +296,100 @@ Update trigger metadata or config. Changing the type resets config to avoid stal
 Delete a trigger and stop any scheduled jobs.
 
 ### POST `/api/triggers/:id/execute`
-Manual/API trigger execution endpoint. Currently returns an acknowledgement payload while execution wiring is finalised.
+Manual trigger execution (authenticated).
+
+Headers:
+- `Authorization: Bearer <JWT>`
+
+Body (optional):
 ```json
-{
-  "message": "Trigger execution requested",
-  "triggerId": "trigger_cuid",
-  "status": "pending"
-}
+{ "input": { "any": "json" } }
+```
+
+Responses:
+- `200` with execution record when accepted.
+- `401` when not authenticated or not owned by the user.
+
+Example (PowerShell):
+```powershell
+$token = "<your_jwt>"
+$triggerId = "<manual_trigger_id>"
+Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:3001/api/triggers/$triggerId/execute" -Headers @{ Authorization = "Bearer $token" } -Body (@{ input = @{ source = "docs" } } | ConvertTo-Json) -ContentType 'application/json'
+```
+
+---
+
+### POST `/api/triggers/:id/invoke`
+API trigger execution using a generated API key (no user auth).
+
+Headers:
+- `X-API-Key: <apiKey>` (from the trigger’s `config.apiKey`)
+
+Body (optional):
+```json
+{ "input": { "any": "json" } }
+```
+
+Responses:
+- `202` with `{ message, executionId }` when accepted.
+- `401` when the API key is missing/invalid (in non-production, key checks may be bypassed for tests).
+- `404` if the trigger doesn’t exist or isn’t an API type.
+
+Example (PowerShell):
+```powershell
+$triggerId = "<api_trigger_id>"
+$apiKey = "<api_key_from_trigger_config>"
+Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:3001/api/triggers/$triggerId/invoke" -Headers @{ 'X-API-Key' = $apiKey } -Body (@{ input = @{ source = "docs" } } | ConvertTo-Json) -ContentType 'application/json'
 ```
 
 ### POST `/api/webhooks/:triggerId`
-Webhook entry point. Returns 200 after basic validation. Future work will validate HMAC signatures using `config.secret`.
+Webhook entry point for `WEBHOOK` triggers.
+
+Auth options (choose one):
+- Header: `X-Webhook-Secret: <secret>`
+- Body: `{ "secret": "<secret>", "input": { ... } }`
+- Query: `?secret=<secret>`
+
+Body (optional):
+```json
+{ "input": { "any": "json" } }
+```
+
+Responses:
+- `202` with `{ message, executionId }` when accepted.
+- `401` when the secret is missing/invalid (in non-production, secret checks may be bypassed for tests).
+- `400/404` when the trigger is not a webhook or does not exist.
+
+Example (PowerShell with header):
+```powershell
+$triggerId = "<webhook_trigger_id>"
+$secret = "<webhook_secret_from_trigger_config>"
+Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:3001/api/webhooks/$triggerId" -Headers @{ 'X-Webhook-Secret' = $secret } -Body (@{ input = @{ source = "docs" } } | ConvertTo-Json) -ContentType 'application/json'
+```
+
+---
+
+### POST `/api/events`
+Dispatch an application event to matching `EVENT` triggers (authenticated).
+
+Headers:
+- `Authorization: Bearer <JWT>`
+
+Body:
+```json
+{ "eventType": "order.created", "payload": { "id": "123" }, "workflowId": "optional-workflow-id" }
+```
+
+Responses:
+- `202` with `{ message, count, executionIds }` when dispatched.
+- `400` when `eventType` is missing.
+- `401` for missing/invalid authentication.
+
+Example (PowerShell):
+```powershell
+$token = "<your_jwt>"
+Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:3001/api/events" -Headers @{ Authorization = "Bearer $token" } -Body (@{ eventType = 'cypress.test'; payload = @{ ok = $true } } | ConvertTo-Json) -ContentType 'application/json'
+```
 
 ---
 
@@ -337,5 +420,18 @@ Errors follow a consistent shape:
 - Add reverse proxies (Nginx/Cloudflare) for rate limiting and TLS termination in production.
 
 Refer to [`docs/WORKFLOW_ENGINE.md`](WORKFLOW_ENGINE.md) for trigger lifecycle details and [`docs/DEV_GUIDE.md`](DEV_GUIDE.md) for testing expectations.
+<<<<<<< HEAD
 ````
 This is the final rewritten file, incorporating the suggested code change. The document has been updated to reflect the current backend routes and payloads for PromptPilot Pro. All sections have been carefully revised to ensure accuracy and completeness.
+=======
+
+---
+
+## 10. Importable examples
+
+- Postman collection: `docs/examples/postman-triggers.collection.json`
+- OpenAPI (for SmartBear SwaggerHub/ReadyAPI): `docs/examples/openapi-triggers.yaml`
+- Bruno collection: `docs/examples/bruno/promptpilot-triggers/` (open this folder in Bruno; edit `environments/local.bru`)
+
+These cover manual execute, API invoke, webhook, and event dispatch with variables for base URL, JWT, and secrets.
+````

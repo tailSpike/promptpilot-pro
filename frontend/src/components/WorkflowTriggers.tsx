@@ -3,6 +3,12 @@ import { Clock, Zap, Globe, Key, Calendar, Play, Pause, Trash2, Plus, X, Info, H
 
 interface TriggerConfig {
   cron?: string;
+  timezone?: string;
+  // UI-only metadata to improve edit defaults; stored but ignored by backend
+  __ui?: {
+    scheduleMode?: 'simple' | 'advanced';
+    simple?: { frequency?: 'once' | 'daily' | 'weekly' | 'monthly'; date?: string; time?: string };
+  };
   secret?: string;
   timeout?: number;
   retries?: number;
@@ -60,6 +66,27 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
     time: '',
     frequency: 'once' as 'once' | 'daily' | 'weekly' | 'monthly'
   });
+
+  // Determine user's local IANA timezone once; fallback to UTC if unavailable
+  const localTimezone = (() => {
+    try {
+      // Intl API provides resolvedOptions().timeZone in modern browsers
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone as string | undefined;
+      return tz && tz.length > 0 ? tz : 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  })();
+
+  // Parse a yyyy-mm-dd string into a local Date (avoids UTC shift issues)
+  const parseLocalYyyyMmDd = (value: string): Date | null => {
+    if (!value) return null;
+    const parts = value.split('-');
+    if (parts.length !== 3) return null;
+    const [y, m, d] = parts.map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  };
 
   // Toast notification system
   const showToast = (type: 'success' | 'error', message: string) => {
@@ -129,6 +156,59 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
     }
 
     return 'Custom schedule';
+  };
+
+  // Build a simplified schedule summary like "Daily at 11:15" or "Weekly on Tue at 09:00"
+  const renderSimplifiedSchedule = (t: WorkflowTrigger) => {
+    if (t.type !== 'SCHEDULED') return null;
+    const ui = t.config?.__ui?.simple;
+    const freq = ui?.frequency;
+    const time = ui?.time;
+    const dateStr = ui?.date;
+    const tz = t.config?.timezone || localTimezone;
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const fmtTime = (val?: string) => {
+      if (!val) return '';
+      // Keep HH:mm as-is for now
+      return val;
+    };
+
+    if (freq && time) {
+      if (freq === 'once') {
+        let dateLabel = dateStr || '';
+        if (dateStr) {
+          const d = parseLocalYyyyMmDd(dateStr);
+          if (d && !isNaN(d.getTime())) {
+            dateLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          }
+        }
+        return (
+          <p className="text-xs text-gray-600">
+            When: Once on {dateLabel} at {fmtTime(time)} ({tz})
+          </p>
+        );
+      }
+      if (freq === 'daily') {
+        return <p className="text-xs text-gray-600">When: Daily at {fmtTime(time)} ({tz})</p>;
+      }
+      if (freq === 'weekly') {
+        const d = dateStr ? parseLocalYyyyMmDd(dateStr) : undefined;
+        const dow = d && !isNaN(d.getTime()) ? dayNames[d.getDay()] : 'Sun';
+        return <p className="text-xs text-gray-600">When: Weekly on {dow} at {fmtTime(time)} ({tz})</p>;
+      }
+      if (freq === 'monthly') {
+        const d = dateStr ? parseLocalYyyyMmDd(dateStr) : undefined;
+        const dom = d && !isNaN(d.getTime()) ? d.getDate() : 1;
+        return <p className="text-xs text-gray-600">When: Monthly on day {dom} at {fmtTime(time)} ({tz})</p>;
+      }
+    }
+
+    // Fallback to basic cron description if UI metadata absent
+    if (t.config?.cron) {
+      return <p className="text-xs text-gray-600">{getScheduleDescription(t.config.cron)} ({tz})</p>;
+    }
+    return null;
   };
 
   // Helper function to get trigger examples
@@ -711,11 +791,19 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                 </div>
                 {trigger.type === 'SCHEDULED' && trigger.config?.cron && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
-                    <p className="text-xs text-gray-600">
-                      Schedule: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config.cron}</code>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {getScheduleDescription(trigger.config.cron)}
+                    {renderSimplifiedSchedule(trigger)}
+                    {trigger.config?.cron && (
+                      <>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Schedule: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config.cron}</code>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {getScheduleDescription(trigger.config.cron)}
+                        </p>
+                      </>
+                    )}
+                    <p className="text-xs text-gray-600 mt-1">
+                      Timezone: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config?.timezone || 'UTC'}</code>
                     </p>
                   </div>
                 )}
@@ -735,11 +823,11 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <p className="text-xs text-gray-600">
                       API Endpoint: <code className="bg-gray-100 px-1 rounded text-xs">
-                        POST {import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/triggers/{trigger.id}/execute
+                        POST {import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/triggers/{trigger.id}/invoke
                       </code>
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Requires Authorization header with Bearer token
+                      Send requests with the <code className="bg-gray-100 px-1 rounded text-xs">X-API-Key</code> header
                     </p>
                   </div>
                 )}

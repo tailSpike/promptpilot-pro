@@ -1,0 +1,88 @@
+{
+  "info": {
+    "name": "PromptPilot Pro — Triggers",
+    "description": "Ready-to-run requests for Manual Execute, API Invoke, Webhook, and Events.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth / Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api","auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"ChangeMe123!\",\n  \"name\": \"Dev\"\n}" }
+      }
+    },
+    {
+      "name": "Auth / Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"ChangeMe123!\"\n}" }
+      }
+    },
+    {
+      "name": "Triggers / Manual Execute",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/triggers/{{manualTriggerId}}/execute", "host": ["{{baseUrl}}"], "path": ["api","triggers","{{manualTriggerId}}","execute"] },
+        "body": { "mode": "raw", "raw": "{\n  \"input\": { \"source\": \"postman\" }\n}" }
+      }
+    },
+    {
+      "name": "Triggers / API Invoke",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-API-Key", "value": "{{apiKey}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/triggers/{{apiTriggerId}}/invoke", "host": ["{{baseUrl}}"], "path": ["api","triggers","{{apiTriggerId}}","invoke"] },
+        "body": { "mode": "raw", "raw": "{\n  \"input\": { \"source\": \"postman\" }\n}" }
+      }
+    },
+    {
+      "name": "Triggers / Webhook",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Webhook-Secret", "value": "{{webhookSecret}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/webhooks/{{webhookTriggerId}}", "host": ["{{baseUrl}}"], "path": ["api","webhooks","{{webhookTriggerId}}"] },
+        "body": { "mode": "raw", "raw": "{\n  \"input\": { \"source\": \"postman\" }\n}" }
+      }
+    },
+    {
+      "name": "Events / Dispatch",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/events", "host": ["{{baseUrl}}"], "path": ["api","events"] },
+        "body": { "mode": "raw", "raw": "{\n  \"eventType\": \"cypress.test\",\n  \"payload\": { \"ok\": true }\n}" }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:3001" },
+    { "key": "jwt", "value": "" },
+    { "key": "manualTriggerId", "value": "" },
+    { "key": "apiTriggerId", "value": "" },
+    { "key": "apiKey", "value": "" },
+    { "key": "webhookTriggerId", "value": "" },
+    { "key": "webhookSecret", "value": "" }
+  ]
+}

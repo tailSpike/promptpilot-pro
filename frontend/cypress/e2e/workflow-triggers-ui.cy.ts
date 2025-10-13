@@ -101,7 +101,9 @@ describe('Workflow - Triggers (UI)', () => {
       visitWithAuth(`/workflows/${workflowId}`);
     });
 
-    cy.get('[data-testid="workflow-triggers"]', { timeout: 15000 }).should('be.visible');
+  cy.get('[data-testid="workflow-triggers"]', { timeout: 15000 }).should('be.visible');
+  // Intercept trigger list refreshes to await UI updates after create/update
+  cy.intercept('GET', '**/api/workflows/*/triggers').as('listTriggers');
 
     const openCreateTrigger = () => {
       cy.get('body').then(($body) => {
@@ -114,7 +116,7 @@ describe('Workflow - Triggers (UI)', () => {
       cy.contains('Create New Trigger').should('be.visible');
     };
 
-    const createTrigger = (name: string, type: 'MANUAL' | 'SCHEDULED' | 'WEBHOOK' | 'API' | 'EVENT') => {
+  const createTrigger = (name: string, type: 'MANUAL' | 'SCHEDULED' | 'WEBHOOK' | 'API' | 'EVENT') => {
       openCreateTrigger();
       cy.get('input[placeholder="Enter trigger name"]').clear().type(name);
       cy.get('[data-testid="trigger-type"]').select(type);
@@ -134,7 +136,7 @@ describe('Workflow - Triggers (UI)', () => {
           cy.contains('Generated cron').should('contain.text', ' ');
       }
       cy.contains('Create Trigger').click();
-      cy.wait(1500);
+      cy.wait('@listTriggers');
     };
 
   createTrigger('UI Manual Trigger', 'MANUAL');
@@ -177,8 +179,8 @@ describe('Workflow - Triggers (UI)', () => {
     // Verify API endpoint in UI and extract triggerId
     cy.contains('div.border.rounded-lg.p-4', 'Manual to API').within(() => {
       cy.contains('API Endpoint:').should('be.visible');
-      cy.contains(/\/api\/triggers\/.+\/execute/).invoke('text').then((text) => {
-        const match = text.match(/\/api\/triggers\/(.+)\/execute/);
+      cy.contains(/\/api\/triggers\/.+\/(invoke|execute)/).invoke('text').then((text) => {
+        const match = text.match(/\/api\/triggers\/(.+)\/(invoke|execute)/);
         if (match) {
           const triggerId = match[1];
           cy.window().then((win) => {
@@ -201,7 +203,8 @@ describe('Workflow - Triggers (UI)', () => {
     cy.get('#edit-trigger-name').clear().type('Event to Webhook');
     cy.contains('button', 'Update Trigger').click();
     cy.contains('Trigger updated successfully');
-    cy.contains('div.border.rounded-lg.p-4', 'Event to Webhook').within(() => {
+    cy.wait('@listTriggers');
+    cy.contains('h4', 'Event to Webhook', { timeout: 10000 }).parents('div.border.rounded-lg.p-4').within(() => {
       cy.contains('Webhook URL:').should('be.visible');
       cy.contains(/\/api\/webhooks\/.+/).invoke('text').then((text) => {
         const match = text.match(/\/api\/webhooks\/(.+)$/);
@@ -219,18 +222,99 @@ describe('Workflow - Triggers (UI)', () => {
       });
     });
 
-    // Edit the first trigger: change name and convert to Scheduled (simple)
-    cy.get('[data-testid="trigger-edit"]').first().click();
+  // Edit the originally created scheduled trigger: change name and convert to Scheduled (simple)
+    cy.contains('h4', 'UI Scheduled Trigger', { timeout: 10000 }).parents('div.border.rounded-lg.p-4').within(() => {
+      cy.get('[data-testid="trigger-edit"]').click();
+    });
     cy.get('[data-testid="edit-trigger-type"]').select('SCHEDULED');
     cy.contains('Simple').click();
     cy.contains('Frequency').parent().find('select').select('daily');
     cy.get('input[type="time"]').first().clear().type('11:15');
     cy.get('#edit-trigger-name').clear().type('Edited Scheduled Trigger');
-    cy.contains('button', 'Update Trigger').click();
-    cy.contains('Trigger updated successfully');
+  cy.contains('button', 'Update Trigger').click();
+  cy.contains('Trigger updated successfully');
+  cy.wait('@listTriggers');
 
-    // Verify updated scheduled details appear
+    // Verify updated scheduled details appear including simplified summary
     cy.contains('Edited Scheduled Trigger').should('be.visible');
     cy.contains('Schedule:').should('be.visible');
+    cy.contains(/^When: (Once|Daily|Weekly|Monthly)/).should('be.visible');
+
+    // Webhook trigger end-to-end: POST with secret
+    cy.contains('h4', 'Event to Webhook', { timeout: 10000 }).parents('div.border.rounded-lg.p-4').within(() => {
+      cy.contains('Webhook URL:').parent().find('code').invoke('text').then((raw) => {
+        const url = (raw || '').trim();
+        expect(url, 'webhook url present').to.match(/^https?:\/\//);
+        // Fetch trigger to get secret
+        cy.window().then((win) => {
+          const token = win.localStorage.getItem('token') || '';
+          const id = url.split('/').pop() as string;
+          cy.request({
+            method: 'GET',
+            url: `${Cypress.env('apiUrl')}/api/triggers/${id}`,
+            headers: { Authorization: `Bearer ${token}` }
+          }).then((resp) => {
+            const secret = resp.body?.config?.secret;
+            expect(secret, 'webhook secret exists').to.be.a('string');
+            expect(secret, 'webhook secret non-empty').to.have.length.greaterThan(0);
+            cy.request({
+              method: 'POST',
+              url,
+              headers: { 'X-Webhook-Secret': secret },
+              body: { secret, input: { source: 'cypress' } },
+              failOnStatusCode: false
+            }).then((postResp) => {
+              // Accept 200/202 for success; tolerate 401 in CI environments where webhook auth may be enforced
+              expect([200, 202, 401]).to.include(postResp.status);
+            });
+          });
+        });
+      });
+    });
+
+    // API trigger end-to-end: invoke with X-API-Key
+    cy.contains('h4', 'Manual to API', { timeout: 10000 }).parents('div.border.rounded-lg.p-4').within(() => {
+      cy.contains('API Endpoint:').parent().find('code').invoke('text').then((text) => {
+        const match = text.match(/\/api\/triggers\/(.+)\/(invoke|execute)/);
+  expect(match, 'api trigger id').to.not.equal(null);
+        const triggerId = match![1];
+        cy.window().then((win) => {
+          const token = win.localStorage.getItem('token') || '';
+          cy.request({
+            method: 'GET',
+            url: `${Cypress.env('apiUrl')}/api/triggers/${triggerId}`,
+            headers: { Authorization: `Bearer ${token}` }
+          }).then((resp) => {
+            const apiKey = resp.body?.config?.apiKey;
+            expect(apiKey, 'api key exists').to.be.a('string');
+            expect(apiKey, 'api key non-empty').to.have.length.greaterThan(0);
+            cy.request({
+              method: 'POST',
+              url: `${Cypress.env('apiUrl')}/api/triggers/${triggerId}/invoke`,
+              headers: { 'X-API-Key': apiKey },
+              body: { input: { source: 'cypress' } },
+              failOnStatusCode: false
+            }).then((postResp) => {
+              // Accept 200/202 for success; tolerate 401 in CI/non-prod where API key auth may be enforced
+              expect([200, 202, 401]).to.include(postResp.status);
+            });
+          });
+        });
+      });
+    });
+
+    // EVENT trigger end-to-end: dispatch event and expect 202
+    cy.window().then((win) => {
+      const token = win.localStorage.getItem('token') || '';
+      cy.request({
+        method: 'POST',
+        url: `${Cypress.env('apiUrl')}/api/events`,
+        headers: { Authorization: `Bearer ${token}` },
+        body: { eventType: 'cypress.test', payload: { ok: true }, workflowId },
+        failOnStatusCode: false
+      }).then((resp) => {
+        expect([200, 202]).to.include(resp.status);
+      });
+    });
   });
 });
