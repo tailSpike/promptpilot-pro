@@ -4,6 +4,40 @@ This document outlines the major functional epics for PromptPilot Pro, a modular
 
 ---
 
+## 🗺️ Roadmap — Linear progression
+
+This sequence prioritizes learnability, reliability, and a smooth on-ramp for new users. It groups work into clear phases; each item links to the owning epic/story.
+
+Phase 0 — Foundation (Complete)
+- ✅ Epic 1: Prompt Creation & Management
+- ✅ Epic 2: Workflow Automation — Story 1 (Builder), Story 2 (Triggers), Story 3 (Preview)
+
+Phase 1 — Live model keys & connectivity (Next)
+- 🚧 Epic 4: Story 2 — Provider Integration Keys & Live Verification (stabilize keys storage, preview/run resolution, live smoke/E2E)
+
+Phase 2 — Workflow Builder V2 (UX) — ship in slices
+- 🆕 Epic 8: Story 1 — Linear Builder V2 (authoring, mapping, preview)
+- 🆕 Epic 8: Story 2 — Variable & Data Inspectors (always-visible, copy/export, masking)
+- 🆕 Epic 8: Story 4 — Quickstart Wizard & Templates (time-to-first-run)
+- 🆕 Epic 8: Story 3 — Canvas Builder (advanced mapping)
+- 🆕 Epic 8: Story 5 — Polish & Accessibility Hardening (performance, a11y)
+
+Phase 3 — Model routing & guardrails
+- 📝 Epic 4: Story 3 — Adaptive Model Routing & Cost Guardrails
+
+Phase 4 — Access & Identity
+- 🛠️ Epic 6: Access & Identity (roles, workspace scoping)
+
+Phase 5 — External Integrations
+- 🌐 Epic 7: External Integrations (public API/SDK, Slack/Zapier hooks)
+
+Phase 6 — Analytics & Feedback
+- 📊 Epic 5: Analytics & Feedback (usage, ratings, A/B)
+
+Notes
+- Phases are sequential; within a phase, stories ship behind feature flags where noted.
+- We’ll keep CI green: each slice adds tests and docs, minimizing cross-epic thrash.
+
 ## 🧩 Epic 1: Prompt Creation & Management
 
 ### Story Overview
