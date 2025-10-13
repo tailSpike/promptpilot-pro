@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { workflowsAPI } from '../services/api';
 
@@ -49,6 +49,35 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
 
   const [showTypeChooser, setShowTypeChooser] = useState(false);
 
+  // When editing an existing workflow, hydrate from backend so steps are available post-redirect
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!workflowId) return;
+      try {
+        const wf = await workflowsAPI.getWorkflow(workflowId);
+        if (!active || !wf) return;
+        setWorkflowName(wf.name || 'Workflow');
+        type BackendStep = { id?: string; order?: number; name?: string; config?: { promptContent?: string } };
+        const mapped: StepState[] = Array.isArray(wf.steps)
+          ? (wf.steps as unknown as BackendStep[]).map((s, i: number) => ({
+              id: s.id || `step-${s.order ?? i + 1}`,
+              type: 'PROMPT',
+              name: s.name || `PROMPT ${i + 1}`,
+              config: { promptContent: s?.config?.promptContent ?? '' },
+            }))
+          : [];
+        if (mapped.length > 0) {
+          setSteps(mapped);
+        }
+      } catch (e) {
+        // Non-fatal; remain with local state
+        console.warn('LinearBuilderV2: failed to hydrate workflow', e);
+      }
+    })();
+    return () => { active = false; };
+  }, [workflowId]);
+
   const addStep = (type: StepType) => {
     const id = `step-${steps.length + 1}`;
     setSteps((prev) => ([
@@ -84,6 +113,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
     setSteps(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Nested structure for UI interpolation (supports dot-path via traversal)
   const toPreviewInputs = (): Record<string, unknown> => {
     const obj: Record<string, unknown> = { workflow: { input: textInput } };
     const wf = obj.workflow as Record<string, unknown>;
@@ -91,20 +121,38 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
     for (const { key, value } of extraInputs) {
       const k = key.trim();
       if (!k) continue;
-      if (seen.has(k)) {
-        // skip duplicates
-        continue;
-      }
+      if (seen.has(k)) continue; // skip duplicates
       seen.add(k);
       wf[k] = value;
     }
     return obj;
   };
 
+  // Flat structure for backend API (keys like 'workflow.input')
+  const toFlattenedInputs = (): Record<string, unknown> => {
+    const flat: Record<string, unknown> = { 'workflow.input': textInput };
+    const seen = new Set<string>(['input']);
+    for (const { key, value } of extraInputs) {
+      const k = key.trim();
+      if (!k) continue;
+      if (seen.has(k)) continue; // skip duplicates and reserved
+      seen.add(k);
+      flat[`workflow.${k}`] = value;
+    }
+    return flat;
+  };
+
   const interpolate = (template: string, data: Record<string, unknown>) => {
     // Very small mustache-like: supports {{workflow.input}}
     return template.replace(/{{\s*([\w.]+)\s*}}/g, (_m, path) => {
-      const segments = String(path).split('.');
+      const fullKey = String(path);
+      // 1) Exact flat-key match e.g., data['workflow.input']
+      if (Object.prototype.hasOwnProperty.call(data, fullKey)) {
+        const v = (data as Record<string, unknown>)[fullKey];
+        return v != null ? String(v) : '';
+      }
+      // 2) Dot-path traversal against nested object
+      const segments = fullKey.split('.');
       let cur: unknown = data;
       for (const s of segments) {
         if (cur && typeof cur === 'object' && s in (cur as Record<string, unknown>)) {
@@ -120,23 +168,47 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   const runPreview = async (untilStepIndex?: number) => {
     // Simulate a preview call and populate timeline for UX; if workflowId exists, try API
     try {
-      const inputs = toPreviewInputs();
-      setTimeline(steps.map((s, i) => ({ stepId: s.id, status: i <= (untilStepIndex ?? steps.length - 1) ? 'running' : 'pending' })));
-      if (workflowId) {
-        await workflowsAPI.previewWorkflow(workflowId, { input: inputs, useSampleData: false, simulateOnly: false, triggerType: 'manual' });
+      // Ensure we have steps when coming back via redirect to edit
+      let workingSteps = steps;
+      if (workingSteps.length === 0 && workflowId) {
+        try {
+          const wf = await workflowsAPI.getWorkflow(workflowId);
+          const mapped: StepState[] = Array.isArray(wf?.steps)
+            ? (wf.steps as Array<{ id?: string; order?: number; name?: string; config?: { promptContent?: string } }>).map((s, i) => ({
+                id: s.id || `step-${s.order ?? i + 1}`,
+                type: 'PROMPT',
+                name: s.name || `PROMPT ${i + 1}`,
+                config: { promptContent: s?.config?.promptContent ?? '' },
+              }))
+            : [];
+          if (mapped.length > 0) {
+            setSteps(mapped);
+            workingSteps = mapped;
+          }
+        } catch {
+          // ignore and continue with empty
+        }
       }
-      const outputs: TimelineEntry[] = steps.map((s, i) => {
-        if (i <= (untilStepIndex ?? steps.length - 1)) {
+
+      const inputsNested = toPreviewInputs();
+      const inputsFlat = toFlattenedInputs();
+      setTimeline(workingSteps.map((s, i) => ({ stepId: s.id, status: i <= (untilStepIndex ?? workingSteps.length - 1) ? 'running' : 'pending' })));
+      if (workflowId) {
+        await workflowsAPI.previewWorkflow(workflowId, { input: inputsFlat, useSampleData: false, simulateOnly: false, triggerType: 'manual' });
+      }
+      const outputs: TimelineEntry[] = workingSteps.map((s, i) => {
+        if (i <= (untilStepIndex ?? workingSteps.length - 1)) {
           const content = s.config.promptContent ?? '';
-          const bound = s.binding ? interpolate(`{{${s.binding}}}`, inputs) : '';
-          const text = interpolate(content, inputs) || bound || '[no output]';
+          const bound = s.binding ? interpolate(`{{${s.binding}}}`, inputsNested) : '';
+          const text = interpolate(content, inputsNested) || bound || '[no output]';
           return { stepId: s.id, status: 'success', output: { text } };
         }
         return { stepId: s.id, status: 'pending' };
       });
       setTimeline(outputs);
     } catch {
-      setTimeline(steps.map((s, i) => ({ stepId: s.id, status: i <= (untilStepIndex ?? steps.length - 1) ? 'error' : 'pending' })));
+      const working = steps.length > 0 ? steps : [];
+      setTimeline(working.map((s, i) => ({ stepId: s.id, status: i <= (untilStepIndex ?? working.length - 1) ? 'error' : 'pending' })));
     }
   };
 
@@ -147,8 +219,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
     if (!workflowId) return;
     try {
       setRunStatus('running');
-      const inputs = toPreviewInputs();
-      await workflowsAPI.executeWorkflow(workflowId, inputs, 'manual');
+      const inputsFlat = toFlattenedInputs();
+      await workflowsAPI.executeWorkflow(workflowId, inputsFlat, 'manual');
       setRunStatus('success');
     } catch {
       setRunStatus('error');
@@ -225,8 +297,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                   config: { promptContent: s.config.promptContent ?? '' },
                 });
               }
-              // Navigate to workflows list for further interactions (V1/V2)
-              navigate('/workflows');
+              // Redirect to edit route and keep V2 enabled so Run is available immediately
+              navigate(`/workflows/${id}/edit?v2=1`);
             } catch (e) {
               console.error('Save workflow failed', e);
               // Surface a clearer message if available

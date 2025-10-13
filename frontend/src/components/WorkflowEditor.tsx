@@ -372,7 +372,11 @@ export default function WorkflowEditor() {
     if (params.get('openAddStep') === '1') {
       setShowAddStepModal(true);
     }
-  }, [id, isEditing, fetchWorkflow, fetchPrompts, location.search]);
+    // Auto-enable Builder V2 if requested via query param
+    if (builderV2Enabled && params.get('v2') === '1') {
+      setUseBuilderV2(true);
+    }
+  }, [id, isEditing, fetchWorkflow, fetchPrompts, location.search, builderV2Enabled]);
 
   const validateWorkflowSteps = () => {
     const errors: string[] = [];

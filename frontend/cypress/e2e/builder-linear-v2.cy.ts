@@ -91,4 +91,32 @@ describe('Workflow Builder V2 - Linear mode (feature flagged)', () => {
     cy.contains('Advanced Inputs (JSON)').should('be.visible');
     cy.get('[data-testid="data-inspector-advanced-cancel"]').click();
   });
+
+  it('stays in V2 after Save, binds workflowId so Run is enabled, and uses flat inputs for backend', () => {
+    gotoBuilderV2();
+    addPromptStep();
+    // Open Data inspector and set a custom input + extra variable
+    cy.get('[data-testid="data-inspector-toggle"]').click();
+    cy.get('[data-testid="data-inspector-input"]').clear().type('CypressUser');
+    cy.contains('Add variable').click();
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').within(() => {
+        cy.get('input[placeholder="key"]').type('topic');
+        cy.get('input[placeholder="value"]').type('Testing');
+      });
+    });
+    // Save workflow
+    cy.get('[data-testid="workflow-name-input"]').clear().type(`V2 Flow ${unique}`);
+    cy.get('[data-testid="save-workflow"]').click();
+    // Should redirect to edit route with v2=1 and expose Run
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    cy.get('[data-testid="builder-v2-linear"]').should('exist');
+    cy.get('[data-testid="run-workflow"]').should('be.enabled');
+    // Set input again post-redirect, then preview should work and interpolate input
+    cy.get('[data-testid="data-inspector-toggle"]').click();
+    cy.get('[data-testid="data-inspector-input"]').clear().type('CypressUser');
+    cy.get('[data-testid="preview-run"]').click();
+    cy.get('[data-testid="execution-timeline"]').should('be.visible');
+    cy.get('[data-testid="execution-timeline"]').contains('CypressUser');
+  });
 });
