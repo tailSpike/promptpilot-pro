@@ -1210,6 +1210,7 @@ export default function WorkflowEditor() {
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 mb-1">Provider</label>
                                       <select
+                                        data-testid="model-provider-select"
                                         value={model.provider}
                                         onChange={(e) => {
                                           const nextProvider = e.target.value as PromptModelProvider;
@@ -1231,6 +1232,7 @@ export default function WorkflowEditor() {
                                       <label className="block text-xs font-medium text-gray-700 mb-1">Model name</label>
                                       <input
                                         type="text"
+                                        data-testid="model-name-input"
                                         value={model.model}
                                         onChange={(e) => updateModelConfig(index, model.id!, { model: e.target.value })}
                                         className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
@@ -1286,6 +1288,7 @@ export default function WorkflowEditor() {
                                       min="0"
                                       max="2"
                                       step="0.05"
+                                        data-testid="model-temperature-input"
                                       value={model.parameters?.temperature ?? DEFAULT_MODEL_PARAMETERS.temperature}
                                       onChange={(e) => {
                                         const next = parseFloat(e.target.value);
