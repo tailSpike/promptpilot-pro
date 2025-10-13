@@ -261,3 +261,16 @@ Epic 4 pushes PromptPilot Pro from mocked model orchestration to production-read
 - Output delivery options include email, webhook, or file export
 
 ---
+
+## 🧭 Epic 8: Workflow Builder V2 (UX Redesign)
+
+### Story Overview
+Epic 8 focuses on a simplified, high-clarity builder experience with strong preview and data mapping ergonomics.
+📄 **[Epic Overview](./EPIC8_WORKFLOW_BUILDER_V2.md)**
+
+**Stories:**
+- 📄 **[Story 1: Linear Builder V2](./EPIC8_STORY1_LINEAR_BUILDER_V2.md)**
+- 📄 **[Story 2: Variable & Data Inspectors](./EPIC8_STORY2_VARIABLE_DATA_INSPECTORS.md)**
+- 📄 **[Story 3: Canvas Builder (Advanced)](./EPIC8_STORY3_CANVAS_BUILDER.md)**
+- 📄 **[Story 4: Quickstart Wizard & Templates](./EPIC8_STORY4_QUICKSTART_WIZARD.md)**
+- 📄 **[Story 5: Polish & Accessibility Hardening](./EPIC8_STORY5_POLISH_A11Y.md)**
