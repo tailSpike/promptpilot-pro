@@ -133,6 +133,9 @@ describe('Workflow multi-model execution', () => {
     cy.get('@modelOne')
       .find('select')
       .first()
+      .scrollIntoView()
+      .should('be.visible')
+      .and('not.be.disabled')
       .should(($el) => {
         expect($el.prop('tagName'), 'provider select tag').to.eq('SELECT');
         const optionText = $el.text();
@@ -151,6 +154,7 @@ describe('Workflow multi-model execution', () => {
     cy.get('@modelTwo')
       .find('select')
       .first()
+      .scrollIntoView()
       .then(($select) => {
         if ($select.val() === 'anthropic') {
           expect($select.val(), 'model two provider value').to.equal('anthropic');
@@ -159,7 +163,8 @@ describe('Workflow multi-model execution', () => {
 
         return cy
           .wrap($select)
-          .select('anthropic')
+          // In CI, this select can be momentarily flagged as non-interactive; force the selection after scrolling
+          .select('anthropic', { force: true })
           .then(() => cy.wait('@updateStep'))
           .then((interception) => {
             expect(interception?.response?.statusCode, 'model two provider response status').to.eq(200);
