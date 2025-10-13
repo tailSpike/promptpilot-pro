@@ -148,6 +148,10 @@ interface WorkflowStep {
     };
   };
   promptId?: string;
+  // Optional wiring for chaining
+  inputs?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
+  conditions?: Record<string, unknown>;
 }
 
 interface Workflow {
@@ -260,9 +264,23 @@ export default function WorkflowEditor() {
       }
 
       const data = await workflowsAPI.getWorkflow(id);
-  const normalizedSteps = (data.steps || []).map((step: WorkflowStep) => {
+      const parseMaybe = (v: unknown): Record<string, unknown> | undefined => {
+        if (!v) return undefined;
+        if (typeof v === 'string') {
+          try { return JSON.parse(v) as Record<string, unknown>; } catch { return undefined; }
+        }
+        if (typeof v === 'object') return v as Record<string, unknown>;
+        return undefined;
+      };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const normalizedSteps = (data.steps || []).map((step: WorkflowStep & Record<string, any>) => {
         if (step.type !== 'PROMPT') {
-          return step;
+          return {
+            ...step,
+            inputs: parseMaybe(step.inputs) ?? step.inputs,
+            outputs: parseMaybe(step.outputs) ?? step.outputs,
+            conditions: parseMaybe(step.conditions) ?? step.conditions,
+          } as WorkflowStep;
         }
 
         const existingModels = Array.isArray(step.config?.models) ? step.config.models : undefined;
@@ -310,6 +328,9 @@ export default function WorkflowEditor() {
               preferredOrder,
             },
           },
+          inputs: parseMaybe(step.inputs) ?? step.inputs,
+          outputs: parseMaybe(step.outputs) ?? step.outputs,
+          conditions: parseMaybe(step.conditions) ?? step.conditions,
         };
       });
 
@@ -437,7 +458,10 @@ export default function WorkflowEditor() {
         type: step.type,
         order: step.order,
         config: step.config,
-        promptId: step.promptId
+        promptId: step.promptId,
+        inputs: step.inputs,
+        outputs: step.outputs,
+        conditions: step.conditions,
       });
       return savedStep;
     } catch (error) {
@@ -544,7 +568,10 @@ export default function WorkflowEditor() {
           type: updatedStep.type,
           order: updatedStep.order,
           config: updatedStep.config,
-          promptId: updatedStep.promptId
+          promptId: updatedStep.promptId,
+          inputs: updatedStep.inputs,
+          outputs: updatedStep.outputs,
+          conditions: updatedStep.conditions,
         });
       } catch (error) {
         console.error('Failed to save step update:', error);
@@ -1492,6 +1519,77 @@ export default function WorkflowEditor() {
                             className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                             placeholder="0.8"
                           />
+                        </div>
+                      </div>
+
+                      {/* Output aliasing for chaining */}
+                      <div className="border-t pt-4 space-y-2">
+                        <h5 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                          Chaining: Export Outputs
+                          <span className="text-[11px] font-normal text-gray-500">Map fields from this step’s output to variable names for the next steps (e.g., generatedText → facts)</span>
+                        </h5>
+                        <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                          <div className="text-xs text-gray-600 mb-2">Common fields: generatedText, model, tokensUsed, providerResults, modelOutputs</div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center">
+                            <label className="text-xs font-medium text-gray-700">Alias name</label>
+                            <label className="text-xs font-medium text-gray-700 md:col-span-2">Source path</label>
+                          </div>
+                          {Object.entries(step.outputs || {}).map(([alias, srcPath], rowIdx) => (
+                            <div key={alias + rowIdx} className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                              <input
+                                className="text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                value={alias}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  const entries = Object.entries(step.outputs || {});
+                                  const idx = entries.findIndex(([k]) => k === alias);
+                                  if (idx >= 0) {
+                                    entries[idx][0] = val || '';
+                                    const next: Record<string, unknown> = {};
+                                    entries.forEach(([k, v]) => { if (k) next[k] = v; });
+                                    updateStep(index, { outputs: next });
+                                  }
+                                }}
+                                placeholder="facts"
+                              />
+                              <input
+                                className="md:col-span-2 text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                value={typeof srcPath === 'string' ? srcPath : ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  const next = { ...(step.outputs || {}) } as Record<string, unknown>;
+                                  next[alias] = val;
+                                  updateStep(index, { outputs: next });
+                                }}
+                                placeholder="generatedText or modelOutputs.openai['gpt-4o-mini'].text"
+                              />
+                            </div>
+                          ))}
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-purple-700 hover:text-purple-900"
+                              onClick={() => {
+                                const next = { ...(step.outputs || {}) } as Record<string, unknown>;
+                                const base = 'alias'; let i = 1; let key = `${base}${i}`;
+                                while (Object.prototype.hasOwnProperty.call(next, key)) { i += 1; key = `${base}${i}`; }
+                                next[key] = 'generatedText';
+                                updateStep(index, { outputs: next });
+                              }}
+                            >
+                              + Add mapping
+                            </button>
+                            {step.outputs && Object.keys(step.outputs).length > 0 && (
+                              <button
+                                type="button"
+                                className="text-xs text-gray-600 hover:text-gray-800"
+                                onClick={() => updateStep(index, { outputs: {} })}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-2">Use {'{{alias}}'} in later prompt content. Example: Step 1 exports facts ← generatedText, then Step 2 prompt can include “Based on these facts: {'{{facts}}'} …”.</p>
                         </div>
                       </div>
                     </div>

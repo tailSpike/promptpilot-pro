@@ -11,6 +11,9 @@ import type {
   Prompt,
   PromptComment,
   PromptCommentsResult,
+  IntegrationCredential,
+  IntegrationCredentialStatus,
+  IntegrationProviderConfig,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -24,6 +27,101 @@ const api = axios.create({
   },
   timeout: 10000, // 10 second timeout
 });
+
+// Detect Cypress to route certain calls via a relative base URL so cy.intercept('/api/...') works reliably
+let IS_CYPRESS = false;
+try {
+  IS_CYPRESS = typeof window !== 'undefined' && 'Cypress' in window;
+} catch {
+  IS_CYPRESS = false;
+}
+
+// Dedicated clients that play well with Cypress route stubs (relative baseURL)
+// Fallback to the main API base for normal runtime.
+let integrationsApiClient: typeof api = api;
+try {
+  if (IS_CYPRESS) {
+    integrationsApiClient = axios.create({
+      baseURL: '',
+      withCredentials: false,
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000,
+    }) as typeof api;
+  }
+} catch {
+  // ignore env detection errors
+}
+
+// --- Helpers to normalize backend DTOs into UI-friendly shapes ---
+function isVariableLike(v: unknown): v is import('../types').Variable {
+  return (
+    typeof v === 'object' && v !== null &&
+    typeof (v as { name?: unknown }).name === 'string' &&
+    typeof (v as { type?: unknown }).type === 'string'
+  );
+}
+
+function coerceVariable(v: unknown): import('../types').Variable | null {
+  if (!isVariableLike(v)) return null;
+  const { name } = v as { name: string };
+  const rawType = (v as { type: unknown }).type;
+  const finalType: import('../types').Variable['type'] =
+    rawType === 'text' || rawType === 'number' || rawType === 'boolean' || rawType === 'select'
+      ? rawType
+      : 'text';
+  const variable: import('../types').Variable = {
+    name,
+    type: finalType,
+  };
+  if (typeof (v as { description?: unknown }).description === 'string') {
+    variable.description = (v as { description: string }).description;
+  }
+  if (typeof (v as { required?: unknown }).required === 'boolean') {
+    variable.required = (v as { required: boolean }).required;
+  }
+  const dv = (v as { defaultValue?: unknown }).defaultValue;
+  if (['string', 'number', 'boolean'].includes(typeof dv)) {
+    variable.defaultValue = dv as string | number | boolean;
+  }
+  const opts = (v as { options?: unknown }).options;
+  if (Array.isArray(opts) && opts.every((o) => typeof o === 'string')) {
+    variable.options = opts as string[];
+  }
+  return variable;
+}
+
+function normalizeVariablesValue(value: unknown): import('../types').Variable[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map(coerceVariable).filter((v): v is import('../types').Variable => v !== null);
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return normalizeVariablesValue(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown> & { items?: unknown; variables?: unknown };
+    const items = Array.isArray(obj.items)
+      ? obj.items
+      : Array.isArray(obj.variables)
+        ? obj.variables
+        : [];
+    return normalizeVariablesValue(items);
+  }
+  return [];
+}
+
+function normalizePrompt<T extends Partial<Prompt>>(prompt: T): T {
+  if (!prompt) return prompt;
+  const normalized = { ...prompt } as T & { variables?: unknown };
+  const coerced = normalizeVariablesValue(normalized.variables);
+  (normalized as Partial<Prompt>).variables = coerced;
+  return normalized as T;
+}
 
 const AUTH_REDIRECT_EXCLUSIONS = ['/api/auth/login', '/api/auth/register'];
 
@@ -73,6 +171,9 @@ export type {
   UserSummary,
   PromptComment,
   PromptCommentsResult,
+  IntegrationCredential,
+  IntegrationCredentialStatus,
+  IntegrationProviderConfig,
 } from '../types';
 
 // Auth API
@@ -103,11 +204,17 @@ export const promptsAPI = {
     folderId?: string;
   }) => {
     const response = await api.get('/api/prompts', { params });
+    if (response.data && Array.isArray(response.data.prompts)) {
+      response.data.prompts = response.data.prompts.map((p: Prompt) => normalizePrompt(p));
+    }
     return response.data;
   },
 
   getPrompt: async (id: string) => {
     const response = await api.get(`/api/prompts/${id}`);
+    if (response.data && response.data.prompt) {
+      response.data.prompt = normalizePrompt(response.data.prompt);
+    }
     return response.data;
   },
 
@@ -289,7 +396,8 @@ export const workflowsAPI = {
 
   getWorkflow: async (id: string) => {
     const response = await api.get(`/api/workflows/${id}`);
-    return response.data;
+    const data = response.data;
+    return data?.data ?? data;
   },
 
   createWorkflow: async (data: {
@@ -328,6 +436,7 @@ export const workflowsAPI = {
     input?: Record<string, unknown>;
     useSampleData?: boolean;
     triggerType?: string;
+    simulateOnly?: boolean;
   } = {}) => {
     const response = await api.post(`/api/workflows/${id}/preview`, body);
     return response.data;
@@ -338,7 +447,8 @@ export const workflowsAPI = {
     offset?: number;
   }) => {
     const response = await api.get(`/api/workflows/${id}/executions`, { params });
-    return response.data;
+    const data = response.data;
+    return data?.data ?? data;
   },
 
   getWorkflowExecution: async (workflowId: string, executionId: string) => {
@@ -353,6 +463,9 @@ export const workflowsAPI = {
     order: number;
     config: Record<string, unknown>;
     promptId?: string;
+    inputs?: Record<string, unknown>;
+    outputs?: Record<string, unknown>;
+    conditions?: Record<string, unknown>;
   }) => {
     const response = await api.post(`/api/workflows/${workflowId}/steps`, stepData);
     return response.data;
@@ -364,6 +477,9 @@ export const workflowsAPI = {
     order?: number;
     config?: Record<string, unknown>;
     promptId?: string;
+    inputs?: Record<string, unknown>;
+    outputs?: Record<string, unknown>;
+    conditions?: Record<string, unknown>;
   }) => {
     const response = await api.put(`/api/workflows/${workflowId}/steps/${stepId}`, stepData);
     return response.data;
@@ -376,6 +492,64 @@ export const workflowsAPI = {
 
   reorderSteps: async (workflowId: string, stepIds: string[]) => {
     const response = await api.put(`/api/workflows/${workflowId}/steps/reorder`, { stepIds });
+    return response.data;
+  },
+};
+
+export const integrationsAPI = {
+  getProviders: async (): Promise<{ providers: IntegrationProviderConfig[] }> => {
+    const response = await integrationsApiClient.get('/api/integrations/providers');
+    const data = response.data;
+    const providers: IntegrationProviderConfig[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.providers)
+        ? data.providers
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+    return { providers };
+  },
+
+  getCredentials: async (): Promise<{ credentials: IntegrationCredential[] }> => {
+    const response = await integrationsApiClient.get('/api/integrations/credentials');
+    const data = response.data;
+    const credentials: IntegrationCredential[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.credentials)
+        ? data.credentials
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.data?.credentials)
+            ? data.data.credentials
+            : [];
+    return { credentials };
+  },
+
+  createCredential: async (payload: {
+    provider: string;
+    label: string;
+    secret: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ credential: IntegrationCredential }> => {
+    const response = await integrationsApiClient.post('/api/integrations/credentials', payload);
+    return response.data;
+  },
+
+  updateCredential: async (
+    credentialId: string,
+    payload: {
+      secret?: string;
+      label?: string;
+      status?: IntegrationCredentialStatus;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<{ credential: IntegrationCredential }> => {
+    const response = await integrationsApiClient.patch(`/api/integrations/credentials/${credentialId}`, payload);
+    return response.data;
+  },
+
+  revokeCredential: async (credentialId: string): Promise<{ credential: IntegrationCredential }> => {
+    const response = await integrationsApiClient.delete(`/api/integrations/credentials/${credentialId}`);
     return response.data;
   },
 };

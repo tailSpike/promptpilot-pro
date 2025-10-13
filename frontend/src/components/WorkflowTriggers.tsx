@@ -3,6 +3,12 @@ import { Clock, Zap, Globe, Key, Calendar, Play, Pause, Trash2, Plus, X, Info, H
 
 interface TriggerConfig {
   cron?: string;
+  timezone?: string;
+  // UI-only metadata to improve edit defaults; stored but ignored by backend
+  __ui?: {
+    scheduleMode?: 'simple' | 'advanced';
+    simple?: { frequency?: 'once' | 'daily' | 'weekly' | 'monthly'; date?: string; time?: string };
+  };
   secret?: string;
   timeout?: number;
   retries?: number;
@@ -23,6 +29,8 @@ interface WorkflowTrigger {
 interface WorkflowTriggersProps {
   workflowId: string;
   onTriggerExecuted?: (triggerId: string) => void;
+  // Optional input payload to send when executing a trigger manually
+  inputForTrigger?: Record<string, unknown>;
 }
 
 interface ToastMessage {
@@ -31,7 +39,7 @@ interface ToastMessage {
   message: string;
 }
 
-export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: WorkflowTriggersProps) {
+export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputForTrigger }: WorkflowTriggersProps) {
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -61,44 +69,29 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
     frequency: 'once' as 'once' | 'daily' | 'weekly' | 'monthly'
   });
 
-  // Toast notification system
-  const showToast = (type: 'success' | 'error', message: string) => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts(prev => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, 5000);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
-
-  // Helper function to generate cron expression from simple schedule
-  const generateCronFromSimple = () => {
-    if (!simpleSchedule.date || !simpleSchedule.time) return '';
-    
-    const [hours, minutes] = simpleSchedule.time.split(':');
-    const date = new Date(simpleSchedule.date);
-    
-    switch (simpleSchedule.frequency) {
-      case 'once':
-        return `${minutes} ${hours} ${date.getDate()} ${date.getMonth() + 1} *`;
-      case 'daily':
-        return `${minutes} ${hours} * * *`;
-      case 'weekly':
-        return `${minutes} ${hours} * * ${date.getDay()}`;
-      case 'monthly':
-        return `${minutes} ${hours} ${date.getDate()} * *`;
-      default:
-        return '';
+  // Determine user's local IANA timezone once; fallback to UTC if unavailable
+  const localTimezone = (() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return tz || 'UTC';
+    } catch {
+      return 'UTC';
     }
+  })();
+
+  // Parse a yyyy-mm-dd string into a local Date (avoids UTC shift issues)
+  const parseLocalYyyyMmDd = (value: string): Date | null => {
+    if (!value) return null;
+    const parts = value.split('-');
+    if (parts.length !== 3) return null;
+    const [y, m, d] = parts.map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
   };
 
   // Helper function to get human-readable schedule description
   const getScheduleDescription = (cron: string) => {
     if (!cron) return '';
-    
     // Common cron patterns with descriptions
     const patterns: Record<string, string> = {
       '0 0 * * *': 'Daily at midnight',
@@ -117,7 +110,6 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
     const parts = cron.split(' ');
     if (parts.length === 5) {
       const [minute, hour, day, month, weekday] = parts;
-      
       if (minute === '0' && hour !== '*' && day === '*' && month === '*' && weekday === '*') {
         return `Daily at ${hour}:00`;
       }
@@ -129,6 +121,108 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
     }
 
     return 'Custom schedule';
+  };
+
+  // Toast notification system
+  const showToast = (type: 'success' | 'error', message: string) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 5000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+  // Helper function to generate cron expression from simple schedule
+  const generateCronFromSimple = () => {
+    if (!simpleSchedule.date || !simpleSchedule.time) return '';
+    
+    const [hours, minutes] = simpleSchedule.time.split(':');
+    const date = parseLocalYyyyMmDd(simpleSchedule.date);
+    if (!date || isNaN(date.getTime())) return '';
+    
+    switch (simpleSchedule.frequency) {
+      case 'once':
+        return `${minutes} ${hours} ${date.getDate()} ${date.getMonth() + 1} *`;
+      case 'daily':
+        return `${minutes} ${hours} * * *`;
+      case 'weekly':
+        return `${minutes} ${hours} * * ${date.getDay()}`;
+      case 'monthly':
+        return `${minutes} ${hours} ${date.getDate()} * *`;
+      default:
+        return '';
+    }
+  };
+
+  // Friendly next-run label using nextRunAt and timezone if present
+  const renderNextRun = (t: WorkflowTrigger) => {
+    if (t.type !== 'SCHEDULED') return null;
+    if (!t.nextRunAt) return <span className="ml-2">• Next run: pending</span>;
+    const when = new Date(t.nextRunAt);
+    const tz = t.config?.timezone || localTimezone;
+    try {
+      const formatted = when.toLocaleString(undefined, { timeZone: tz, hour12: true });
+      return <span className="ml-2">• Next run: {formatted} ({tz})</span>;
+    } catch {
+      return <span className="ml-2">• Next run: {when.toLocaleString()}</span>;
+    }
+  };
+
+  // Build a simplified schedule summary like "Daily at 11:15" or "Weekly on Tue at 09:00"
+  const renderSimplifiedSchedule = (t: WorkflowTrigger) => {
+    if (t.type !== 'SCHEDULED') return null;
+    const ui = t.config?.__ui?.simple;
+    const freq = ui?.frequency;
+    const time = ui?.time;
+    const dateStr = ui?.date;
+    const tz = t.config?.timezone || localTimezone;
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const fmtTime = (val?: string) => {
+      if (!val) return '';
+      // Keep HH:mm as-is for now
+      return val;
+    };
+
+    if (freq && time) {
+      if (freq === 'once') {
+        let dateLabel = dateStr || '';
+        if (dateStr) {
+          const d = parseLocalYyyyMmDd(dateStr);
+          if (d && !isNaN(d.getTime())) {
+            dateLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          }
+        }
+        return (
+          <p className="text-xs text-gray-600">
+            When: Once on {dateLabel} at {fmtTime(time)} ({tz})
+          </p>
+        );
+      }
+      if (freq === 'daily') {
+        return <p className="text-xs text-gray-600">When: Daily at {fmtTime(time)} ({tz})</p>;
+      }
+      if (freq === 'weekly') {
+        const d = dateStr ? parseLocalYyyyMmDd(dateStr) : undefined;
+        const dow = d && !isNaN(d.getTime()) ? dayNames[d.getDay()] : 'Sun';
+        return <p className="text-xs text-gray-600">When: Weekly on {dow} at {fmtTime(time)} ({tz})</p>;
+      }
+      if (freq === 'monthly') {
+        const d = dateStr ? parseLocalYyyyMmDd(dateStr) : undefined;
+        const dom = d && !isNaN(d.getTime()) ? d.getDate() : 1;
+        return <p className="text-xs text-gray-600">When: Monthly on day {dom} at {fmtTime(time)} ({tz})</p>;
+      }
+    }
+
+    // Fallback to basic cron description if UI metadata absent
+    if (t.config?.cron) {
+      return <p className="text-xs text-gray-600">{getScheduleDescription(t.config.cron)} ({tz})</p>;
+    }
+    return null;
   };
 
   // Helper function to get trigger examples
@@ -194,6 +288,12 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
   const fetchTriggers = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
+      // If there's no token or it doesn't look like a JWT (header.payload.signature), skip fetching
+      if (!token || token.split('.').length !== 3) {
+        setTriggers([]);
+        setLoading(false);
+        return;
+      }
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const response = await fetch(`${apiUrl}/api/workflows/${workflowId}/triggers`, {
         headers: {
@@ -233,7 +333,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
           }
           finalFormData = {
             ...finalFormData,
-            config: { ...finalFormData.config, cron: generatedCron },
+            // Ensure timezone is set; default to local timezone for user expectations
+            config: { timezone: localTimezone, ...finalFormData.config, cron: generatedCron, __ui: { scheduleMode: 'simple', simple: simpleSchedule } },
           };
         } else {
           // Advanced mode must provide cron
@@ -241,6 +342,11 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
             showToast('error', 'Cron expression is required for scheduled triggers');
             return;
           }
+          // Default timezone if not provided in advanced mode
+          finalFormData = {
+            ...finalFormData,
+            config: { timezone: localTimezone, ...finalFormData.config, __ui: { scheduleMode: 'advanced', simple: simpleSchedule } },
+          };
         }
       }
 
@@ -285,7 +391,8 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(inputForTrigger ? { input: inputForTrigger } : {})
       });
 
       if (response.ok) {
@@ -388,15 +495,23 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
     });
     
     // Set up edit schedule mode based on existing config
-    if (trigger.type === 'SCHEDULED' && trigger.config?.cron) {
-      // Try to parse existing cron into simple schedule
-      const cron = trigger.config.cron;
-      const parsed = parseCronToSimple(cron);
-      if (parsed) {
-        setEditScheduleMode('simple');
-        setEditSimpleSchedule(parsed);
+    if (trigger.type === 'SCHEDULED') {
+      const preferredMode = trigger.config?.__ui?.scheduleMode;
+      if (preferredMode) setEditScheduleMode(preferredMode);
+
+      // Prefer saved UI metadata when available
+      const uiSimple = trigger.config?.__ui?.simple;
+      if (uiSimple && (uiSimple.time || uiSimple.frequency || uiSimple.date)) {
+        setEditSimpleSchedule({
+          frequency: (uiSimple.frequency as 'once' | 'daily' | 'weekly' | 'monthly') || 'once',
+          time: uiSimple.time || '',
+          date: uiSimple.date || ''
+        });
       } else {
-        setEditScheduleMode('advanced');
+        // Fallback: Try to parse existing cron into simple schedule
+        const cron = trigger.config?.cron || '';
+        const parsed = parseCronToSimple(cron);
+        if (parsed) setEditSimpleSchedule(parsed);
       }
     }
     
@@ -416,8 +531,17 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
       if (editFormData.type === 'SCHEDULED' && editScheduleMode === 'simple') {
         const generatedCron = generateCronFromEditSimple();
         if (generatedCron) {
-          finalFormData.config = { ...finalFormData.config, cron: generatedCron };
+          finalFormData.config = { timezone: localTimezone, ...finalFormData.config, cron: generatedCron, __ui: { scheduleMode: 'simple', simple: editSimpleSchedule } };
         }
+      }
+
+      // For advanced mode, ensure timezone is present
+      if (editFormData.type === 'SCHEDULED' && editScheduleMode === 'advanced') {
+        if (!finalFormData.config) finalFormData.config = {} as TriggerConfig;
+        if (!finalFormData.config.timezone) {
+          finalFormData.config = { timezone: localTimezone, ...finalFormData.config };
+        }
+        finalFormData.config.__ui = { scheduleMode: 'advanced', simple: editSimpleSchedule };
       }
 
       const response = await fetch(`${apiUrl}/api/triggers/${editingTrigger.id}`, {
@@ -482,15 +606,26 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
     switch (editSimpleSchedule.frequency) {
       case 'once': {
         if (!editSimpleSchedule.date) return null;
-        const date = new Date(editSimpleSchedule.date);
+        const date = parseLocalYyyyMmDd(editSimpleSchedule.date);
+        if (!date || isNaN(date.getTime())) return null;
         return `${minute} ${hour} ${date.getDate()} ${date.getMonth() + 1} *`;
       }
       case 'daily':
         return `${minute} ${hour} * * *`;
       case 'weekly':
-        return `${minute} ${hour} * * 0`; // Sunday
+        // Use saved date (if any) to determine day-of-week; fallback to Sunday
+        {
+          const d = editSimpleSchedule.date ? parseLocalYyyyMmDd(editSimpleSchedule.date) : null;
+          const dow = d && !isNaN(d.getTime()) ? d.getDay() : 0;
+          return `${minute} ${hour} * * ${dow}`;
+        }
       case 'monthly':
-        return `${minute} ${hour} 1 * *`; // First of month
+        // Use saved date (if any) to determine day-of-month; fallback to 1st
+        {
+          const d = editSimpleSchedule.date ? parseLocalYyyyMmDd(editSimpleSchedule.date) : null;
+          const dom = d && !isNaN(d.getTime()) ? d.getDate() : 1;
+          return `${minute} ${hour} ${dom} * *`;
+        }
       default:
         return null;
     }
@@ -662,11 +797,7 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                         ) : (
                           'Never triggered'
                         )}
-                        {trigger.type === 'SCHEDULED' && trigger.nextRunAt && (
-                          <span className="ml-2">
-                            • Next run: {new Date(trigger.nextRunAt).toLocaleString()}
-                          </span>
-                        )}
+                        {renderNextRun(trigger)}
                       </div>
                     </div>
                   </div>
@@ -709,13 +840,21 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                     </button>
                   </div>
                 </div>
-                {trigger.type === 'SCHEDULED' && trigger.config?.cron && (
+                {trigger.type === 'SCHEDULED' && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
-                    <p className="text-xs text-gray-600">
-                      Schedule: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config.cron}</code>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {getScheduleDescription(trigger.config.cron)}
+                    {renderSimplifiedSchedule(trigger)}
+                    {trigger.config?.cron && (
+                      <>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Schedule: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config.cron}</code>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {getScheduleDescription(trigger.config.cron)}
+                        </p>
+                      </>
+                    )}
+                    <p className="text-xs text-gray-600 mt-1">
+                      Timezone: <code className="bg-gray-100 px-1 rounded text-xs">{trigger.config?.timezone || 'UTC'}</code>
                     </p>
                   </div>
                 )}
@@ -735,11 +874,11 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted }: Work
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <p className="text-xs text-gray-600">
                       API Endpoint: <code className="bg-gray-100 px-1 rounded text-xs">
-                        POST {import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/triggers/{trigger.id}/execute
+                        POST {import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/triggers/{trigger.id}/invoke
                       </code>
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Requires Authorization header with Bearer token
+                      Send requests with the <code className="bg-gray-100 px-1 rounded text-xs">X-API-Key</code> header
                     </p>
                   </div>
                 )}

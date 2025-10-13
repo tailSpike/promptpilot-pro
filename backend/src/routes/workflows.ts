@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth';
 import prisma from '../lib/prisma';
 import { z } from 'zod';
 import { workflowService } from '../services/workflowService';
+import { ProviderCredentialRevokedError } from '../lib/errors';
 
 const router = Router();
 
@@ -94,6 +95,7 @@ const CreateStepSchema = z.object({
   type: z.enum(['PROMPT', 'CONDITION', 'TRANSFORM', 'DELAY', 'WEBHOOK', 'DECISION']),
   order: z.number().int().min(0),
   promptId: z.string().nullish(),
+  // Allow known fields but DO NOT strip unknown keys so features like custom delayMs are preserved
   config: z.object({
     // Common fields for all step types
     description: z.string().optional(),
@@ -155,7 +157,12 @@ const CreateStepSchema = z.object({
       defaultChoice: z.string().optional(), // Default next step
       choices: z.record(z.string(), z.string()).optional(), // Choice -> next step mapping
     }).optional(),
-  }).default({}),
+  }).passthrough().default({}),
+  // Optional wiring for step I/O and conditions stored alongside config
+  // Accept null/undefined and coerce to empty objects to avoid validation errors from clients sending null
+  inputs: z.record(z.string(), z.any()).nullable().optional().transform((v) => v ?? {}),
+  outputs: z.record(z.string(), z.any()).nullable().optional().transform((v) => v ?? {}),
+  conditions: z.record(z.string(), z.any()).nullable().optional().transform((v) => v ?? {}),
 });
 
 const ExecuteWorkflowSchema = z.object({
@@ -182,6 +189,7 @@ const PreviewWorkflowSchema = z.object({
   input: z.record(z.string(), z.any()).optional(),
   useSampleData: z.boolean().optional(),
   triggerType: z.string().optional(),
+  simulateOnly: z.boolean().optional(),
 });
 
 // GET /api/workflows - List all workflows for user
@@ -464,7 +472,10 @@ router.post('/:id/steps', authenticate, async (req, res) => {
         type: validatedData.type,
         order: validatedData.order,
         promptId: validatedData.promptId || undefined,
-        config: JSON.stringify(validatedData.config)
+        config: JSON.stringify(validatedData.config),
+        inputs: validatedData.inputs ? JSON.stringify(validatedData.inputs) : undefined,
+        outputs: validatedData.outputs ? JSON.stringify(validatedData.outputs) : undefined,
+        conditions: validatedData.conditions ? JSON.stringify(validatedData.conditions) : undefined,
       },
       include: {
         prompt: {
@@ -527,7 +538,10 @@ router.put('/:id/steps/:stepId', authenticate, async (req, res) => {
         type: validatedData.type,
         order: validatedData.order,
         promptId: validatedData.promptId || undefined,
-        config: JSON.stringify(validatedData.config)
+        config: JSON.stringify(validatedData.config),
+        inputs: validatedData.inputs ? JSON.stringify(validatedData.inputs) : undefined,
+        outputs: validatedData.outputs ? JSON.stringify(validatedData.outputs) : undefined,
+        conditions: validatedData.conditions ? JSON.stringify(validatedData.conditions) : undefined,
       },
       include: {
         prompt: {
@@ -642,26 +656,18 @@ router.post('/:id/execute', authenticate, async (req, res) => {
     // Start async workflow execution (don't block response)
     const executeWorkflowAsync = async () => {
       try {
-        // Simulate execution time
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
         // Check if execution still exists (may have been cleaned up by tests)
         const existingExecution = await prisma.workflowExecution.findUnique({
           where: { id: execution.id }
         });
         
         if (existingExecution) {
-          await prisma.workflowExecution.update({
-            where: { id: execution.id },
-            data: {
-              status: 'COMPLETED',
-              output: JSON.stringify({
-                message: 'Workflow completed successfully',
-                steps: workflow.steps.length,
-                finalResult: normalizedInput
-              })
-            }
-          });
+          // Actually execute the workflow using the workflow service
+          await workflowService.executeWorkflowSteps(
+            execution.id,
+            workflow,
+            normalizedInput
+          );
         }
       } catch (error) {
         // Silently handle errors to prevent test cleanup issues
@@ -703,7 +709,7 @@ router.post('/:id/preview', authenticate, async (req, res) => {
     }
     const validatedData = PreviewWorkflowSchema.parse(req.body ?? {});
 
-    const result = await workflowService.previewWorkflow(workflowId, user.id!, validatedData);
+  const result = await workflowService.previewWorkflow(workflowId, user.id!, validatedData);
     if (!result) {
       return res.status(404).json({ error: 'Workflow not found' });
     }
@@ -712,6 +718,19 @@ router.post('/:id/preview', authenticate, async (req, res) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid input', details: error.issues });
+    }
+
+    if (error instanceof ProviderCredentialRevokedError) {
+      return res.status(409).json({
+        status: 'FAILED',
+        usedSampleData: false,
+        totalDurationMs: 0,
+        stats: { stepsExecuted: 0, tokensUsed: 0 },
+        warnings: ['Credential revoked. Re-authorise before running this workflow.'],
+        stepResults: [],
+        finalOutput: null,
+        error: { code: error.code, message: error.message, providers: error.providers },
+      })
     }
 
     if (error instanceof Error) {

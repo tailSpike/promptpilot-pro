@@ -165,6 +165,27 @@ export default defineConfig({
     animationDistanceThreshold: 2,
     chromeWebSecurity: false,
     setupNodeEvents(on, config) {
+      // Ensure provider secrets are visible to specs
+      const mapEnv = (name: string) =>
+        process.env[`CYPRESS_${name}`] || process.env[name] || process.env[name.toLowerCase()]
+
+      const providerKeys = [
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'GEMINI_API_KEY',
+        'AZURE_OPENAI_ENDPOINT',
+        'AZURE_OPENAI_API_KEY',
+        'AZURE_OPENAI_API_VERSION',
+      ] as const
+
+      for (const key of providerKeys) {
+        const val = mapEnv(key)
+        if (val) {
+          const envObj = config.env as Record<string, unknown>
+          envObj[key] = val
+        }
+      }
+
       if (config?.env?.apiUrl) {
         try {
           apiHealthUrl = new URL('/api/health', config.env.apiUrl).toString()
