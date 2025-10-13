@@ -1,0 +1,17 @@
+meta {
+  name: Manual Execute
+  type: http
+  seq: 1
+}
+post {
+  url: {{baseUrl}}/api/triggers/{{manualTriggerId}}/execute
+}
+headers {
+  Authorization: Bearer {{jwt}}
+  content-type: application/json
+}
+body {
+  {
+    "input": { "source": "bruno" }
+  }
+}

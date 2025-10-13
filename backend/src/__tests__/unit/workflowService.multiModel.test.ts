@@ -1,5 +1,6 @@
 import { workflowService } from '../../services/workflowService';
 import { modelDispatcher } from '../../services/modelDispatcher';
+import { IntegrationCredentialService } from '../../services/integrationCredential.service';
 
 jest.mock('../../services/modelDispatcher', () => {
   const actual = jest.requireActual('../../services/modelDispatcher');
@@ -12,10 +13,19 @@ jest.mock('../../services/modelDispatcher', () => {
 });
 
 const mockedDispatcher = modelDispatcher as jest.Mocked<typeof modelDispatcher>;
+const resolveCredentialsSpy = jest.spyOn(IntegrationCredentialService, 'resolveActiveCredentials');
+
+const createContext = (overrides: Partial<{ allowSimulatedFallback: boolean }> = {}) => ({
+  ownerId: 'unit-test-user',
+  credentialCache: new Map(),
+  ...overrides,
+});
 
 describe('WorkflowService multi-model prompt execution', () => {
   beforeEach(() => {
     mockedDispatcher.execute.mockReset();
+    resolveCredentialsSpy.mockReset();
+    resolveCredentialsSpy.mockResolvedValue({});
   });
 
   const baseStep = {
@@ -74,7 +84,7 @@ describe('WorkflowService multi-model prompt execution', () => {
       },
     };
 
-    const result = await (workflowService as any).executePromptStep(baseStep, input, config);
+  const result = await (workflowService as any).executePromptStep(baseStep, input, config, createContext());
 
     expect(mockedDispatcher.execute).toHaveBeenCalledTimes(1);
     const dispatcherPayload = mockedDispatcher.execute.mock.calls[0][0];
@@ -98,6 +108,7 @@ describe('WorkflowService multi-model prompt execution', () => {
           outputText: 'Fallback output',
           latencyMs: 210,
           retries: 0,
+          warnings: [],
         },
       ],
       aggregatedTokens: 64,
@@ -113,8 +124,7 @@ describe('WorkflowService multi-model prompt execution', () => {
         maxTokens: 600,
       },
     };
-
-    const result = await (workflowService as any).executePromptStep(baseStep, input, config);
+    const result = await (workflowService as any).executePromptStep(baseStep, input, config, createContext());
 
     expect(mockedDispatcher.execute).toHaveBeenCalledTimes(1);
     const dispatcherPayload = mockedDispatcher.execute.mock.calls[0][0];
@@ -161,7 +171,7 @@ describe('WorkflowService multi-model prompt execution', () => {
 
     const input = { topic: 'unit testing' };
 
-    const result = await (workflowService as any).executePromptStep(inlineStep, input, config);
+    const result = await (workflowService as any).executePromptStep(inlineStep, input, config, createContext());
 
     expect(mockedDispatcher.execute).toHaveBeenCalledTimes(1);
     const dispatcherPayload = mockedDispatcher.execute.mock.calls[0][0];
@@ -197,7 +207,7 @@ describe('WorkflowService multi-model prompt execution', () => {
       }),
     };
 
-    const result = await (workflowService as any).executeStep(step, { subject: 'science' });
+  const result = await (workflowService as any).executeStep(step, { subject: 'science' }, createContext());
 
     expect(mockedDispatcher.execute).toHaveBeenCalledTimes(1);
     expect(result.generatedText).toBe('Inline step output');
@@ -230,7 +240,11 @@ describe('WorkflowService multi-model prompt execution', () => {
       }),
     };
 
-    const result = await (workflowService as any).executeStep(step, { name: 'Preview User', day: 'Tuesday' }, { allowSimulatedFallback: true });
+    const result = await (workflowService as any).executeStep(
+      step,
+      { name: 'Preview User', day: 'Tuesday' },
+      createContext({ allowSimulatedFallback: true }),
+    );
 
     expect(mockedDispatcher.execute).toHaveBeenCalledTimes(1);
     expect(result.generatedText).toContain('Simulated');
@@ -276,7 +290,7 @@ describe('WorkflowService multi-model prompt execution', () => {
       },
     };
 
-    const result = await (workflowService as any).executeStep(step, { subject: 'history' });
+  const result = await (workflowService as any).executeStep(step, { subject: 'history' }, createContext());
 
     expect(mockedDispatcher.execute).toHaveBeenCalledTimes(1);
     expect(result.generatedText).toBe('Object config output');
@@ -311,6 +325,7 @@ describe('WorkflowService multi-model prompt execution', () => {
         { ...baseStep, name: 'Failure Step' },
         { name: 'User', day: 'Sunday' },
         failingConfig,
+        createContext(),
       ),
     ).rejects.toThrow('Prompt step "Failure Step" failed: Upstream timeout');
   });

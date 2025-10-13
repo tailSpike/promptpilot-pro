@@ -7,6 +7,20 @@ import {
   ModelRoutingOptions,
   ModelExecutionResult,
 } from './modelDispatcher';
+import {
+  IntegrationCredentialService,
+  type ResolvedIntegrationCredential,
+} from './integrationCredential.service';
+import { ProviderCredentialRevokedError } from '../lib/errors';
+import { WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER } from '../config/providerMappings';
+
+interface StepExecutionContext {
+  allowSimulatedFallback?: boolean;
+  ownerId: string;
+  credentialCache: Map<string, ResolvedIntegrationCredential | null>;
+  // When true, do not perform any external provider calls or real delays; return simulated outputs fast
+  simulateOnly?: boolean;
+}
 
 // Define step types as constants (since SQLite doesn't support enums natively)
 export const StepTypes = {
@@ -78,6 +92,10 @@ export interface CreateWorkflowStepData {
   promptId?: string;
   config: Record<string, any>;
   inputs?: Record<string, any>;
+  // outputs allows aliasing parts of the step output to named variables available to later steps.
+  // Example:
+  // outputs: { facts: "extractedFacts", answer: { path: "generatedText" } }
+  // This will expose {{facts}} and {{answer}} in subsequent prompts.
   outputs?: Record<string, any>;
   conditions?: Record<string, any>;
 }
@@ -127,6 +145,8 @@ export interface WorkflowPreviewResult {
     tokensUsed: number;
   };
   warnings: string[];
+  // Indicates preview ran in simulate-only mode (no external API calls)
+  simulationMode?: boolean;
 }
 
 // Since the Prisma generated types aren't available yet, we'll define them manually
@@ -161,6 +181,7 @@ export interface WorkflowWithRelations {
   id: string;
   name: string;
   description?: string | null;
+  userId: string;
   steps: (any & { prompt?: any; order: number; type: string; name: string; config: any })[];
   variables?: WorkflowVariable[];
   executions?: any[];
@@ -402,6 +423,7 @@ export class WorkflowService {
       input?: Record<string, any>;
       useSampleData?: boolean;
       triggerType?: string;
+      simulateOnly?: boolean;
     } = {}
   ): Promise<WorkflowPreviewResult | null> {
     const workflow = await this.getWorkflowById(workflowId, userId);
@@ -436,14 +458,28 @@ export class WorkflowService {
     }
 
     const stepResults: WorkflowPreviewStepResult[] = [];
+    const credentialCache = new Map<string, ResolvedIntegrationCredential | null>();
     let currentInput = this.cloneData(preparedInput);
+  let lastPromptOutput: Record<string, any> | null = null;
     let tokensUsed = 0;
     let overallStatus: 'COMPLETED' | 'FAILED' = 'COMPLETED';
     const previewStart = performance.now();
 
-    for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
+  for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
       const stepWarnings: string[] = [];
-      const inputSnapshot = this.cloneData(currentInput);
+      const chainVars: Record<string, any> = {};
+      if (lastPromptOutput && typeof lastPromptOutput === 'object') {
+        const prevText = (lastPromptOutput as any).generatedText ?? (lastPromptOutput as any).text ?? (lastPromptOutput as any).outputText;
+        if (prevText !== undefined) {
+          chainVars.previous = prevText;
+          chainVars.previousGeneratedText = prevText;
+        }
+        if ((lastPromptOutput as any).model) chainVars.previousModel = (lastPromptOutput as any).model;
+        if ((lastPromptOutput as any).primaryProvider) chainVars.previousProvider = (lastPromptOutput as any).primaryProvider;
+      }
+
+      const effectiveInput = { ...currentInput, ...chainVars };
+      const inputSnapshot = this.cloneData(effectiveInput);
       const stepStartedAt = new Date();
       const stepStartPerf = performance.now();
 
@@ -453,7 +489,12 @@ export class WorkflowService {
       let stepTokens = 0;
 
       try {
-        rawOutput = await this.executeStep(step, currentInput, { allowSimulatedFallback: true });
+        rawOutput = await this.executeStep(step, effectiveInput, {
+          allowSimulatedFallback: true,
+          ownerId: workflow.userId,
+          credentialCache,
+          simulateOnly: options.simulateOnly === true,
+        });
         normalizedOutput = this.normalizePreviewOutput(rawOutput);
 
         if (!normalizedOutput || Object.keys(normalizedOutput).length === 0) {
@@ -480,7 +521,40 @@ export class WorkflowService {
         }
 
         if (rawOutput && typeof rawOutput === 'object') {
-          currentInput = { ...currentInput, ...rawOutput };
+          // Apply preview of outputs aliasing similar to executeWorkflowSteps
+          const parseJsonMaybe = (value: unknown): any => {
+            if (value == null) return undefined;
+            if (typeof value === 'string') { try { return JSON.parse(value); } catch { return undefined; } }
+            if (typeof value === 'object') return value as any;
+            return undefined;
+          };
+          const outputsConfig = parseJsonMaybe((step as any).outputs) as Record<string, any> | undefined;
+          const getByPath = (obj: any, path: string): any => {
+            if (!obj || !path) return undefined;
+            const parts = String(path).split('.');
+            let cur: any = obj;
+            for (const p of parts) { if (cur == null) return undefined; cur = cur[p]; }
+            return cur;
+          };
+          const exportedAliases: Record<string, any> = {};
+          if (outputsConfig && typeof outputsConfig === 'object') {
+            for (const [alias, source] of Object.entries(outputsConfig)) {
+              let path: string | undefined;
+              if (typeof source === 'string') path = source;
+              else if (source && typeof source === 'object' && typeof (source as any).path === 'string') path = (source as any).path;
+              if (path) {
+                const value = getByPath(rawOutput, path);
+                if (value !== undefined) exportedAliases[alias] = value;
+              }
+            }
+          }
+          currentInput = { ...currentInput, ...rawOutput, ...exportedAliases };
+          if (step.type === StepTypes.PROMPT) {
+            lastPromptOutput = rawOutput as Record<string, any>;
+          }
+          if (normalizedOutput && Object.keys(exportedAliases).length > 0) {
+            normalizedOutput.exported = exportedAliases;
+          }
         }
       } catch (error: any) {
         overallStatus = 'FAILED';
@@ -530,6 +604,8 @@ export class WorkflowService {
         tokensUsed,
       },
       warnings,
+      // Not part of the persisted execution; indicates this preview avoided external calls
+      simulationMode: options.simulateOnly === true,
     };
   }
 
@@ -672,7 +748,10 @@ export class WorkflowService {
   /**
    * Private method to execute workflow steps sequentially
    */
-  private async executeWorkflowSteps(
+  /**
+   * Execute workflow steps and update execution record (used for background execution)
+   */
+  async executeWorkflowSteps(
     executionId: string,
     workflow: WorkflowWithRelations,
     initialInput: Record<string, any>
@@ -685,31 +764,164 @@ export class WorkflowService {
 
     let currentInput = { ...initialInput };
     const stepResults: Record<string, any> = {};
+    const credentialCache = new Map<string, ResolvedIntegrationCredential | null>();
+    // Track last prompt step output for automatic chaining
+    let lastPromptOutput: Record<string, any> | null = null;
 
     try {
       // Execute steps in order
       for (const step of workflow.steps.sort((a, b) => a.order - b.order)) {
+        const stepStartedAt = Date.now();
+
+        // Built-in chaining variables from the previous prompt step
+        const chainVars: Record<string, any> = {};
+        if (lastPromptOutput && typeof lastPromptOutput === 'object') {
+          const prevText = lastPromptOutput.generatedText ?? lastPromptOutput.text ?? lastPromptOutput.outputText;
+          if (prevText !== undefined) {
+            chainVars.previous = prevText;
+            chainVars.previousGeneratedText = prevText;
+          }
+          if (lastPromptOutput.model) chainVars.previousModel = lastPromptOutput.model;
+          if (lastPromptOutput.primaryProvider) chainVars.previousProvider = lastPromptOutput.primaryProvider;
+        }
+
+        // Compose the effective input for this step with chain vars
+        const effectiveInput = { ...currentInput, ...chainVars };
+        // Snapshot the input at the time of this step (useful for debugging chains)
+        const inputSnapshot = this.cloneData(effectiveInput);
+
         // Execute the step based on its type
-  const stepOutput = await this.executeStep(step, currentInput);
+        const stepOutput = await this.executeStep(step, effectiveInput, {
+          ownerId: workflow.userId,
+          credentialCache,
+        });
         
-        // Store step result for future steps
-        stepResults[`step_${step.order}`] = stepOutput;
+        // Preserve original output for chaining/exports; use a trace copy for UI offloading
+        let traceOutput: any = this.cloneData(stepOutput);
         
-        // Merge step output into current input for next step
+        // Optional output aliasing: allow mapping fields from this step's output
+        // into named variables for subsequent steps (configured in step.outputs).
+        const parseJsonMaybe = (value: unknown): any => {
+          if (value == null) return undefined;
+          if (typeof value === 'string') {
+            try { return JSON.parse(value); } catch { return undefined; }
+          }
+          if (typeof value === 'object') return value as any;
+          return undefined;
+        };
+
+        const outputsConfig = parseJsonMaybe((step as any).outputs) as Record<string, any> | undefined;
+
+        // Simple path resolver (supports dotted paths like "a.b.c")
+        const getByPath = (obj: any, path: string): any => {
+          if (!obj || !path) return undefined;
+          const parts = String(path).split('.');
+          let cur: any = obj;
+          for (const p of parts) {
+            if (cur == null) return undefined;
+            cur = cur[p];
+          }
+          return cur;
+        };
+
+        const exportedAliases: Record<string, any> = {};
+        if (outputsConfig && typeof outputsConfig === 'object') {
+          for (const [alias, source] of Object.entries(outputsConfig)) {
+            // Support either { alias: "generatedText" } or { alias: { path: "generatedText" } }
+            let path: string | undefined;
+            if (typeof source === 'string') {
+              path = source;
+            } else if (source && typeof source === 'object' && typeof (source as any).path === 'string') {
+              path = (source as any).path as string;
+            }
+            if (path) {
+              const value = getByPath(stepOutput, path);
+              if (value !== undefined) {
+                exportedAliases[alias] = value;
+              }
+            }
+          }
+        }
+
+        // Offload large AI generated text per-step for visualization (keep original for chaining)
+        try {
+          const maybeText: string | undefined =
+            (stepOutput && typeof stepOutput === 'object')
+              ? (stepOutput as any).generatedText ?? (stepOutput as any).text ?? (stepOutput as any).outputText
+              : undefined;
+          if (typeof maybeText === 'string') {
+            const { DocumentService } = await import('./document.service');
+            const offload = await DocumentService.maybeOffloadLargeText(maybeText, workflow.userId, executionId);
+            if (offload && offload.ref && !offload.inline) {
+              const preview = (maybeText || '').slice(0, 4000);
+              traceOutput = {
+                ...(traceOutput || {}),
+                generatedTextRef: { id: offload.ref.id, size: offload.ref.size, mimeType: offload.ref.mimeType, preview },
+              };
+              // Avoid duplicating huge inline content in traces
+              if (traceOutput && typeof traceOutput === 'object') {
+                delete (traceOutput as any).generatedText;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Per-step document offload skipped due to error:', e);
+        }
+
+        // Store step result with metadata for downstream visualization
+        stepResults[`step_${step.order}`] = {
+          meta: { id: step.id, name: step.name, type: step.type, order: step.order, outputsMapping: outputsConfig || undefined, chainVars: Object.keys(chainVars).length > 0 ? Object.keys(chainVars) : undefined },
+          inputSnapshot,
+          durationMs: Date.now() - stepStartedAt,
+          output: traceOutput,
+          exported: Object.keys(exportedAliases).length > 0 ? exportedAliases : undefined,
+        };
+        
+        // Merge step output AND exported aliases into current input for next step
         if (stepOutput && typeof stepOutput === 'object') {
-          currentInput = { ...currentInput, ...stepOutput };
+          currentInput = { ...currentInput, ...stepOutput, ...exportedAliases };
+          if (step.type === StepTypes.PROMPT) {
+            lastPromptOutput = stepOutput as Record<string, any>;
+          }
+        } else if (Object.keys(exportedAliases).length > 0) {
+          currentInput = { ...currentInput, ...exportedAliases };
         }
       }
 
       // All steps completed successfully
+      // Offload large generated text content if needed
+  const finalPayload: any = { finalResult: currentInput, stepResults };
+
+      try {
+        const { DocumentService } = await import('./document.service');
+        const ownerId = workflow.userId;
+
+        const primaryText = (currentInput && typeof currentInput === 'object') ?
+          (currentInput as any).generatedText as string | undefined : undefined;
+
+        const offload = await DocumentService.maybeOffloadLargeText(primaryText, ownerId, executionId);
+        if (offload) {
+          if (offload.inline) {
+            // keep as-is
+          } else if (offload.ref) {
+            // Replace inline with reference and keep a short preview
+            const preview = (primaryText ?? '').slice(0, 4000);
+            finalPayload.finalResult = {
+              ...(currentInput || {}),
+              generatedTextRef: { id: offload.ref.id, size: offload.ref.size, mimeType: offload.ref.mimeType, preview },
+              generatedText: undefined,
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('Document offload skipped due to error:', e);
+      }
+
       await prisma.workflowExecution.update({
         where: { id: executionId },
         data: {
           status: ExecutionStatuses.COMPLETED,
-          output: JSON.stringify({
-            finalResult: currentInput,
-            stepResults,
-          }),
+          output: JSON.stringify(finalPayload),
         }
       });
 
@@ -736,7 +948,7 @@ export class WorkflowService {
   private async executeStep(
     step: any & { prompt?: any; order: number; type: string; name: string; config: any },
     input: Record<string, any>,
-    options: { allowSimulatedFallback?: boolean } = {}
+    context: StepExecutionContext,
   ): Promise<any> {
     let config: any = {};
     if (typeof step.config === 'string') {
@@ -758,7 +970,7 @@ export class WorkflowService {
         if (!hasPromptRecord && inlinePrompt.length === 0) {
           throw new Error(`Prompt step ${step.name} has no associated prompt`);
         }
-        return await this.executePromptStep(step, input, config, options);
+  return await this.executePromptStep(step, input, config, context);
       }
         
       case StepTypes.TRANSFORM:
@@ -768,7 +980,7 @@ export class WorkflowService {
         return this.executeConditionStep(input, config);
         
       case StepTypes.DELAY:
-        return this.executeDelayStep(config);
+        return this.executeDelayStep(config, context);
         
       case StepTypes.WEBHOOK:
         return this.executeWebhookStep(input, config);
@@ -788,7 +1000,7 @@ export class WorkflowService {
     step: any,
     input: Record<string, any>,
     config: any,
-    options: { allowSimulatedFallback?: boolean } = {}
+    context: StepExecutionContext,
   ): Promise<any> {
     const promptRecord = step?.prompt ?? null;
     const inlineContent = typeof config?.promptContent === 'string' ? config.promptContent : undefined;
@@ -799,39 +1011,156 @@ export class WorkflowService {
       throw new Error(`Prompt step "${stepName}" has no prompt content configured`);
     }
 
-    const variables = this.parsePromptVariables(promptRecord?.variables);
+  const variables = this.parsePromptVariables(promptRecord?.variables);
     let content = promptContent;
     const resolvedVariables: Record<string, any> = {};
+
+    const escapeRegex = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const replaceAllPlaceholders = (tmpl: string, key: string, value: unknown): string => {
+      const pattern = new RegExp(`{{\\s*${escapeRegex(key)}\\s*}}`, 'g');
+      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+      return tmpl.replace(pattern, stringValue ?? '');
+    };
 
     for (const variable of variables) {
       const mappedValue = config?.variables?.[variable.name];
       const value = input[variable.name] ?? mappedValue ?? variable.defaultValue ?? '';
       resolvedVariables[variable.name] = value;
-      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-      content = content.replace(new RegExp(`{{${variable.name}}}`, 'g'), stringValue);
+      content = replaceAllPlaceholders(content, variable.name, value);
     }
-
-    if (!promptRecord && config?.variables && typeof config.variables === 'object') {
+    // Apply config variable mappings as fallback for unresolved placeholders
+    if (config?.variables && typeof config.variables === 'object') {
       Object.entries(config.variables).forEach(([key, value]) => {
-        const resolvedValue = input[key] ?? value ?? '';
-        resolvedVariables[key] = resolvedValue;
-        const stringValue = typeof resolvedValue === 'string' ? resolvedValue : JSON.stringify(resolvedValue);
-        content = content.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
+        if (resolvedVariables[key] === undefined) {
+          const resolvedValue = input[key] ?? value ?? '';
+          resolvedVariables[key] = resolvedValue;
+          content = replaceAllPlaceholders(content, key, resolvedValue);
+        }
       });
     }
 
-    if (!promptRecord) {
-      Object.entries(input).forEach(([key, value]) => {
-        if (resolvedVariables[key] === undefined) {
-          resolvedVariables[key] = value;
-        }
-        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-        content = content.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
-      });
+    // Always allow direct input-based replacement for any remaining placeholders
+    Object.entries(input).forEach(([key, value]) => {
+      if (resolvedVariables[key] === undefined) {
+        resolvedVariables[key] = value;
+      }
+      content = replaceAllPlaceholders(content, key, value);
+    });
+
+    // Detect unresolved placeholders after all substitutions
+    const unresolvedPattern = /{{\s*[^}]+\s*}}/g;
+    if (unresolvedPattern.test(content)) {
+      // We'll append a warning later to the warnings array
     }
 
     const models = this.buildModelConfigs(config);
     const routing = this.buildRoutingConfig(config);
+
+    // If simulation-only mode is enabled, skip dispatcher and synthesize a result
+    if (context.simulateOnly) {
+      const fallbackModel = (models.find((m) => !m.disabled) ?? models[0]) ?? {
+        provider: 'openai',
+        model: this.defaultModelByProvider.openai,
+        label: 'OpenAI',
+      } as any;
+      const simulatedText = this.buildSimulatedPreviewText(
+        fallbackModel.label ?? fallbackModel.provider,
+        content,
+        resolvedVariables,
+      );
+      const providerResults: ModelExecutionResult[] = [
+        {
+          provider: fallbackModel.provider,
+          model: fallbackModel.model,
+          label: fallbackModel.label,
+          success: true,
+          outputText: simulatedText,
+          tokensUsed: 0,
+          latencyMs: 0,
+          warnings: ['Simulated preview output (no external API calls made).'],
+          raw: { simulated: true, reason: 'simulate-only' },
+          error: undefined,
+          retries: 0,
+          metadata: { simulated: true },
+        },
+      ];
+
+      const providersByName: Record<string, Record<string, any>> = {};
+      const pr = providerResults[0]!;
+      providersByName[pr.provider] = {
+        [pr.model]: {
+          label: pr.label,
+          text: pr.outputText,
+          success: true,
+          tokens: 0,
+          latencyMs: 0,
+          metadata: pr.metadata,
+          error: undefined,
+          warnings: pr.warnings,
+        },
+      };
+
+      // Detect unresolved placeholders after substitutions and include as warnings via model outputs
+      const warnings: string[] = [];
+      const unresolvedPattern = /{{\s*[^}]+\s*}}/g;
+      if (unresolvedPattern.test(content)) {
+        warnings.push('Unresolved template variables detected in prompt content. Some placeholders may not have been replaced.');
+      }
+
+      return {
+        content,
+        generatedText: simulatedText,
+        model: pr.model,
+        tokensUsed: 0,
+        tokens: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        finishReason: 'stop',
+        primaryProvider: pr.provider,
+        modelOutputs: providersByName,
+        providerResults,
+        resolvedVariables,
+        warnings,
+      };
+    }
+
+    const integrationProviders = models
+      .map((model) => WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER[model.provider] ?? null)
+      .filter((providerId): providerId is string => Boolean(providerId));
+
+    // If simulateOnly is false, and all targeted providers have only revoked credentials,
+    // throw an explicit error to surface a clear message in the UI/specs.
+    if (!context.simulateOnly && integrationProviders.length > 0) {
+      const revokedOnly = await IntegrationCredentialService.detectRevokedOnlyProviders(
+        context.ownerId,
+        integrationProviders,
+      )
+      if (revokedOnly.length === integrationProviders.length) {
+        throw new ProviderCredentialRevokedError('Credential revoked', revokedOnly)
+      }
+    }
+
+    const resolvedCredentials = await this.loadProviderCredentials(
+      context.ownerId,
+      integrationProviders,
+      context.credentialCache,
+    );
+
+  const dispatcherCredentials: Partial<Record<ModelConfig['provider'], ResolvedIntegrationCredential>> = {};
+    const missingCredentialProviders: Set<string> = new Set();
+
+    models.forEach((model) => {
+      const integrationProvider = WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER[model.provider] ?? null;
+      if (!integrationProvider) {
+        return;
+      }
+      const credential = resolvedCredentials[integrationProvider];
+      if (credential) {
+        dispatcherCredentials[model.provider] = credential;
+      } else {
+        missingCredentialProviders.add(model.provider);
+      }
+    });
 
     const dispatcherResult = await modelDispatcher.execute({
       prompt: content,
@@ -839,13 +1168,19 @@ export class WorkflowService {
       variables: input,
       models,
       routing,
-    });
+    }, { credentials: dispatcherCredentials });
 
     const providerResults: ModelExecutionResult[] = [...dispatcherResult.results];
     const providersByName: Record<string, Record<string, any>> = {};
     const warnings: string[] = [];
     const errorSummaries: string[] = [];
     const failureMessages: string[] = [];
+
+    if (missingCredentialProviders.size > 0) {
+      warnings.push(
+        `No active integration credential found for providers: ${Array.from(missingCredentialProviders).join(', ')}. Falling back to environment configuration or simulated output.`,
+      );
+    }
 
     providerResults.forEach((result) => {
       if (result.warnings && result.warnings.length > 0) {
@@ -875,10 +1210,15 @@ export class WorkflowService {
 
     let primaryResult = this.selectPrimaryResult(providerResults);
 
+    // If unresolved placeholders exist, add an explicit warning for visibility
+    if (unresolvedPattern.test(content)) {
+      warnings.push('Unresolved template variables detected in prompt content. Some placeholders may not have been replaced.');
+    }
+
     if (!primaryResult) {
       const authErrorRegex = /(api\s*key|api-key|authentication|unauthorized|forbidden|invalid key)/i;
       const authOnlyFailures =
-        options.allowSimulatedFallback &&
+        context.allowSimulatedFallback &&
         providerResults.length > 0 &&
         providerResults.every(
           (result) =>
@@ -951,13 +1291,56 @@ export class WorkflowService {
       content,
       generatedText: primaryText,
       model: primaryModel,
+      // Keep both fields for compatibility with older callers/tests
+      tokensUsed: dispatcherResult.aggregatedTokens,
       tokens: dispatcherResult.aggregatedTokens,
+      promptTokens: primaryResult.promptTokens,
+      completionTokens: primaryResult.completionTokens,
+      finishReason: primaryResult.finishReason,
       primaryProvider: primaryResult.provider ?? models[0]?.provider ?? 'openai',
       modelOutputs: providersByName,
-  providerResults,
+      providerResults,
       resolvedVariables,
       warnings,
     };
+  }
+
+  private async loadProviderCredentials(
+    ownerId: string,
+    providers: string[],
+    cache: Map<string, ResolvedIntegrationCredential | null>,
+  ): Promise<Record<string, ResolvedIntegrationCredential>> {
+    const result: Record<string, ResolvedIntegrationCredential> = {};
+    const missingProviders: string[] = [];
+
+    providers.forEach((provider) => {
+      if (!provider) {
+        return;
+      }
+
+      if (cache.has(provider)) {
+        const cached = cache.get(provider);
+        if (cached) {
+          result[provider] = cached;
+        }
+        return;
+      }
+
+      missingProviders.push(provider);
+    });
+
+    if (missingProviders.length > 0) {
+      const resolved = await IntegrationCredentialService.resolveActiveCredentials(ownerId, missingProviders);
+      missingProviders.forEach((provider) => {
+        const credential = resolved[provider] ?? null;
+        cache.set(provider, credential);
+        if (credential) {
+          result[provider] = credential;
+        }
+      });
+    }
+
+    return result;
   }
 
   private buildSimulatedPreviewText(providerLabel: string, prompt: string, variables: Record<string, any>): string {
@@ -1120,8 +1503,12 @@ export class WorkflowService {
   /**
    * Execute a delay step
    */
-  private async executeDelayStep(config: any): Promise<any> {
+  private async executeDelayStep(config: any, context?: StepExecutionContext): Promise<any> {
     const delayMs = config.delayMs || 1000;
+    if (context?.simulateOnly) {
+      // Skip real delay in simulate-only mode
+      return { delayed: true, delayMs, simulated: true };
+    }
     await new Promise(resolve => setTimeout(resolve, delayMs));
     return { delayed: true, delayMs };
   }
@@ -1296,6 +1683,14 @@ export class WorkflowService {
         return Array.isArray(parsed) ? (parsed as Array<Record<string, any>>) : [];
       } catch {
         return [];
+      }
+    }
+    // Support objects like { items: [...] } or { variables: [...] }
+    if (typeof raw === 'object' && raw !== null) {
+      const obj = raw as Record<string, any>;
+      const items = Array.isArray(obj.items) ? obj.items : Array.isArray(obj.variables) ? obj.variables : null;
+      if (Array.isArray(items)) {
+        return items as Array<Record<string, any>>;
       }
     }
 

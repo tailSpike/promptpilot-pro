@@ -1,0 +1,18 @@
+meta {
+  name: Dispatch Event
+  type: http
+  seq: 4
+}
+post {
+  url: {{baseUrl}}/api/events
+}
+headers {
+  Authorization: Bearer {{jwt}}
+  content-type: application/json
+}
+body {
+  {
+    "eventType": "bruno.example",
+    "payload": { "ok": true }
+  }
+}

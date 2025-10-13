@@ -1,6 +1,36 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /// <reference types="cypress" />
 
 // Custom utility functions for testing
+
+// Lightweight Testing Library-style helpers
+// Support chaining by scoping to the previous subject when provided
+// and default to the document when not. Always prefer a single element by default.
+(Cypress.Commands as any).add(
+  'findByTestId',
+  { prevSubject: 'optional' },
+  (subject: JQuery<HTMLElement> | undefined, testId: string, options?: Record<string, unknown>) => {
+    const selector = `[data-testid="${testId}"]`;
+    const opts = { timeout: 10000, ...(options || {}) } as Record<string, unknown>;
+    if (subject) {
+      return cy.wrap(subject).find(selector, opts).first();
+    }
+    return cy.get(selector, opts).first();
+  }
+);
+
+(Cypress.Commands as any).add(
+  'findAllByTestId',
+  { prevSubject: 'optional' },
+  (subject: JQuery<HTMLElement> | undefined, testId: string, options?: Record<string, unknown>) => {
+    const selector = `[data-testid="${testId}"]`;
+    const opts = { timeout: 10000, ...(options || {}) } as Record<string, unknown>;
+    if (subject) {
+      return cy.wrap(subject).find(selector, opts);
+    }
+    return cy.get(selector, opts);
+  }
+);
 function waitForBackend() {
   const apiUrl = Cypress.env('apiUrl');
   

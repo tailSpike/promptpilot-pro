@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: PromptPilot Pro — Triggers API
+  version: 1.0.0
+  description: Trigger endpoints for manual execute, API invoke, webhook, and events.
+servers:
+  - url: http://127.0.0.1:3001
+paths:
+  /api/triggers/{id}/execute:
+    post:
+      summary: Execute a manual trigger
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input:
+                  type: object
+      responses:
+        '200':
+          description: Execution accepted
+        '401':
+          description: Unauthorized
+  /api/triggers/{id}/invoke:
+    post:
+      summary: Invoke an API trigger
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+        - in: header
+          name: X-API-Key
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input:
+                  type: object
+      responses:
+        '202':
+          description: Invocation accepted
+        '401':
+          description: Invalid or missing API key
+        '404':
+          description: Trigger not found
+  /api/webhooks/{triggerId}:
+    post:
+      summary: Webhook trigger endpoint
+      parameters:
+        - in: path
+          name: triggerId
+          schema: { type: string }
+          required: true
+        - in: header
+          name: X-Webhook-Secret
+          schema: { type: string }
+          required: false
+        - in: query
+          name: secret
+          schema: { type: string }
+          required: false
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                secret:
+                  type: string
+                input:
+                  type: object
+      responses:
+        '202':
+          description: Webhook accepted
+        '401':
+          description: Invalid or missing webhook secret
+        '404':
+          description: Trigger not found
+  /api/events:
+    post:
+      summary: Dispatch an application event to EVENT triggers
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ eventType ]
+              properties:
+                eventType:
+                  type: string
+                payload:
+                  type: object
+                workflowId:
+                  type: string
+      responses:
+        '202':
+          description: Event dispatched
+        '400':
+          description: Missing eventType
+        '401':
+          description: Unauthorized
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

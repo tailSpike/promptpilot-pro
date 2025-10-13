@@ -13,6 +13,7 @@ import WorkflowList from './components/WorkflowList';
 import WorkflowEditor from './components/WorkflowEditor';
 import WorkflowDetail from './components/WorkflowDetail';
 import Layout from './components/Layout';
+import IntegrationSettings from './components/IntegrationSettings';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -111,6 +112,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <WorkflowEditor />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/integration-keys" element={
+              <ProtectedRoute>
+                <Layout>
+                  <IntegrationSettings />
                 </Layout>
               </ProtectedRoute>
             } />

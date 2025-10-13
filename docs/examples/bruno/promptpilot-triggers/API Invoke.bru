@@ -1,0 +1,17 @@
+meta {
+  name: API Invoke
+  type: http
+  seq: 2
+}
+post {
+  url: {{baseUrl}}/api/triggers/{{apiTriggerId}}/invoke
+}
+headers {
+  X-API-Key: {{apiKey}}
+  content-type: application/json
+}
+body {
+  {
+    "input": { "source": "bruno" }
+  }
+}

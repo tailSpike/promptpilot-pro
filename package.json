@@ -36,9 +36,9 @@
     "test:unit:backend": "cd backend && npm run test:unit",
     "test:unit:frontend": "cd frontend && npm run test",
     "test:integration": "cd backend && npm run test:integration",
-  "cypress:run": "node scripts/run-cypress-e2e.js",
+    "cypress:run": "node scripts/run-cypress-e2e.js",
     "prepare:e2e": "cd backend && npm run db:reset:test",
-  "test:e2e": "node scripts/run-e2e.js",
+    "test:e2e": "node scripts/run-e2e.js",
     "test:e2e:open": "cross-env WAIT_ON_TIMEOUT=180000 START_SERVER_AND_TEST_INSECURE=1 start-server-and-test start:test http://127.0.0.1:3001/api/health start:frontend:dev http-get://127.0.0.1:5173 \"cd frontend && cross-env CYPRESS_baseUrl=http://127.0.0.1:5173 CYPRESS_apiUrl=http://127.0.0.1:3001 npm run e2e:open\"",
     "test:e2e:servers": "concurrently -k --names \"backend,frontend\" \"npm run start:test\" \"npm run start:frontend:dev\"",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
@@ -74,7 +74,7 @@
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "lint-staged": "^16.2.1",
-    "start-server-and-test": "^2.0.10"
+    "start-server-and-test": "^2.1.2"
   },
   "engines": {
     "node": ">=18.0.0",

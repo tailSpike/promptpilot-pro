@@ -59,6 +59,7 @@ describe('Workflow testing & preview experience', () => {
   beforeEach(() => {
     visitWithAuth(`/workflows/${fixture.workflowId}`, fixture);
     cy.contains('Execute Workflow', { timeout: 15000 }).should('be.visible');
+    // The preview panel should not exist before any preview action
     cy.get('[data-testid="workflow-preview-results"]').should('not.exist');
   });
 
@@ -97,6 +98,7 @@ describe('Workflow testing & preview experience', () => {
     cy.contains('button', 'Preview Workflow').click();
 
     cy.contains('Invalid JSON in input field').should('be.visible');
+    // Panel should not open on validation error
     cy.get('[data-testid="workflow-preview-results"]').should('not.exist');
   });
 });

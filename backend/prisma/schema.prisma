@@ -27,6 +27,8 @@ model User {
   librarySharesRevoked  PromptLibraryShare[] @relation("LibrarySharesRevoked")
   auditLogs             AuditLog[]
   promptComments        PromptComment[]
+  integrationCredentials IntegrationCredential[] @relation("CredentialOwner")
+  credentialsCreated    IntegrationCredential[] @relation("CredentialCreator")
 
   @@map("users")
 }
@@ -191,6 +193,7 @@ model WorkflowExecution {
   trigger        WorkflowTrigger?        @relation(fields: [triggerId], references: [id])
   workflow       Workflow                @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   stepExecutions WorkflowStepExecution[]
+  documents      DocumentBlob[]
 
   @@map("workflow_executions")
 }
@@ -338,6 +341,28 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model IntegrationCredential {
+  id                String                        @id @default(cuid())
+  provider          String
+  label             String
+  encryptedSecret   String
+  secretFingerprint String
+  status            IntegrationCredentialStatus   @default(ACTIVE)
+  metadata          Json?
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+  lastRotatedAt     DateTime?
+  revokedAt         DateTime?
+  ownerId           String
+  createdBy         String
+  owner             User                          @relation("CredentialOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  creator           User                          @relation("CredentialCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, provider, label])
+  @@index([ownerId, provider, status])
+  @@map("integration_credentials")
+}
+
 enum Role {
   USER
   ADMIN
@@ -377,4 +402,26 @@ enum VersionChangeType {
   PATCH
   MINOR
   MAJOR
+}
+
+/// Store large text documents (e.g., long model generations) off the main execution payload
+model DocumentBlob {
+  id           String            @id @default(cuid())
+  mimeType     String            @default("text/plain")
+  size         Int
+  content      String            /// Stored as TEXT in SQLite; suitable for multi-MB content
+  createdAt    DateTime          @default(now())
+  ownerId      String
+  executionId  String?
+  execution    WorkflowExecution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([executionId])
+  @@map("document_blobs")
+}
+
+enum IntegrationCredentialStatus {
+  ACTIVE
+  EXPIRING
+  REVOKED
 }

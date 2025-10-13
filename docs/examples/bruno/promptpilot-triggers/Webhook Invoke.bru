@@ -1,0 +1,17 @@
+meta {
+  name: Webhook Invoke
+  type: http
+  seq: 3
+}
+post {
+  url: {{baseUrl}}/api/webhooks/{{webhookTriggerId}}
+}
+headers {
+  X-Webhook-Secret: {{webhookSecret}}
+  content-type: application/json
+}
+body {
+  {
+    "input": { "source": "bruno" }
+  }
+}

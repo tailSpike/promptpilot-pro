@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import * as cron from 'node-cron';
+import { CronExpressionParser } from 'cron-parser';
 import crypto from 'crypto';
 
 import prisma from '../lib/prisma';
@@ -24,7 +25,7 @@ export const CreateTriggerSchema = z.object({
     // EVENT trigger config
     eventType: z.string().optional(), // Type of event to listen for
     conditions: z.record(z.string(), z.any()).optional(), // Event conditions
-  }).optional(),
+  }).passthrough().optional(),
 });
 
 export const UpdateTriggerSchema = z.object({
@@ -39,6 +40,23 @@ export const UpdateTriggerSchema = z.object({
  */
 export class TriggerService {
   private scheduledTasks = new Map<string, cron.ScheduledTask>();
+
+  // Compute the next run time for a cron expression honoring timezone
+  private computeNextRunAt(cronExpr: string, tz?: string, fromDate?: Date): Date | null {
+    try {
+      const interval = CronExpressionParser.parse(cronExpr, {
+        currentDate: fromDate ?? new Date(),
+        tz: tz || 'UTC',
+      });
+      const nextVal = interval.next() as unknown as { toString: () => string } | Date;
+      // Cron-parser returns CronDate; convert via toString() to ensure native Date
+      const asDate = nextVal instanceof Date ? nextVal : new Date(nextVal.toString());
+      return asDate;
+    } catch {
+      // If we cannot compute, return null rather than throwing
+      return null;
+    }
+  }
   
   private normalizeTrigger<T>(trigger: T): T {
     if (!trigger) return trigger;
@@ -51,6 +69,90 @@ export class TriggerService {
       // leave as-is if parse fails
     }
     return trigger;
+  }
+
+  /**
+   * Execute a trigger by ID, creating a workflow execution and starting it.
+   * If input is not provided, this will build sample input from required workflow variables.
+   */
+  async runTrigger(triggerId: string, requestedByUserId?: string, options?: { input?: Record<string, any>; triggerTypeOverride?: string }) {
+    // Load trigger with workflow and ensure ownership if requestedByUserId is provided
+    const trigger = await prisma.workflowTrigger.findFirst({
+      where: {
+        id: triggerId,
+        ...(requestedByUserId ? { workflow: { userId: requestedByUserId } } : {}),
+      },
+      include: {
+        workflow: {
+          include: {
+            steps: {
+              orderBy: { order: 'asc' },
+              include: {
+                // Ensure prompt content/variables are available for PROMPT steps
+                prompt: { select: { id: true, name: true, content: true, variables: true } },
+              },
+            },
+            variables: true,
+          }
+        }
+      }
+    });
+
+    if (!trigger || !trigger.workflow) {
+      throw new Error('Trigger not found or access denied');
+    }
+
+    // Prepare input
+    const provided = options?.input || {};
+    const inputVars = (trigger.workflow.variables || []).filter((v: any) => v.type === 'input');
+    const buildPlaceholder = (dt: string, name: string): any => {
+      switch (dt) {
+        case 'number': return 1;
+        case 'boolean': return false;
+        case 'array': return [];
+        case 'object': return { example: `${name}Value` };
+        default: return `Sample ${name}`;
+      }
+    };
+    const input: Record<string, any> = { ...provided };
+    for (const v of inputVars) {
+      const has = Object.prototype.hasOwnProperty.call(input, v.name);
+      if (!has) {
+        // Prefer defaultValue when present
+        let def: any = undefined;
+        try { def = v.defaultValue; } catch { def = undefined; }
+        input[v.name] = def !== undefined && def !== null ? def : buildPlaceholder(v.dataType, v.name);
+      }
+    }
+
+    // Create execution record and launch
+    const execution = await prisma.workflowExecution.create({
+      data: {
+        workflowId: trigger.workflowId,
+        triggerId: trigger.id,
+        input: JSON.stringify(input),
+        output: JSON.stringify({}),
+        status: 'PENDING',
+        metadata: JSON.stringify({
+          stepCount: trigger.workflow.steps.length,
+          triggerType: (options?.triggerTypeOverride || String(trigger.type || 'manual')).toLowerCase(),
+          triggerName: trigger.name,
+        }),
+      }
+    });
+
+    // Fire-and-forget execution using dynamic import to avoid circular/early load issues in tests
+    const { workflowService } = await import('./workflowService');
+    workflowService.executeWorkflowSteps(execution.id, trigger.workflow as any, input)
+      .catch((error: any) => {
+        // Log but do not throw
+        console.error(`Error executing workflow via trigger ${trigger.id}:`, error);
+      });
+
+    // Update lastTriggeredAt
+    await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { lastTriggeredAt: new Date() } });
+
+    return execution;
   }
 
   /**
@@ -87,6 +189,11 @@ export class TriggerService {
     // Set up scheduled task if it's a scheduled trigger
     if (trigger.type === 'SCHEDULED' && trigger.isActive) {
       await this.setupScheduledTask(trigger);
+    } else {
+      // Ensure nextRunAt is cleared for non-scheduled triggers
+      if (trigger.nextRunAt) {
+        await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { nextRunAt: null } });
+      }
     }
 
     return this.normalizeTrigger(trigger);
@@ -161,7 +268,12 @@ export class TriggerService {
 
     // Prepare new config depending on whether type changed
     const existingConfig = (() => {
-      try { return JSON.parse(existingTrigger.config as string) || {}; } catch { return {}; }
+      const raw = (existingTrigger as any).config;
+      if (!raw) return {} as Record<string, any>;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw) || {}; } catch { return {}; }
+      }
+      return raw as Record<string, any>;
     })();
     let nextConfig: Record<string, any> | undefined = undefined;
     if (validated.config || typeChanged) {
@@ -192,6 +304,9 @@ export class TriggerService {
     // Restart scheduled task if it's active and scheduled
     if (updatedTrigger.type === 'SCHEDULED' && updatedTrigger.isActive) {
       await this.setupScheduledTask(updatedTrigger);
+    } else {
+      // Clear nextRunAt if no longer scheduled or deactivated
+      await prisma.workflowTrigger.update({ where: { id: updatedTrigger.id }, data: { nextRunAt: null } });
     }
 
     return this.normalizeTrigger(updatedTrigger);
@@ -315,7 +430,14 @@ export class TriggerService {
    * Private method to setup a scheduled task
    */
   private async setupScheduledTask(trigger: any): Promise<void> {
-    const config = JSON.parse(trigger.config as string);
+    // Handle Prisma Json returning object or string
+    const config = (() => {
+      const raw = (trigger as any).config;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return {}; }
+      }
+      return raw || {};
+    })();
     
     if (!config.cron) {
       throw new Error('Cron expression not found in trigger config');
@@ -329,18 +451,17 @@ export class TriggerService {
       async () => {
         try {
           console.log(`Executing scheduled trigger: ${trigger.name}`);
-          
-          const userId = trigger.workflowId ? 
-            (await prisma.workflow.findUnique({ 
-              where: { id: trigger.workflowId }, 
-              select: { userId: true } 
-            }))?.userId || '' : '';
-          
-          // For now, just log that we would execute
-          // TODO: Implement workflow execution
-          console.log(`Would execute workflow ${trigger.workflowId} for user ${userId}`);
-          
+          await this.runTrigger(trigger.id, undefined, { triggerTypeOverride: 'scheduled' });
           console.log(`Scheduled trigger ${trigger.name} executed successfully`);
+          // After firing, compute and persist the next run time
+          const next = this.computeNextRunAt(config.cron, config.timezone);
+          if (next) {
+            try {
+              await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { nextRunAt: next } });
+            } catch {
+              // ignore if trigger not persisted/mocked in unit tests
+            }
+          }
         } catch (error) {
           console.error(`Error executing scheduled trigger ${trigger.name}:`, error);
         }
@@ -352,8 +473,18 @@ export class TriggerService {
 
     task.start();
     this.scheduledTasks.set(trigger.id, task);
-
-    console.log(`Next run time for ${trigger.name}: ${new Date(Date.now() + 60000)}`);
+    // Compute immediate next run and persist it for UI display
+    const next = this.computeNextRunAt(config.cron, config.timezone);
+    if (next) {
+      try {
+        await prisma.workflowTrigger.update({ where: { id: trigger.id }, data: { nextRunAt: next } });
+      } catch {
+        // ignore if trigger not persisted/mocked in unit tests
+      }
+      console.log(`Next run time for ${trigger.name}: ${next.toISOString()} (${config.timezone || 'UTC'})`);
+    } else {
+      console.log(`Next run time for ${trigger.name}: unavailable (invalid expression or tz)`);
+    }
   }
 
   /**

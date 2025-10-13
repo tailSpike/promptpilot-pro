@@ -10,7 +10,6 @@ const DEFAULT_ENABLED_ENVS = new Set(['development', 'test', 'e2e']);
 
 export const COLLABORATION_SHARING_FLAG = 'collaboration.sharing';
 export const COLLABORATION_COMMENTS_FLAG = 'collaboration.comments';
-
 const flagLoaders: Record<string, () => string | undefined> = {
   [COLLABORATION_SHARING_FLAG]: () => process.env.FEATURE_FLAG_COLLABORATION_SHARING,
   [COLLABORATION_COMMENTS_FLAG]: () => process.env.FEATURE_FLAG_COLLABORATION_COMMENTS,
