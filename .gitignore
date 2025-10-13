@@ -225,3 +225,11 @@ Desktop.ini
 *.tmp
 *.temp
 .test-token
+
+# Cypress artifacts
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+frontend/cypress/screenshots/
+frontend/cypress/videos/
+frontend/cypress/downloads/
