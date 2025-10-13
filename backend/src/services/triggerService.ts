@@ -268,7 +268,12 @@ export class TriggerService {
 
     // Prepare new config depending on whether type changed
     const existingConfig = (() => {
-      try { return JSON.parse(existingTrigger.config as string) || {}; } catch { return {}; }
+      const raw = (existingTrigger as any).config;
+      if (!raw) return {} as Record<string, any>;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw) || {}; } catch { return {}; }
+      }
+      return raw as Record<string, any>;
     })();
     let nextConfig: Record<string, any> | undefined = undefined;
     if (validated.config || typeChanged) {
@@ -425,7 +430,14 @@ export class TriggerService {
    * Private method to setup a scheduled task
    */
   private async setupScheduledTask(trigger: any): Promise<void> {
-    const config = JSON.parse(trigger.config as string);
+    // Handle Prisma Json returning object or string
+    const config = (() => {
+      const raw = (trigger as any).config;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return {}; }
+      }
+      return raw || {};
+    })();
     
     if (!config.cron) {
       throw new Error('Cron expression not found in trigger config');

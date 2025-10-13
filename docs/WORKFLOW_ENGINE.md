@@ -18,7 +18,7 @@ This document explains how workflows are executed today, how triggers interact w
    - Outputs and errors are persisted to `workflow_step_executions`.
 5. **Completion** — Execution status flips to `COMPLETED` or `FAILED`, with timestamps captured for analytics. Failures capture error payloads for debugging, while successful runs persist final outputs for follow-up previews or audits.
 
-> **Note:** The trigger-to-execution bridge is partially stubbed today; scheduled/webhook/API triggers acknowledge the request while the workflow execution pipeline is wired in. See "Integration roadmap" below.
+> Note: Trigger endpoints acknowledge promptly (202) and record executions; the engine then processes runs asynchronously.
 
 ---
 
@@ -34,11 +34,11 @@ This document explains how workflows are executed today, how triggers interact w
 - When cron fires, the service logs the execution intent, calculates next run times, and (next milestone) will enqueue a workflow execution.
 
 ### Webhooks & API triggers
-- Webhook endpoint `POST /api/webhooks/:triggerId` verifies the trigger exists, returns 200, and will validate HMAC signatures once execution is wired in.
-- API triggers require generated API keys stored in `config.apiKey`. Clients hit `POST /api/triggers/:id/execute` with that key.
+- Webhook endpoint `POST /api/webhooks/:triggerId` accepts a secret via header/body/query and returns `202` with an `executionId`.
+- API triggers require generated API keys stored in `config.apiKey`. Clients hit `POST /api/triggers/:id/invoke` with `X-API-Key` and receive `202` with an `executionId`.
 
 ### Event triggers
-- Placeholder for future platform events (internal bus or external integrations). Config schema already supports event filtering.
+- Authenticated clients post to `POST /api/events` with `{ eventType, payload, workflowId? }`. Matching EVENT triggers dispatch and return `202` with `executionIds`.
 
 ---
 
