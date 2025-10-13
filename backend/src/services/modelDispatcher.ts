@@ -379,7 +379,10 @@ export class ModelDispatcher {
       { role: 'user', content: prompt },
     ];
 
-    const continuationCap = Math.max(1, Math.min(10, Number(process.env.OPENAI_CONTINUATION_MAX_SEGMENTS ?? 5)));
+  // Bound continuation segments using centralized defaults/constants
+  const { OPENAI_CONTINUATION_MAX_SEGMENTS_DEFAULT, OPENAI_CONTINUATION_MAX_SEGMENTS_MIN, OPENAI_CONTINUATION_MAX_SEGMENTS_MAX } = await import('../config/providerMappings');
+  const requestedSegments = Number(process.env.OPENAI_CONTINUATION_MAX_SEGMENTS ?? OPENAI_CONTINUATION_MAX_SEGMENTS_DEFAULT);
+  const continuationCap = Math.max(OPENAI_CONTINUATION_MAX_SEGMENTS_MIN, Math.min(OPENAI_CONTINUATION_MAX_SEGMENTS_MAX, requestedSegments));
     let segments = 0;
     let continueLoop = true;
 

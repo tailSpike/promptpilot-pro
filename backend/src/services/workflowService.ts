@@ -12,14 +12,7 @@ import {
   type ResolvedIntegrationCredential,
 } from './integrationCredential.service';
 import { ProviderCredentialRevokedError } from '../lib/errors';
-
-const WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER: Record<string, string | null> = {
-  openai: 'openai',
-  azure: 'azure_openai',
-  anthropic: 'anthropic',
-  google: 'gemini',
-  custom: null,
-};
+import { WORKFLOW_PROVIDER_TO_INTEGRATION_PROVIDER } from '../config/providerMappings';
 
 interface StepExecutionContext {
   allowSimulatedFallback?: boolean;

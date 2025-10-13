@@ -84,9 +84,13 @@ export default function WorkflowTriggers({ workflowId, onTriggerExecuted, inputF
     if (!value) return null;
     const parts = value.split('-');
     if (parts.length !== 3) return null;
-    const [y, m, d] = parts.map(Number);
-    if (!y || !m || !d) return null;
-    return new Date(y, m - 1, d);
+    const [y, m, d] = parts.map((p) => Number(p));
+    if (Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) return null;
+    // Basic range guards
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(y, m - 1, d);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt;
   };
 
   // Helper function to get human-readable schedule description

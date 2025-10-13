@@ -325,7 +325,7 @@ export default function WorkflowDetail() {
   };
 
   const buildCurlCommand = () => {
-  const apiUrl: string = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL || 'http://localhost:3001';
+  const apiUrl: string = (import.meta.env as unknown as { VITE_API_URL?: string }).VITE_API_URL || 'http://localhost:3001';
     const token = localStorage.getItem('token') || '<YOUR_TOKEN>';
     let body: string;
     try {

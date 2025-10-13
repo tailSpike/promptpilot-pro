@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosInstance } from 'axios';
 import type {
   CreatePromptData,
   UpdatePromptData,
@@ -19,7 +19,7 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // Create axios instance with CORS support
-const api = axios.create({
+const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // Enable cookies/credentials for CORS
   headers: {
@@ -38,7 +38,7 @@ try {
 
 // Dedicated clients that play well with Cypress route stubs (relative baseURL)
 // Fallback to the main API base for normal runtime.
-let integrationsApiClient: typeof api = api;
+let integrationsApiClient: AxiosInstance = api;
 try {
   if (IS_CYPRESS) {
     integrationsApiClient = axios.create({
@@ -46,7 +46,7 @@ try {
       withCredentials: false,
       headers: { 'Content-Type': 'application/json' },
       timeout: 10000,
-    }) as typeof api;
+    });
   }
 } catch {
   // ignore env detection errors
