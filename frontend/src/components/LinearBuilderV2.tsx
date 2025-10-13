@@ -202,7 +202,20 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                 await workflowsAPI.updateWorkflow(id, { name });
               }
               if (!id) throw new Error('Failed to resolve workflow id after save');
-              // Persist steps: create sequentially
+              // When editing an existing workflow, remove existing steps to avoid unique (workflowId, order) conflicts
+              try {
+                const existing = await workflowsAPI.getWorkflow(id);
+                const existingSteps: Array<{ id: string }> = Array.isArray(existing?.steps) ? existing.steps : [];
+                for (const es of existingSteps) {
+                  if (es?.id) {
+                    await workflowsAPI.deleteStep(id, es.id);
+                  }
+                }
+              } catch (e) {
+                // Non-fatal: continue even if we fail to load/delete existing steps
+                console.warn('Save workflow: unable to load/delete existing steps', e);
+              }
+              // Persist new steps sequentially with fresh ordering
               for (let i = 0; i < steps.length; i++) {
                 const s = steps[i];
                 await workflowsAPI.createStep(id, {
@@ -216,7 +229,12 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               navigate('/workflows');
             } catch (e) {
               console.error('Save workflow failed', e);
-              alert('Failed to save workflow. See console for details.');
+              // Surface a clearer message if available
+              const err = e as unknown as { response?: { data?: { error?: string } } } | Error;
+              const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error
+                || (err as Error).message
+                || 'Failed to save workflow. See console for details.';
+              alert(message);
             } finally {
               setSaving(false);
             }
