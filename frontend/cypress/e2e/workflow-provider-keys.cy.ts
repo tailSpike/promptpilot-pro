@@ -5,12 +5,12 @@
 // environment flag. To enable locally or in CI, set:
 //   - OS env: CYPRESS_RUN_PROVIDER_KEYS=true
 // Then Cypress.env('RUN_PROVIDER_KEYS') will be truthy.
-const RUN_PROVIDER_KEYS = (() => {
-  const v = Cypress.env('RUN_PROVIDER_KEYS');
-  if (v === true) return true;
-  if (typeof v === 'string') return v.toLowerCase() === 'true' || v === '1';
-  return false;
-})();
+// Centralized env parsing for provider keys execution flag
+// (extracted per PR feedback to avoid duplication across specs)
+// Usage: set CYPRESS_RUN_PROVIDER_KEYS=true to enable this suite in CI/local.
+// Falls back to skipped when absent.
+import { shouldRunProviderKeys } from '../support/providerKeyUtils';
+const RUN_PROVIDER_KEYS = shouldRunProviderKeys();
 
 const maybeDescribe = RUN_PROVIDER_KEYS ? describe : describe.skip;
 

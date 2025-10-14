@@ -11,9 +11,7 @@
   { prevSubject: 'optional' },
   (subject: JQuery<HTMLElement> | undefined, testId: string, options?: Record<string, unknown>) => {
     if (!testId) {
-      // Return body to keep chain alive, but log a warning for easier debugging
-      Cypress.log({ name: 'findByTestId', message: 'Called without a testId', consoleProps: () => ({ testId }) });
-      return cy.get('body');
+      throw new Error('findByTestId was called without a testId. Please provide a valid testId string.');
     }
     const selector = `[data-testid="${testId}"]`;
     const opts = { timeout: 10000, ...(options || {}) } as Record<string, unknown>;

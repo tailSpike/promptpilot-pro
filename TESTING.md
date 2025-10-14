@@ -1,6 +1,27 @@
 # PromptPilot Pro - Testing & CI/CD Documentation
 
 ## 🎯 Overview
+## 🏆 Testing Trophy – how we test
+
+We bias toward fast, reliable feedback and keep E2E lean:
+
+- Unit tests (largest):
+   - Pure logic, helpers, mappers, validation, branching.
+   - React hooks/component functions that don’t hit the DOM.
+- Component/Integration tests (mid):
+   - Render components with Testing Library + Vitest; verify behavior via the DOM and user events.
+   - Backend route/service integration with in-memory DB or test DB.
+- E2E (smallest):
+   - One E2E per Acceptance Criteria (AC) is sufficient when lower levels cover the logic.
+   - Focus on critical user journeys and persistence/hydration after Save. Avoid duplicating logic covered elsewhere.
+
+Use this mapping per story:
+
+- For each AC:
+   - Add unit tests for core logic and edge cases.
+   - Add component/integration tests to exercise UI behavior and service interactions.
+   - Add at most one E2E scenario to validate the end-to-end contract and persistence on reload.
+
 
 This document outlines the comprehensive testing strategy and CI/CD pipeline implemented for PromptPilot Pro, ensuring high code quality and automated deployment processes.
 
@@ -276,3 +297,20 @@ The PromptPilot Pro project now has a comprehensive testing and CI/CD infrastruc
 - **Maintainability** through comprehensive documentation and standardized processes
 
 The testing infrastructure provides confidence in code changes and ensures that the application remains stable and secure as it evolves.
+
+---
+
+## Persistence and Hydration E2E Pattern
+
+When implementing features that Save data and then reload/edit it, follow this pattern:
+
+- Add a Cypress flow that:
+   - Saves, then asserts the URL redirects appropriately (e.g., to /edit?v2=1)
+   - Asserts hydrated UI state on the redirected page (variables, steps, bindings)
+   - Verifies Additional variable persistence and hydration
+   - Verifies deletion persistence (removed items remain removed after Save + reload)
+   - Verifies idempotent Save (no duplicate steps/variables after a second Save)
+
+- Prefer data-testid selectors and use network intercepts where timing is tricky. Assert critical network calls (e.g., variables PUT, steps POST) when appropriate.
+
+- For JSON fields in the backend (Prisma Json), store values natively without double-stringify. Write assertions that would catch quoting issues.

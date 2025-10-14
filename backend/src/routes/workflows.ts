@@ -55,6 +55,20 @@ const UpdateWorkflowSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+// Variable schemas for workflow variables CRUD
+const WorkflowVariableSchema = z.object({
+  name: z.string().min(1).max(100),
+  type: z.enum(['input', 'output', 'intermediate']).default('input'),
+  dataType: z.enum(['string', 'number', 'boolean', 'array', 'object']).default('string'),
+  description: z.string().optional(),
+  defaultValue: z.any().optional(),
+  isRequired: z.boolean().optional(),
+  validation: z.record(z.string(), z.any()).optional(),
+});
+const UpdateWorkflowVariablesSchema = z.object({
+  variables: z.array(WorkflowVariableSchema).default([]),
+});
+
 const ModelRetrySchema = z.object({
   maxAttempts: z.number().int().min(0).max(5).optional(),
   baseDelayMs: z.number().int().min(0).max(60000).optional(),
@@ -605,6 +619,59 @@ router.delete('/:id/steps/:stepId', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error deleting step:', error);
     res.status(500).json({ error: 'Failed to delete step' });
+  }
+});
+
+// PUT /api/workflows/:id/variables - Replace workflow variables
+router.put('/:id/variables', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { id } = req.params;
+    const { variables } = UpdateWorkflowVariablesSchema.parse(req.body ?? {});
+
+    // Verify workflow ownership
+    const workflow = await prisma.workflow.findFirst({ where: { id, userId } });
+    if (!workflow) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    // Replace all variables with provided list
+    await prisma.$transaction(async (tx) => {
+      await tx.workflowVariable.deleteMany({ where: { workflowId: id } });
+      if (variables.length > 0) {
+        await tx.workflowVariable.createMany({
+          data: variables.map((v) => ({
+            workflowId: id as string,
+            name: v.name,
+            type: v.type,
+            dataType: v.dataType,
+            description: v.description,
+            // For Prisma Json fields, pass JS values directly; do not JSON.stringify
+            defaultValue: v.defaultValue !== undefined ? (v.defaultValue as any) : undefined,
+            isRequired: v.isRequired ?? false,
+            validation: v.validation ? (v.validation as any) : undefined,
+          })),
+        });
+      }
+    });
+
+    // Return updated set
+    const updated = await prisma.workflowVariable.findMany({
+      where: { workflowId: id },
+      select: { id: true, name: true, type: true, dataType: true, isRequired: true, description: true, defaultValue: true }
+    });
+
+    res.json({ variables: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.issues });
+    }
+    console.error('Error updating workflow variables:', error);
+    res.status(500).json({ error: 'Failed to update workflow variables' });
   }
 });
 

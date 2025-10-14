@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { workflowsAPI } from '../services/api';
+import { toPreviewInputs as buildPreviewInputs, toFlattenedInputs as buildFlattenedInputs, interpolate as applyInterpolation, recalcDupKeys } from '../lib/linearBuilderV2Utils';
 
 type StepType = 'PROMPT';
 
@@ -12,7 +13,6 @@ interface StepState {
     promptContent?: string;
     inputs?: Record<string, unknown>;
   };
-  binding?: string;
 }
 
 interface TimelineEntry {
@@ -45,7 +45,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   const [saving, setSaving] = useState(false);
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
 
-  const isValid = useMemo(() => steps.every(s => !!(s.config.promptContent || s.binding)), [steps]);
+  const isValid = useMemo(() => steps.every(s => !!(s.config.promptContent && s.config.promptContent.trim().length > 0)), [steps]);
 
   const [showTypeChooser, setShowTypeChooser] = useState(false);
 
@@ -58,14 +58,51 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
         const wf = await workflowsAPI.getWorkflow(workflowId);
         if (!active || !wf) return;
         setWorkflowName(wf.name || 'Workflow');
-        type BackendStep = { id?: string; order?: number; name?: string; config?: { promptContent?: string } };
+        // Hydrate Additional variables from backend workflow variables (persisted on Save)
+        try {
+          const vars: Array<{ name?: string; type?: string; defaultValue?: unknown }> = Array.isArray(wf.variables) ? wf.variables : [];
+          const extras = vars
+            .map(v => ({ name: String(v?.name || ''), value: v?.defaultValue }))
+            .filter(v => v.name.startsWith('workflow.') && v.name !== 'workflow.input')
+            .map((v, idx) => ({
+              id: `var-${v.name}-${idx}`,
+              key: v.name.replace(/^workflow\./, ''),
+              value: v.value != null ? String(v.value) : '',
+            }));
+          setExtraInputs(extras);
+          setDupKeyError(recalcDupKeys(extras));
+        } catch { /* ignore */ }
+        type BackendStep = { id?: string; order?: number; name?: string; config?: unknown };
+        const parseConfig = (cfg: unknown): { promptContent?: string } => {
+          const pick = (obj: Record<string, unknown>): { promptContent?: string } => ({
+            promptContent: typeof obj.promptContent === 'string' ? obj.promptContent : undefined,
+          });
+          if (!cfg) return {};
+          if (typeof cfg === 'string') {
+            try {
+              const parsed: unknown = JSON.parse(cfg);
+              if (parsed && typeof parsed === 'object') {
+                return pick(parsed as Record<string, unknown>);
+              }
+            } catch { /* noop */ }
+            return {};
+          }
+          if (typeof cfg === 'object') {
+            return pick(cfg as Record<string, unknown>);
+          }
+          return {};
+        };
         const mapped: StepState[] = Array.isArray(wf.steps)
-          ? (wf.steps as unknown as BackendStep[]).map((s, i: number) => ({
-              id: s.id || `step-${s.order ?? i + 1}`,
-              type: 'PROMPT',
-              name: s.name || `PROMPT ${i + 1}`,
-              config: { promptContent: s?.config?.promptContent ?? '' },
-            }))
+          ? (wf.steps as unknown as BackendStep[]).map((s, i: number) => {
+              const cfg = parseConfig(s?.config);
+              const pc = cfg?.promptContent ?? '';
+              return {
+                id: s.id || `step-${s.order ?? i + 1}`,
+                type: 'PROMPT',
+                name: s.name || `PROMPT ${i + 1}`,
+                config: { promptContent: pc },
+              } as StepState;
+            })
           : [];
         if (mapped.length > 0) {
           setSteps(mapped);
@@ -78,23 +115,53 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
     return () => { active = false; };
   }, [workflowId]);
 
+  const DEFAULT_PROMPT_TEMPLATE = 'Hello {{workflow.input}}';
   const addStep = (type: StepType) => {
     const id = `step-${steps.length + 1}`;
-    setSteps((prev) => ([
+    setSteps(prev => ([
       ...prev,
-      { id, type, name: `${type} ${prev.length + 1}`, config: { promptContent: 'Hello {{workflow.input}}' } },
+      { id, type, name: `${type} ${prev.length + 1}`, config: { promptContent: DEFAULT_PROMPT_TEMPLATE } },
     ]));
     setShowTypeChooser(false);
+  };
+
+  const handlePromptContentChange = (stepId: string, value: string) => {
+    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, config: { ...s.config, promptContent: value } } : s));
   };
 
   const onSelectPromptField = (stepId: string) => {
     setSelectedField(`promptContent:${stepId}`);
   };
 
+  // Insert variable token into currently selected prompt content input
   const onBindVariable = (variable: string) => {
     if (!selectedField) return;
     const [, stepId] = selectedField.split(':');
-    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, binding: variable } : s));
+    setSteps(prev => prev.map(s => {
+      if (s.id !== stepId) return s;
+      const current = s.config.promptContent ?? '';
+      const token = `{{${variable}}}`;
+      // Avoid duplicate insertion if token already present
+      if (current.includes(token)) return s;
+      const sep = current.length > 0 && !current.endsWith(' ') ? ' ' : '';
+      const nextContent = current + sep + token;
+      return { ...s, config: { ...s.config, promptContent: nextContent } };
+    }));
+    // Auto-add variable rows for any new workflow.<key> references (except workflow.input)
+    setExtraInputs(prev => {
+      const existingKeys = new Set(prev.map(v => v.key));
+      const needed: typeof prev = [];
+      if (variable.startsWith('workflow.') && variable !== 'workflow.input') {
+        const key = variable.replace(/^workflow\./, '');
+        if (!existingKeys.has(key)) {
+          needed.push({ id: `var-${key}`, key, value: '' });
+        }
+      }
+      if (needed.length === 0) return prev;
+      const merged = [...prev, ...needed];
+      setDupKeyError(recalcDupKeys(merged));
+      return merged;
+    });
     setSelectedField(null);
   };
 
@@ -114,56 +181,12 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   };
 
   // Nested structure for UI interpolation (supports dot-path via traversal)
-  const toPreviewInputs = (): Record<string, unknown> => {
-    const obj: Record<string, unknown> = { workflow: { input: textInput } };
-    const wf = obj.workflow as Record<string, unknown>;
-    const seen = new Set<string>(['input']);
-    for (const { key, value } of extraInputs) {
-      const k = key.trim();
-      if (!k) continue;
-      if (seen.has(k)) continue; // skip duplicates
-      seen.add(k);
-      wf[k] = value;
-    }
-    return obj;
-  };
+  const toPreviewInputs = (): Record<string, unknown> => buildPreviewInputs(extraInputs, textInput);
 
   // Flat structure for backend API (keys like 'workflow.input')
-  const toFlattenedInputs = (): Record<string, unknown> => {
-    const flat: Record<string, unknown> = { 'workflow.input': textInput };
-    const seen = new Set<string>(['input']);
-    for (const { key, value } of extraInputs) {
-      const k = key.trim();
-      if (!k) continue;
-      if (seen.has(k)) continue; // skip duplicates and reserved
-      seen.add(k);
-      flat[`workflow.${k}`] = value;
-    }
-    return flat;
-  };
+  const toFlattenedInputs = (): Record<string, unknown> => buildFlattenedInputs(extraInputs, textInput);
 
-  const interpolate = (template: string, data: Record<string, unknown>) => {
-    // Very small mustache-like: supports {{workflow.input}}
-    return template.replace(/{{\s*([\w.]+)\s*}}/g, (_m, path) => {
-      const fullKey = String(path);
-      // 1) Exact flat-key match e.g., data['workflow.input']
-      if (Object.prototype.hasOwnProperty.call(data, fullKey)) {
-        const v = (data as Record<string, unknown>)[fullKey];
-        return v != null ? String(v) : '';
-      }
-      // 2) Dot-path traversal against nested object
-      const segments = fullKey.split('.');
-      let cur: unknown = data;
-      for (const s of segments) {
-        if (cur && typeof cur === 'object' && s in (cur as Record<string, unknown>)) {
-          cur = (cur as Record<string, unknown>)[s];
-        } else {
-          return '';
-        }
-      }
-      return cur != null ? String(cur) : '';
-    });
-  };
+  const interpolate = (template: string, data: Record<string, unknown>) => applyInterpolation(template, data);
 
   const runPreview = async (untilStepIndex?: number) => {
     // Simulate a preview call and populate timeline for UX; if workflowId exists, try API
@@ -173,13 +196,36 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       if (workingSteps.length === 0 && workflowId) {
         try {
           const wf = await workflowsAPI.getWorkflow(workflowId);
+          const parseConfig = (cfg: unknown): { promptContent?: string } => {
+            const pick = (obj: Record<string, unknown>): { promptContent?: string } => ({
+              promptContent: typeof obj.promptContent === 'string' ? obj.promptContent : undefined,
+            });
+            if (!cfg) return {};
+            if (typeof cfg === 'string') {
+              try {
+                const parsed: unknown = JSON.parse(cfg);
+                if (parsed && typeof parsed === 'object') {
+                  return pick(parsed as Record<string, unknown>);
+                }
+              } catch { /* noop */ }
+              return {};
+            }
+            if (typeof cfg === 'object') {
+              return pick(cfg as Record<string, unknown>);
+            }
+            return {};
+          };
           const mapped: StepState[] = Array.isArray(wf?.steps)
-            ? (wf.steps as Array<{ id?: string; order?: number; name?: string; config?: { promptContent?: string } }>).map((s, i) => ({
-                id: s.id || `step-${s.order ?? i + 1}`,
-                type: 'PROMPT',
-                name: s.name || `PROMPT ${i + 1}`,
-                config: { promptContent: s?.config?.promptContent ?? '' },
-              }))
+            ? (wf.steps as Array<{ id?: string; order?: number; name?: string; config?: unknown }>).map((s, i) => {
+                const cfg = parseConfig(s?.config);
+                const pc = cfg?.promptContent ?? '';
+                return {
+                  id: s.id || `step-${s.order ?? i + 1}`,
+                  type: 'PROMPT',
+                  name: s.name || `PROMPT ${i + 1}`,
+                  config: { promptContent: pc },
+                } as StepState;
+              })
             : [];
           if (mapped.length > 0) {
             setSteps(mapped);
@@ -199,8 +245,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       const outputs: TimelineEntry[] = workingSteps.map((s, i) => {
         if (i <= (untilStepIndex ?? workingSteps.length - 1)) {
           const content = s.config.promptContent ?? '';
-          const bound = s.binding ? interpolate(`{{${s.binding}}}`, inputsNested) : '';
-          const text = interpolate(content, inputsNested) || bound || '[no output]';
+          const text = interpolate(content, inputsNested) || '[no output]';
           return { stepId: s.id, status: 'success', output: { text } };
         }
         return { stepId: s.id, status: 'pending' };
@@ -228,22 +273,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   };
 
   // Duplicate key detection and guards
-  const recalcDupKeys = (rows: Array<{ id: string; key: string; value: string }>) => {
-    const seen = new Set<string>();
-    seen.add('input'); // reserved primary key
-    for (const r of rows) {
-      const k = r.key.trim();
-      if (!k) continue;
-      if (seen.has(k)) {
-        return `Duplicate variable key: ${k}`;
-      }
-      if (k === 'input') {
-        return 'The key "input" is reserved for workflow.input';
-      }
-      seen.add(k);
-    }
-    return null;
-  };
+  // recalcDupKeys imported from utils
 
   return (
     <div className="w-full" data-testid="builder-v2-linear">
@@ -274,6 +304,15 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                 await workflowsAPI.updateWorkflow(id, { name });
               }
               if (!id) throw new Error('Failed to resolve workflow id after save');
+              // Persist variables from Data Inspector first (treat as input variables)
+              try {
+                const toVar = (name: string, value: unknown) => ({ name, type: 'input' as const, dataType: 'string' as const, defaultValue: String(value ?? '') });
+                const vars = [toVar('workflow.input', textInput), ...extraInputs.filter(v => v.key.trim()).map(v => toVar(`workflow.${v.key.trim()}`, v.value))];
+                await workflowsAPI.replaceVariables(id, vars);
+              } catch (e) {
+                console.warn('Save workflow: variables update failed (non-fatal)', e);
+              }
+
               // When editing an existing workflow, remove existing steps to avoid unique (workflowId, order) conflicts
               try {
                 const existing = await workflowsAPI.getWorkflow(id);
@@ -290,11 +329,12 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               // Persist new steps sequentially with fresh ordering
               for (let i = 0; i < steps.length; i++) {
                 const s = steps[i];
+                const promptContent = (s.config.promptContent ?? '').trim();
                 await workflowsAPI.createStep(id, {
                   name: s.name || `${s.type} ${i + 1}`,
                   type: 'PROMPT',
                   order: i + 1,
-                  config: { promptContent: s.config.promptContent ?? '' },
+                  config: { promptContent },
                 });
               }
               // Redirect to edit route and keep V2 enabled so Run is available immediately
@@ -363,13 +403,16 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               </div>
               <div className="mb-2">
                 <label className="block text-xs text-gray-600 mb-1">Prompt Content</label>
-                <input className="w-full border rounded px-2 py-1" data-testid="input-field-promptContent" value={step.config.promptContent ?? ''} onChange={(e) => setSteps(prev => prev.map(s => s.id === step.id ? { ...s, config: { ...s.config, promptContent: e.target.value } } : s))} onFocus={() => onSelectPromptField(step.id)} />
+                <input
+                  className="w-full border rounded px-2 py-1"
+                  data-testid="input-field-promptContent"
+                  value={step.config.promptContent ?? ''}
+                  onChange={(e) => handlePromptContentChange(step.id, e.target.value)}
+                  onFocus={() => onSelectPromptField(step.id)}
+                />
               </div>
-              {step.binding && (
-                <div className="text-xs text-gray-700" data-testid="binding-expression">{step.binding}</div>
-              )}
-              {!step.config.promptContent && !step.binding ? (
-                <div className="text-xs text-red-600" data-testid="validation-inline">Required: prompt content or variable binding</div>
+              {!step.config.promptContent ? (
+                <div className="text-xs text-red-600" data-testid="validation-inline">Required: prompt content</div>
               ) : null}
             </div>
           ))}

@@ -52,17 +52,17 @@ describe('Workflow Builder V2 - Linear mode (feature flagged)', () => {
     cy.get('[data-testid="data-inspector"]').should('be.visible');
   });
 
-  it('supports mapping via click-to-bind and validates inline', () => {
+  it('supports inserting variable tokens into prompt content and validates inline', () => {
     gotoBuilderV2();
     addPromptStep();
     // Select an input on the step
     cy.get('[data-testid="step-card"]').within(() => {
       cy.get('[data-testid="input-field-promptContent"]').click();
     });
-    // Click a compatible variable from inspector
+    // Click a compatible variable from inspector (inserts token into prompt content)
     cy.get('[data-testid="variable-item-workflow.input"]').click();
-    // Should reflect binding expression and no validation errors
-    cy.get('[data-testid="binding-expression"]').should('contain.text', 'workflow.input');
+    // Should insert token into input field and no validation errors
+    cy.get('[data-testid="input-field-promptContent"]').should('contain.value', '{{workflow.input}}');
     cy.get('[data-testid="validation-inline"]').should('not.exist');
   });
 
@@ -118,5 +118,167 @@ describe('Workflow Builder V2 - Linear mode (feature flagged)', () => {
     cy.get('[data-testid="preview-run"]').click();
     cy.get('[data-testid="execution-timeline"]').should('be.visible');
     cy.get('[data-testid="execution-timeline"]').contains('CypressUser');
+  });
+
+  it('persists a bound variable in step config after Save and reload', () => {
+    gotoBuilderV2();
+    addPromptStep();
+    // Insert workflow.input token into the step
+    cy.get('[data-testid="step-card"]').within(() => {
+      cy.get('[data-testid="input-field-promptContent"]').click();
+    });
+    cy.get('[data-testid="variable-item-workflow.input"]').click();
+    cy.get('[data-testid="input-field-promptContent"]').should('contain.value', '{{workflow.input}}');
+    // Save workflow
+    cy.get('[data-testid="workflow-name-input"]').clear().type(`V2 Binding Persist ${unique}`);
+    cy.get('[data-testid="save-workflow"]').click();
+    // After redirect, ensure V2 active and binding is still visible
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    cy.get('[data-testid="builder-v2-linear"]').should('exist');
+    cy.get('[data-testid="step-card"]').first().within(() => {
+      cy.get('[data-testid="input-field-promptContent"]').should('contain.value', '{{workflow.input}}');
+    });
+  });
+
+  it('persists Additional variables on Save and hydrates them on reload', () => {
+    gotoBuilderV2();
+    addPromptStep();
+    // Open Data inspector and add an Additional variable
+    cy.get('[data-testid="data-inspector-toggle"]').click();
+    cy.get('[data-testid="data-inspector-input"]').clear().type('World');
+    cy.contains('Add variable').click();
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').within(() => {
+        cy.get('input[placeholder="key"]').type('feeling');
+        cy.get('input[placeholder="value"]').type('pensive');
+      });
+    });
+    // Save workflow
+    cy.get('[data-testid="workflow-name-input"]').clear().type(`V2 Vars Persist ${unique}`);
+    cy.get('[data-testid="save-workflow"]').click();
+    // After redirect, V2 active
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    cy.get('[data-testid="builder-v2-linear"]').should('exist');
+    // Variable inspector should list workflow.feeling
+    cy.get('[data-testid="variable-inspector"]').contains('workflow.feeling');
+    // Data Inspector row should hydrate with feeling=pensive
+    cy.get('[data-testid="data-inspector-toggle"]').click();
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').within(() => {
+        cy.get('input[placeholder="key"]').should('have.value', 'feeling');
+        cy.get('input[placeholder="value"]').should('have.value', 'pensive');
+      });
+    });
+  });
+
+  it('removes deleted Additional variables on Save and hydration reflects removal', () => {
+    gotoBuilderV2();
+    addPromptStep();
+    // Add two variables
+    cy.get('[data-testid="data-inspector-toggle"]').click();
+    cy.get('[data-testid="data-inspector-input"]').clear().type('World');
+    cy.contains('Add variable').click();
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').eq(0).within(() => {
+        cy.get('input[placeholder="key"]').type('feeling');
+        cy.get('input[placeholder="value"]').type('pensive');
+      });
+    });
+    cy.contains('Add variable').click();
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').eq(1).within(() => {
+        cy.get('input[placeholder="key"]').type('topic');
+        cy.get('input[placeholder="value"]').type('Testing');
+      });
+    });
+    // Save once with both variables
+    cy.get('[data-testid="workflow-name-input"]').clear().type(`V2 Vars Delete ${unique}`);
+    cy.get('[data-testid="save-workflow"]').click();
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    cy.get('[data-testid="variable-inspector"]').within(() => {
+      cy.get('[data-testid="variable-item-workflow.feeling"]').should('exist');
+      cy.get('[data-testid="variable-item-workflow.topic"]').should('exist');
+    });
+    // Delete the 'topic' variable row in Data Inspector (ensure inspector is open)
+    cy.get('[data-testid="builder-v2-linear"]').should('exist');
+    cy.get('body').then(($body) => {
+      const hasInspector = $body.find('[data-testid="data-inspector"]').length > 0;
+      if (!hasInspector) {
+        const hasToggle = $body.find('[data-testid="data-inspector-toggle"]').length > 0;
+        if (hasToggle) {
+          cy.get('[data-testid="data-inspector-toggle"]').click({ force: true });
+        } else {
+          cy.contains('button', /^Data$/).click({ force: true });
+        }
+      }
+    });
+    cy.get('[data-testid="data-inspector"]').should('be.visible');
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').then(($rows) => {
+        const row = Array.from($rows).find(r => {
+          const keyInput = r.querySelector('input[placeholder="key"]') as HTMLInputElement | null;
+          return keyInput && keyInput.value === 'topic';
+        });
+        if (row) {
+          const btn = row.querySelector('button');
+          (btn as HTMLButtonElement).click();
+        }
+      });
+    });
+    // Save again to persist removal
+    cy.get('[data-testid="save-workflow"]').click();
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    // After hydration, only feeling remains; topic removed
+    cy.get('[data-testid="variable-inspector"]').within(() => {
+      cy.get('[data-testid="variable-item-workflow.feeling"]').should('have.length', 1);
+      cy.get('[data-testid="variable-item-workflow.topic"]').should('not.exist');
+    });
+    // Ensure inspector open for final assertion
+    cy.get('body').then(($body) => {
+      const hasInspector = $body.find('[data-testid="data-inspector"]').length > 0;
+      if (!hasInspector) {
+        const hasToggle = $body.find('[data-testid="data-inspector-toggle"]').length > 0;
+        if (hasToggle) {
+          cy.get('[data-testid="data-inspector-toggle"]').click({ force: true });
+        } else {
+          cy.contains('button', /^Data$/).click({ force: true });
+        }
+      }
+    });
+    cy.get('[data-testid="data-inspector"]').should('be.visible');
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').should('have.length', 1);
+      cy.get('[data-testid="data-inspector-var-row"]').within(() => {
+        cy.get('input[placeholder="key"]').should('have.value', 'feeling');
+        cy.get('input[placeholder="value"]').should('have.value', 'pensive');
+      });
+    });
+  });
+
+  it('saving twice is idempotent: no duplicate steps or variables after second save', () => {
+    gotoBuilderV2();
+    addPromptStep();
+    addPromptStep();
+    cy.get('[data-testid="step-card"]').should('have.length', 2);
+    cy.get('[data-testid="data-inspector-toggle"]').click();
+    cy.contains('Add variable').click();
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').within(() => {
+        cy.get('input[placeholder="key"]').type('feeling');
+        cy.get('input[placeholder="value"]').type('steady');
+      });
+    });
+    cy.get('[data-testid="workflow-name-input"]').clear().type(`V2 Idempotent Save ${unique}`);
+    cy.get('[data-testid="save-workflow"]').click();
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    // After first save, confirm two steps and single variable instance
+    cy.get('[data-testid="step-card"]').should('have.length', 2);
+    cy.get('[data-testid="variable-item-workflow.feeling"]').should('have.length', 1);
+    // Save again without changes
+    cy.get('[data-testid="save-workflow"]').click();
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    // Still exactly two steps and one variable instance
+    cy.get('[data-testid="step-card"]').should('have.length', 2);
+    cy.get('[data-testid="variable-item-workflow.feeling"]').should('have.length', 1);
   });
 });
