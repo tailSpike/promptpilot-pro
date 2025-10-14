@@ -25,6 +25,26 @@ describe('Workflow - Edit and Execute (UI)', () => {
 
   // no-op
 
+  const waitForWorkflowSteps = (id: string, attemptsLeft = 20): Cypress.Chainable<void> => {
+    return cy
+      .request({
+        method: 'GET',
+        url: `${Cypress.env('apiUrl')}/api/workflows/${id}`,
+        headers: { Authorization: `Bearer ${testUser.token}` },
+        failOnStatusCode: false,
+      })
+      .then((resp) => {
+        const steps = (resp.body?.steps || []) as unknown[];
+        if (Array.isArray(steps) && steps.length > 0) {
+          return;
+        }
+        if (attemptsLeft <= 0) {
+          throw new Error('Workflow steps were not persisted in time');
+        }
+        return cy.wait(500).then(() => waitForWorkflowSteps(id, attemptsLeft - 1));
+      });
+  };
+
   const ensureWorkflowIdByName = (name: string, attemptsLeft = 30): Cypress.Chainable<string> => {
     return cy
       .request({
@@ -109,12 +129,8 @@ describe('Workflow - Edit and Execute (UI)', () => {
         }
       });
 
-      // Ensure steps are present (now that workflowId is defined)
-      cy.request({
-        method: 'GET',
-        url: `${Cypress.env('apiUrl')}/api/workflows/${workflowId}`,
-        headers: { Authorization: `Bearer ${testUser.token}` }
-      }).its('body.steps').should('have.length.greaterThan', 0);
+      // Ensure steps are present (persisted to backend) before editing
+      waitForWorkflowSteps(workflowId);
 
       // Edit first step name
       cy.get('[data-testid="workflow-step-0"]').within(() => {
@@ -122,7 +138,9 @@ describe('Workflow - Edit and Execute (UI)', () => {
       });
 
       // Save updates via submit button
-      cy.get('[data-testid="submit-workflow-button"]').should('be.enabled').click();
+      cy.intercept('PUT', '**/api/workflows/*').as('updateWorkflow');
+      cy.get('[data-testid="submit-workflow-button"]').scrollIntoView().should('be.enabled').click();
+      cy.wait('@updateWorkflow').its('response.statusCode').should('be.oneOf', [200, 204]);
 
       // Open details and execute
       cy.visit(`/workflows/${workflowId}`);

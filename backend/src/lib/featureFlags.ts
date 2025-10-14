@@ -10,9 +10,11 @@ const DEFAULT_ENABLED_ENVS = new Set(['development', 'test', 'e2e']);
 
 export const COLLABORATION_SHARING_FLAG = 'collaboration.sharing';
 export const COLLABORATION_COMMENTS_FLAG = 'collaboration.comments';
+export const BUILDER_V2_LINEAR_FLAG = 'builder.v2.linear';
 const flagLoaders: Record<string, () => string | undefined> = {
   [COLLABORATION_SHARING_FLAG]: () => process.env.FEATURE_FLAG_COLLABORATION_SHARING,
   [COLLABORATION_COMMENTS_FLAG]: () => process.env.FEATURE_FLAG_COLLABORATION_COMMENTS,
+  [BUILDER_V2_LINEAR_FLAG]: () => process.env.FEATURE_FLAG_BUILDER_V2_LINEAR,
 };
 
 function normalise(value: string | undefined): string | undefined {
@@ -48,5 +50,6 @@ export function getFeatureFlags(): Record<string, boolean> {
   return {
     [COLLABORATION_SHARING_FLAG]: isFeatureEnabled(COLLABORATION_SHARING_FLAG),
     [COLLABORATION_COMMENTS_FLAG]: isFeatureEnabled(COLLABORATION_COMMENTS_FLAG),
+    [BUILDER_V2_LINEAR_FLAG]: isFeatureEnabled(BUILDER_V2_LINEAR_FLAG),
   };
 }

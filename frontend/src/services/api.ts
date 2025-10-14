@@ -494,6 +494,20 @@ export const workflowsAPI = {
     const response = await api.put(`/api/workflows/${workflowId}/steps/reorder`, { stepIds });
     return response.data;
   },
+
+  // Workflow Variables
+  replaceVariables: async (workflowId: string, variables: Array<{
+    name: string;
+    type?: 'input' | 'output' | 'intermediate';
+    dataType?: 'string' | 'number' | 'boolean' | 'array' | 'object';
+    description?: string;
+    defaultValue?: unknown;
+    isRequired?: boolean;
+    validation?: Record<string, unknown>;
+  }>) => {
+    const response = await api.put(`/api/workflows/${workflowId}/variables`, { variables });
+    return response.data;
+  },
 };
 
 export const integrationsAPI = {

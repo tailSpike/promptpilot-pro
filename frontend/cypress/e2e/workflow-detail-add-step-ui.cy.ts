@@ -51,7 +51,7 @@ describe('Workflow Detail - Add Step button', () => {
     cy.url().should('match', /\/workflows\/.+\/edit\?openAddStep=1/);
 
     // Modal should be visible
-    cy.get('[data-testid="add-step-modal"]').should('be.visible');
+  cy.get('[data-testid="add-step-modal"]').should('be.visible');
     cy.get('body').then(($body) => {
       cy.wrap($body.find('[data-testid^="workflow-step-"]').length).as('initialStepCount');
     });
@@ -65,10 +65,10 @@ describe('Workflow Detail - Add Step button', () => {
     });
 
     // Re-open modal via query param
-    cy.location('pathname').then((path) => cy.visit(`${path}?openAddStep=1`));
-    cy.get('[data-testid="add-step-modal"]').should('be.visible');
-    cy.get('[data-testid="modal-step-name"]').clear().type('Detail AddStep Test');
-    cy.get('[data-testid="modal-step-type"]').select('TRANSFORM');
+  cy.location('pathname').then((path) => cy.visit(`${path}?openAddStep=1`));
+  cy.get('[data-testid="add-step-modal"]').should('be.visible');
+  cy.get('[data-testid="modal-step-name"]').scrollIntoView().should('be.visible').and('not.be.disabled').clear().type('Detail AddStep Test', { force: true });
+  cy.get('[data-testid="modal-step-type"]').should('be.visible').and('not.be.disabled').select('TRANSFORM', { force: true });
 
     // Intercept backend create
     cy.intercept('POST', '**/api/workflows/*/steps').as('createStep');

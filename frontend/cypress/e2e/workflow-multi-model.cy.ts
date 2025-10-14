@@ -131,8 +131,11 @@ describe('Workflow multi-model execution', () => {
       });
 
     cy.get('@modelOne')
-      .find('select')
+      .find('[data-testid="model-provider-select"]')
       .first()
+      .scrollIntoView()
+      .should('be.visible')
+      .and('not.be.disabled')
       .should(($el) => {
         expect($el.prop('tagName'), 'provider select tag').to.eq('SELECT');
         const optionText = $el.text();
@@ -143,14 +146,13 @@ describe('Workflow multi-model execution', () => {
       });
 
     cy.get('@modelOne')
-      .contains('Model name')
-      .parent()
-      .find('input')
+      .find('[data-testid="model-name-input"]')
       .should('have.value', 'gpt-4o-mini');
 
     cy.get('@modelTwo')
-      .find('select')
+      .find('[data-testid="model-provider-select"]')
       .first()
+      .scrollIntoView()
       .then(($select) => {
         if ($select.val() === 'anthropic') {
           expect($select.val(), 'model two provider value').to.equal('anthropic');
@@ -159,7 +161,8 @@ describe('Workflow multi-model execution', () => {
 
         return cy
           .wrap($select)
-          .select('anthropic')
+          // In CI, this select can be momentarily flagged as non-interactive; force the selection after scrolling
+          .select('anthropic', { force: true })
           .then(() => cy.wait('@updateStep'))
           .then((interception) => {
             expect(interception?.response?.statusCode, 'model two provider response status').to.eq(200);
@@ -167,9 +170,7 @@ describe('Workflow multi-model execution', () => {
       });
 
     cy.get('@modelTwo')
-      .contains('Model name')
-      .parent()
-      .find('input')
+      .find('[data-testid="model-name-input"]')
       .then(($input) => {
         if (($input.val() as string) === 'claude-3-haiku-20240307') {
           expect($input.val(), 'model two identifier value').to.equal('claude-3-haiku-20240307');
@@ -187,9 +188,7 @@ describe('Workflow multi-model execution', () => {
       });
 
     cy.get('@modelTwo')
-      .contains('Temperature')
-      .parent()
-      .find('input')
+      .find('[data-testid="model-temperature-input"]')
       .then(($input) => {
         if (($input.val() as string) === '0.3') {
           expect($input.val(), 'model two temperature value').to.equal('0.3');

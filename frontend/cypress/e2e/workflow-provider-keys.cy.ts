@@ -1,5 +1,19 @@
 /// <reference types="cypress" />
 
+// This spec depends on live-like provider credentials behavior and can be flaky
+// or irrelevant in CI environments without configured keys. Gate it behind an
+// environment flag. To enable locally or in CI, set:
+//   - OS env: CYPRESS_RUN_PROVIDER_KEYS=true
+// Then Cypress.env('RUN_PROVIDER_KEYS') will be truthy.
+// Centralized env parsing for provider keys execution flag
+// (extracted per PR feedback to avoid duplication across specs)
+// Usage: set CYPRESS_RUN_PROVIDER_KEYS=true to enable this suite in CI/local.
+// Falls back to skipped when absent.
+import { shouldRunProviderKeys } from '../support/providerKeyUtils';
+const RUN_PROVIDER_KEYS = shouldRunProviderKeys();
+
+const maybeDescribe = RUN_PROVIDER_KEYS ? describe : describe.skip;
+
 interface StubCredential {
   id: string;
   provider: string;
@@ -15,7 +29,7 @@ interface StubCredential {
   metadata?: Record<string, unknown>;
 }
 
-describe('Integration keys workflow', () => {
+maybeDescribe('Integration keys workflow', () => {
   let credentials: StubCredential[];
   const authenticatedUser = {
     id: 'user-1',

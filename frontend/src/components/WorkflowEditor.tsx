@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { promptsAPI, workflowsAPI } from '../services/api';
 import type { Prompt } from '../types';
 import { AuthContext } from '../contexts/AuthContext';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
+import LinearBuilderV2 from './LinearBuilderV2';
 
 type PromptModelProvider = 'openai' | 'azure' | 'anthropic' | 'google' | 'custom';
 
@@ -168,6 +170,9 @@ export default function WorkflowEditor() {
   const location = useLocation();
   const isEditing = Boolean(id);
   const auth = useContext(AuthContext);
+  const { isEnabled } = useFeatureFlags();
+  const builderV2Enabled = isEnabled('builder.v2.linear');
+  const [useBuilderV2, setUseBuilderV2] = useState(false);
   const fallbackUserId = useMemo(() => {
     if (typeof window === 'undefined') {
       return null;
@@ -367,7 +372,11 @@ export default function WorkflowEditor() {
     if (params.get('openAddStep') === '1') {
       setShowAddStepModal(true);
     }
-  }, [id, isEditing, fetchWorkflow, fetchPrompts, location.search]);
+    // Auto-enable Builder V2 if requested via query param
+    if (builderV2Enabled && params.get('v2') === '1') {
+      setUseBuilderV2(true);
+    }
+  }, [id, isEditing, fetchWorkflow, fetchPrompts, location.search, builderV2Enabled]);
 
   const validateWorkflowSteps = () => {
     const errors: string[] = [];
@@ -788,6 +797,45 @@ export default function WorkflowEditor() {
     );
   }
 
+  // Feature-flagged Linear Builder V2 early render path
+  if (builderV2Enabled && useBuilderV2) {
+    return (
+      <div className="px-4 py-6 sm:px-0">
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {isEditing ? 'Edit Workflow' : 'Create New Workflow'}
+              </h1>
+              <p className="mt-2 text-gray-600">Design automated workflows to chain prompts together</p>
+            </div>
+            <Link
+              to="/workflows"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              ← Back to Workflows
+            </Link>
+          </div>
+        </div>
+
+        {builderV2Enabled && (
+          <div className="mb-4">
+            <button
+              type="button"
+              className="px-3 py-1 border rounded"
+              data-testid="builder-v2-toggle"
+              onClick={() => setUseBuilderV2((v) => !v)}
+            >
+              {useBuilderV2 ? 'Switch to Builder V1' : 'Switch to Builder V2'}
+            </button>
+          </div>
+        )}
+
+        <LinearBuilderV2 workflowId={typeof id === 'string' ? id : undefined} />
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-6 sm:px-0">
       <div className="mb-8">
@@ -808,6 +856,19 @@ export default function WorkflowEditor() {
           </Link>
         </div>
       </div>
+
+      {builderV2Enabled && (
+        <div className="mb-4">
+          <button
+            type="button"
+            className="px-3 py-1 border rounded"
+            data-testid="builder-v2-toggle"
+            onClick={() => setUseBuilderV2((v) => !v)}
+          >
+            {useBuilderV2 ? 'Switch to Builder V1' : 'Switch to Builder V2'}
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
@@ -1149,6 +1210,7 @@ export default function WorkflowEditor() {
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 mb-1">Provider</label>
                                       <select
+                                        data-testid="model-provider-select"
                                         value={model.provider}
                                         onChange={(e) => {
                                           const nextProvider = e.target.value as PromptModelProvider;
@@ -1170,6 +1232,7 @@ export default function WorkflowEditor() {
                                       <label className="block text-xs font-medium text-gray-700 mb-1">Model name</label>
                                       <input
                                         type="text"
+                                        data-testid="model-name-input"
                                         value={model.model}
                                         onChange={(e) => updateModelConfig(index, model.id!, { model: e.target.value })}
                                         className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
@@ -1225,6 +1288,7 @@ export default function WorkflowEditor() {
                                       min="0"
                                       max="2"
                                       step="0.05"
+                                        data-testid="model-temperature-input"
                                       value={model.parameters?.temperature ?? DEFAULT_MODEL_PARAMETERS.temperature}
                                       onChange={(e) => {
                                         const next = parseFloat(e.target.value);
