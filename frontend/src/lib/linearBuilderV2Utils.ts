@@ -17,9 +17,10 @@ export function parseVariableValue(
     const normalized = raw.trim().toLowerCase();
     if (['true', '1', 'yes', 'y'].includes(normalized)) return { value: true };
     if (['false', '0', 'no', 'n'].includes(normalized)) return { value: false };
-    // Default: treat non-empty as true? Prefer explicit; mark error if not recognized
+    // Empty string: treat as false
     if (normalized === '') return { value: false };
-    return { value: false };
+    // Unrecognized literal: surface an error for clarity (UI typically uses a dropdown)
+    return { value: false, error: 'Invalid boolean' };
   }
   return { value: raw };
 }
@@ -29,14 +30,13 @@ export function toPreviewInputs(extraInputs: ExtraInputRow[], textInput: string)
   const obj: Record<string, unknown> = { workflow: { input: textInput } };
   const wf = obj.workflow as Record<string, unknown>;
   const seen = new Set<string>(['input']);
-  for (const { key, value } of extraInputs) {
-    const k = key.trim();
+  for (const row of extraInputs) {
+    const k = row.key.trim();
     if (!k) continue;
     if (seen.has(k)) continue; // skip duplicates
     seen.add(k);
-    const row = extraInputs.find(r => r.key === key)!;
-    const parsed = parseVariableValue(row.dataType ?? 'string', value);
-    wf[k] = parsed.error ? value : parsed.value;
+    const parsed = parseVariableValue(row.dataType ?? 'string', row.value);
+    wf[k] = parsed.error ? row.value : parsed.value;
   }
   return obj;
 }
@@ -45,14 +45,13 @@ export function toPreviewInputs(extraInputs: ExtraInputRow[], textInput: string)
 export function toFlattenedInputs(extraInputs: ExtraInputRow[], textInput: string): Record<string, unknown> {
   const flat: Record<string, unknown> = { 'workflow.input': textInput };
   const seen = new Set<string>(['input']);
-  for (const { key, value } of extraInputs) {
-    const k = key.trim();
+  for (const row of extraInputs) {
+    const k = row.key.trim();
     if (!k) continue;
     if (seen.has(k)) continue; // skip duplicates and reserved
     seen.add(k);
-    const row = extraInputs.find(r => r.key === key)!;
-    const parsed = parseVariableValue(row.dataType ?? 'string', value);
-    flat[`workflow.${k}`] = parsed.error ? value : parsed.value;
+    const parsed = parseVariableValue(row.dataType ?? 'string', row.value);
+    flat[`workflow.${k}`] = parsed.error ? row.value : parsed.value;
   }
   return flat;
 }

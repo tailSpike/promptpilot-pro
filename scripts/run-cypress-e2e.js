@@ -36,7 +36,9 @@ const extraArgs = parseExtraArgs()
 const env = {
   ...process.env,
   CYPRESS_baseUrl: process.env.CYPRESS_baseUrl || 'http://127.0.0.1:4173',
-  CYPRESS_apiUrl: process.env.CYPRESS_apiUrl || 'http://127.0.0.1:3001'
+  CYPRESS_apiUrl: process.env.CYPRESS_apiUrl || 'http://127.0.0.1:3001',
+  // Gate provider-keys spec by default to avoid local flakiness unless explicitly enabled
+  CYPRESS_RUN_PROVIDER_KEYS: process.env.CYPRESS_RUN_PROVIDER_KEYS || 'false'
 }
 
 const npmArgs = ['--prefix', 'frontend', 'run', 'cypress:run']

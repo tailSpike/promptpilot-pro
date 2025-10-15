@@ -67,20 +67,25 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
         setWorkflowName(wf.name || 'Workflow');
         // Hydrate Additional variables from backend workflow variables (persisted on Save)
         try {
-          const vars: Array<{ name?: string; type?: string; dataType?: 'string'|'number'|'boolean'|'array'|'object'; defaultValue?: unknown }> = Array.isArray(wf.variables) ? wf.variables : [];
+          type VarDto = { name?: string; type?: string; dataType?: 'string'|'number'|'boolean'|'array'|'object'; defaultValue?: unknown };
+          const vars: VarDto[] = Array.isArray(wf.variables) ? wf.variables : [];
+          const pickDataType = (v: VarDto): 'string'|'number'|'boolean' => {
+            if (v.dataType === 'boolean' || v.dataType === 'number' || v.dataType === 'string') return v.dataType;
+            const raw = v.defaultValue;
+            return (typeof raw === 'boolean' ? 'boolean' : typeof raw === 'number' ? 'number' : 'string');
+          };
+          const toRow = (v: VarDto, idx: number) => {
+            const full = String(v?.name || '');
+            return {
+              id: `var-${full}-${idx}`,
+              key: full.replace(/^workflow\./, ''),
+              value: v?.defaultValue != null ? String(v.defaultValue) : '',
+              dataType: pickDataType(v),
+            } as { id: string; key: string; value: string; dataType: 'string'|'number'|'boolean' };
+          };
           const extras = vars
-            .map(v => ({ name: String(v?.name || ''), value: v?.defaultValue, dataType: v?.dataType }))
-            .filter(v => v.name.startsWith('workflow.') && v.name !== 'workflow.input')
-            .map((v, idx) => ({
-              id: `var-${v.name}-${idx}`,
-              key: v.name.replace(/^workflow\./, ''),
-              value: v.value != null ? String(v.value) : '',
-              dataType: ((): 'string' | 'number' | 'boolean' => (
-                v.dataType === 'boolean' || v.dataType === 'number' || v.dataType === 'string'
-                  ? v.dataType
-                  : (typeof v.value === 'boolean' ? 'boolean' : typeof v.value === 'number' ? 'number' : 'string')
-              ))(),
-            }));
+            .filter(v => String(v?.name || '').startsWith('workflow.') && String(v?.name || '') !== 'workflow.input')
+            .map(toRow);
           setExtraInputs(extras);
           setDupKeyError(recalcDupKeys(extras));
         } catch { /* ignore */ }
@@ -547,7 +552,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                       value={v.dataType ?? 'string'}
                       onChange={(e) => {
                         const dt = (e.target.value as 'string'|'number'|'boolean');
-                        setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, dataType: dt, error: dt === 'number' ? parseVariableValue('number', x.value).error : undefined } : x));
+                        const calcError = (dtVal: 'string'|'number'|'boolean', raw: string) => dtVal === 'number' ? parseVariableValue('number', raw).error : undefined;
+                        setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, dataType: dt, error: calcError(dt, x.value) } : x));
                       }}
                     >
                       <option value="string">string</option>
@@ -582,7 +588,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                         value={v.value}
                         onChange={(e) => {
                           const val = e.target.value;
-                          setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, value: val, error: (x.dataType === 'number' ? parseVariableValue('number', val).error : undefined) } : x));
+                          const err = v.dataType === 'number' ? parseVariableValue('number', val).error : undefined;
+                          setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, value: val, error: err } : x));
                         }}
                       />
                     )}

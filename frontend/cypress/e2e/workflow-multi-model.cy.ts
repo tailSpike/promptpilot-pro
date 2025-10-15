@@ -6,6 +6,32 @@ describe('Workflow multi-model execution', () => {
   let workflowId: string;
   let stepId: string;
 
+  const waitForModelsCount = (expectedCount: number, maxAttempts = 30, delayMs = 500) => {
+    let attempt = 0;
+    const doCheck = (): Cypress.Chainable<void> => {
+      attempt += 1;
+      return cy
+        .request({
+          method: 'GET',
+          url: `${apiUrl}/api/workflows/${workflowId}`,
+          headers: { Authorization: `Bearer ${testUser.token}` },
+        })
+        .then((response) => {
+          const step = response.body.steps.find((s: { id: string }) => s.id === stepId);
+          const cfg = typeof step?.config === 'string' ? JSON.parse(step.config) : step?.config;
+          const modelsLen = (cfg?.models ?? []).length;
+          if (modelsLen >= expectedCount) {
+            return;
+          }
+          if (attempt >= maxAttempts) {
+            throw new Error(`Timed out waiting for models length to reach ${expectedCount} (last seen ${modelsLen}) after ${maxAttempts} attempts`);
+          }
+          return cy.wait(delayMs).then(doCheck);
+        });
+    };
+    return doCheck();
+  };
+
   const registerTestUser = () => {
     const now = Date.now();
     const userData = {
@@ -227,6 +253,9 @@ describe('Workflow multi-model execution', () => {
           });
       });
 
+    // Ensure the second model and edits have persisted server-side before reloading
+    waitForModelsCount(2, 40, 500);
+
     cy.reload();
     cy.wait('@getWorkflow').then((interception) => {
       expect(interception?.response?.statusCode, 'reload workflow status').to.eq(200);
@@ -251,7 +280,7 @@ describe('Workflow multi-model execution', () => {
       const step = response.body.steps.find((s: { id: string }) => s.id === stepId);
       expect(step?.id, 'workflow step fetched from API').to.equal(stepId);
       const config = typeof step.config === 'string' ? JSON.parse(step.config) : step.config;
-      expect(config.models).to.have.length(2);
+      expect(config.models, 'models array persisted').to.have.length(2);
       expect(config.models.map((m: { provider: string }) => m.provider)).to.include.members(['openai', 'anthropic']);
   const concurrency = config.modelRouting?.concurrency;
   expect([undefined, 2]).to.include(concurrency);
