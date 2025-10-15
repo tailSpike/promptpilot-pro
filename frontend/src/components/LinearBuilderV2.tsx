@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { workflowsAPI } from '../services/api';
 import { toPreviewInputs as buildPreviewInputs, toFlattenedInputs as buildFlattenedInputs, interpolate as applyInterpolation, recalcDupKeys, buildStepOutputVariableList, buildOutputsDataMap, extractStepOutputRefs, parseVariableValue } from '../lib/linearBuilderV2Utils';
@@ -26,6 +26,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   const navigate = useNavigate();
   const [steps, setSteps] = useState<StepState[]>([]);
   const [selectedField, setSelectedField] = useState<string | null>(null);
+  // Keep refs to prompt content inputs to support insertion at cursor
+  const promptInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   // Primary input as plain text; additional variables as key/value pairs
   const [textInput, setTextInput] = useState<string>('World');
   const [extraInputs, setExtraInputs] = useState<Array<{ id: string; key: string; value: string; dataType?: 'string' | 'number' | 'boolean'; error?: string }>>([]);
@@ -153,9 +155,22 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       const token = `{{${variable}}}`;
       // Avoid duplicate insertion if token already present
       if (current.includes(token)) return s;
-      const sep = current.length > 0 && !current.endsWith(' ') ? ' ' : '';
-      const nextContent = current + sep + token;
-      return { ...s, config: { ...s.config, promptContent: nextContent } };
+      // Insert at cursor position if we have a ref; otherwise append
+      const inputEl = promptInputRefs.current[stepId] ?? null;
+      if (inputEl && typeof inputEl.selectionStart === 'number' && typeof inputEl.selectionEnd === 'number') {
+        const start = inputEl.selectionStart ?? current.length;
+        const end = inputEl.selectionEnd ?? start;
+        const before = current.slice(0, start);
+        const after = current.slice(end);
+        const needsSpaceBefore = before.length > 0 && !before.endsWith(' ');
+        const needsSpaceAfter = after.length > 0 && !after.startsWith(' ');
+        const nextContent = `${before}${needsSpaceBefore ? ' ' : ''}${token}${needsSpaceAfter ? ' ' : ''}${after}`;
+        return { ...s, config: { ...s.config, promptContent: nextContent } };
+      } else {
+        const sep = current.length > 0 && !current.endsWith(' ') ? ' ' : '';
+        const nextContent = current + sep + token;
+        return { ...s, config: { ...s.config, promptContent: nextContent } };
+      }
     }));
     // Auto-add variable rows for any new workflow.<key> references (except workflow.input)
     setExtraInputs(prev => {
@@ -497,6 +512,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                   value={step.config.promptContent ?? ''}
                   onChange={(e) => handlePromptContentChange(step.id, e.target.value)}
                   onFocus={() => onSelectPromptField(step.id)}
+                  ref={(el) => { promptInputRefs.current[step.id] = el; }}
                 />
               </div>
               {!step.config.promptContent ? (

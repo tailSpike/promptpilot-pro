@@ -92,4 +92,36 @@ describe('LinearBuilderV2 component', () => {
     const strValInput = screen.getAllByPlaceholderText('value')[0] as HTMLInputElement;
     expect(strValInput).toBeInTheDocument();
   });
+
+  it('inserts variable token at cursor position within prompt content', async () => {
+    render(
+      <MemoryRouter>
+        <LinearBuilderV2 />
+      </MemoryRouter>
+    );
+    // Add two steps
+    fireEvent.click(screen.getByTestId('add-step'));
+    fireEvent.click(screen.getByTestId('step-type-PROMPT'));
+    fireEvent.click(screen.getByTestId('add-step'));
+    fireEvent.click(screen.getByTestId('step-type-PROMPT'));
+
+    // Focus step 2 input and place cursor in middle of text
+    const stepInputs = screen.getAllByTestId('input-field-promptContent') as HTMLInputElement[];
+    const second = stepInputs[1];
+    // Set initial content
+    fireEvent.change(second, { target: { value: 'Start End' } });
+  // Focus and set selection between words (after 'Start')
+  fireEvent.focus(second);
+  // jsdom supports setting selectionStart/End directly
+  second.setSelectionRange?.(5, 5);
+
+    // Click variable from list
+    const varItem = screen.getByTestId('variable-item-workflow.input');
+    fireEvent.click(varItem);
+
+    // Expect token inserted with spacing preserved
+    await new Promise((r) => setTimeout(r, 0));
+    const updated = screen.getAllByTestId('input-field-promptContent')[1] as HTMLInputElement;
+    expect(updated.value).toContain('Start {{workflow.input}} End');
+  });
 });
