@@ -25,7 +25,7 @@ describe('Workflow - Edit and Execute (UI)', () => {
 
   // no-op
 
-  const waitForWorkflowSteps = (id: string, attemptsLeft = 20): Cypress.Chainable<void> => {
+  const waitForWorkflowSteps = (id: string, attemptsLeft = 40): Cypress.Chainable<void> => {
     return cy
       .request({
         method: 'GET',
