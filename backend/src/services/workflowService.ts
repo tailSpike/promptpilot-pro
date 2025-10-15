@@ -886,6 +886,26 @@ export class WorkflowService {
         } else if (Object.keys(exportedAliases).length > 0) {
           currentInput = { ...currentInput, ...exportedAliases };
         }
+
+        // Expose stable step-id-based output tokens to downstream steps for prompt substitution.
+        // This mirrors the frontend preview tokens like {{step.<id>.output.text}}.
+        try {
+          const primaryText = (stepOutput && typeof stepOutput === 'object')
+            ? ((stepOutput as any).generatedText ?? (stepOutput as any).text ?? (stepOutput as any).outputText)
+            : undefined;
+          if (typeof primaryText === 'string') {
+            // Flat key replacement support (exact-key matching in executePromptStep)
+            (currentInput as any)[`step.${step.id}.output.text`] = primaryText;
+            // Nested structure for potential dot-walks or future use
+            const ci: any = currentInput as any;
+            if (!ci.step) ci.step = {};
+            if (!ci.step[step.id]) ci.step[step.id] = {};
+            if (!ci.step[step.id].output) ci.step[step.id].output = {};
+            ci.step[step.id].output.text = primaryText;
+          }
+        } catch {
+          // Non-fatal: token exposure is best-effort
+        }
       }
 
       // All steps completed successfully

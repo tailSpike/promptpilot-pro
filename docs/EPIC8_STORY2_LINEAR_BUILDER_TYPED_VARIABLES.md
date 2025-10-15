@@ -50,6 +50,72 @@ Testing (Testing Trophy):
 ## Next Steps
 None — all acceptance criteria for Story 2 are implemented and covered by tests. 
 
+## Manual Test Steps
+
+Use these step-by-step flows to manually validate Story 2 in a browser. They mirror the automated E2E coverage and acceptance criteria.
+
+Prerequisites
+- Backend and frontend are running (local or test environment).
+  - Local quickstart: run the repo’s E2E servers or the start scripts described in README.
+- Feature flag builder.v2.linear is enabled in the UI (toggle Builder V2, then choose Linear).
+
+Scenario A — Typed variables: create, save, reload (hydration)
+1) Create a new workflow and switch to Linear Builder V2.
+2) Add a Prompt step.
+3) Open the Data Inspector.
+4) Click “Add variable” three times to add 3 rows.
+5) Configure rows:
+  - Row 1: Type “string”; Key “topic”; Value “Testing”.
+  - Row 2: Type “number”; Key “count”; Value “3”.
+  - Row 3: Type “boolean”; Key “enabled”; Value true (use dropdown).
+6) Enter a workflow name and click Save.
+7) After redirect, reopen Data Inspector and verify:
+  - Keys remain: topic, count, enabled.
+  - Types hydrated: string, number, boolean.
+  - Values hydrated: “Testing”, 3, true.
+
+Scenario B — Step output binding: insert token and persist
+1) Ensure at least 2 Prompt steps exist.
+2) In Step 1’s prompt, enter: `Hello {{workflow.input}}` (or any content).
+3) Click Preview.
+4) In the Variable Inspector, find the “Step Outputs” group.
+5) Focus Step 2’s prompt input (click in the text field).
+6) Click the first step output item; expect a token to be inserted at the cursor (e.g., `{{step.<id>.output.text}}`).
+7) Save, then verify after redirect the token remains in Step 2.
+8) Reload the page; verify the token is still present (persisted binding).
+
+Troubleshooting — “Step Outputs” not visible
+- The Step Outputs list appears only after a successful Preview. If your preview timeline shows “error” for steps (common on saved workflows without active provider keys), the group won’t render.
+- Quick fixes:
+  - Run Preview before saving (create a new workflow and click Preview while it has no ID). In this mode, the UI simulates output locally and the Step Outputs group will appear.
+  - Or add at least one active provider credential in Settings → Integration Keys, then re-run Preview on the saved workflow.
+  - If your environment enforces revoked keys, switch back to an unsaved workflow for this scenario.
+
+Scenario C — Forward reference detection and Save gating
+1) From Scenario B state (Step 2 references Step 1 output), move Step 2 above Step 1 (reorder up).
+2) Expect an inline forward-reference warning on the now-first step.
+3) Verify the Save button is disabled while the warning is present.
+4) Reorder back to a valid order; warning disappears and Save becomes enabled again.
+
+Scenario D — Delete typed variable and persist
+1) Open Data Inspector.
+2) Delete one of the previously created variables (e.g., “enabled”).
+3) Save, reload, and verify the deleted variable row is absent.
+
+Scenario E — Edge cases (quick checks)
+1) Idempotent Save: Save twice without changes; verify no duplicate variables or extra bindings are created.
+2) Reserved key: Try to add a variable with key “input”; expect validation to reject.
+3) Duplicate key: Add two variables with the same key; expect duplicate-key validation to block Save.
+4) Boolean coercion: In a boolean-type row, try entering common literals (true/false/1/0/yes/no) and verify they coerce or can be selected via the dropdown.
+5) Number validation: In a number-type row, enter an invalid value (e.g., “abc”); expect inline error and Save disabled until corrected.
+
+Expected Outcomes
+- Typed variables round-trip with correct types and values.
+- Step outputs appear only after Preview and can be inserted as tokens at the caret.
+- Output tokens persist after Save and page reload.
+- Forward references show warnings and prevent Save until resolved.
+- Deletes persist after Save + reload; Save is idempotent.
+
 ## Non-Goals (Defer)
 - Complex object/array types.
 - Dynamic schema inference or validation rules beyond simple type parse.

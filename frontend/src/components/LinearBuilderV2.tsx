@@ -340,6 +340,22 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   // Duplicate key detection and guards
   // recalcDupKeys imported from utils
 
+  // Aggregate Save disabling reasons for UX (tooltip + summary + a11y)
+  const saveDisabledReasons = useMemo(() => {
+    const reasons: string[] = [];
+    if (!workflowName.trim()) reasons.push('Workflow name is required');
+    if (steps.length === 0) reasons.push('At least one step is required');
+    if (!isValid) reasons.push('All steps must have prompt content');
+    if (dupKeyError) reasons.push(dupKeyError);
+    if (hasTypeErrors) reasons.push('Fix invalid variable values (e.g., number/boolean)');
+    if (hasForwardRefErrors) reasons.push('Resolve forward references to later step outputs');
+    return reasons;
+  }, [workflowName, steps.length, isValid, dupKeyError, hasTypeErrors, hasForwardRefErrors]);
+
+  const isSaveDisabled = saving || saveDisabledReasons.length > 0;
+  const saveReasonsSummary = saveDisabledReasons.join('; ');
+  const saveReasonsId = 'save-disabled-reasons';
+
   return (
     <div className="w-full" data-testid="builder-v2-linear">
       {/* Controls */}
@@ -353,9 +369,12 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
           onChange={(e) => setWorkflowName(e.target.value)}
         />
         <button
-          className="px-2 py-1 border rounded"
+          className={`px-2 py-1 border rounded ${isSaveDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           data-testid="save-workflow"
-          disabled={saving || !workflowName.trim() || steps.length === 0 || !!dupKeyError || hasTypeErrors || hasForwardRefErrors}
+          disabled={isSaveDisabled}
+          aria-disabled={isSaveDisabled}
+          aria-describedby={isSaveDisabled ? saveReasonsId : undefined}
+          title={isSaveDisabled ? `Cannot save: ${saveReasonsSummary}` : ''}
           onClick={async () => {
             try {
               setSaving(true);
@@ -450,6 +469,11 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
             }
           }}
         >{saving ? 'Saving…' : 'Save Workflow'}</button>
+        {isSaveDisabled && saveDisabledReasons.length > 0 ? (
+          <div id={saveReasonsId} className="text-xs text-red-700" data-testid="save-disabled-reasons">
+            Cannot save: {saveDisabledReasons[0]}{saveDisabledReasons.length > 1 ? ` (+${saveDisabledReasons.length - 1} more)` : ''}
+          </div>
+        ) : null}
         <button className="px-2 py-1 border rounded" data-testid="add-step" onClick={() => setShowTypeChooser(true)}>Add Step</button>
         {showDataInspector ? null : (
           <button className="px-2 py-1 border rounded" data-testid="data-inspector-toggle" onClick={() => setShowDataInspector(true)}>Data</button>
