@@ -135,14 +135,17 @@ describe('Linear Builder V2 - Typed variables and Step Output binding', () => {
       cy.get('[data-testid="input-field-promptContent"]').clear().type('Hello {{workflow.input}}', { parseSpecialCharSequences: false });
     });
     cy.get('[data-testid="step-card"]').eq(1).within(() => {
-      cy.get('[data-testid="input-field-promptContent"]').clear().type('Second:');
-      cy.get('[data-testid="input-field-promptContent"]').click();
+      cy.get('[data-testid="input-field-promptContent"]').as('step2Input');
+      cy.get('@step2Input').clear().type('Second:');
+      // Ensure the input is focused so variable insertion uses the caret position
+      cy.get('@step2Input').click().should('be.focused');
     });
     cy.get('[data-testid="preview-run"]').click();
     // Step outputs should appear; click first output to insert into step 2
     cy.get('[data-testid="variable-inspector"]').within(() => {
       cy.contains('Step Outputs');
-      cy.get('[data-testid^="variable-item-step."]').first().click();
+      // Wait for at least one step output item to be present before clicking
+      cy.get('[data-testid^="variable-item-step."]').should('have.length.at.least', 1).first().click();
     });
     cy.get('[data-testid="step-card"]').eq(1).within(() => {
       cy.get('[data-testid="input-field-promptContent"]').should('contain.value', '{{step.');
@@ -162,13 +165,12 @@ describe('Linear Builder V2 - Typed variables and Step Output binding', () => {
     });
     // Reorder to make forward reference invalid: move step 2 up
     cy.get('[data-testid="step-card"]').eq(1).within(() => { cy.contains('button', '▲').click(); });
-    // Allow UI to recompute invalid states, optionally preview again, then ensure Save is disabled
-    cy.get('[data-testid="preview-run"]').click({ force: true });
-    cy.get('[data-testid="save-workflow"]').should('be.disabled');
-    // Inline warning should be present on the now-first card (it references future step)
+    // Wait for the forward-ref warning to appear on the now-first card
     cy.get('[data-testid="step-card"]').eq(0).within(() => {
       cy.get('[data-testid="output-forward-ref-warning"]').should('exist');
     });
+    // Ensure Save becomes disabled once invalid state is detected
+    cy.get('[data-testid="save-workflow"]').should('be.disabled');
     // Reorder back to valid order and ensure warning clears and Save re-enables
     cy.get('[data-testid="step-card"]').eq(0).within(() => { cy.contains('button', '▼').click(); });
     cy.get('[data-testid="step-card"]').eq(1).within(() => {
