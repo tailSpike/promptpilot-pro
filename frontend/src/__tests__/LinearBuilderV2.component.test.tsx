@@ -41,4 +41,55 @@ describe('LinearBuilderV2 component', () => {
     fireEvent.change(nameInput, { target: { value: 'My Workflow' } });
     expect((screen.getByTestId('save-workflow') as HTMLButtonElement).disabled).toBe(false);
   });
+
+  it('typed select switching preserves key; boolean toggle works; invalid number blocks Save', async () => {
+    render(
+      <MemoryRouter>
+        <LinearBuilderV2 />
+      </MemoryRouter>
+    );
+
+    // Add a step so Save can enable when valid
+    fireEvent.click(screen.getByTestId('add-step'));
+    fireEvent.click(screen.getByTestId('step-type-PROMPT'));
+
+    // Open Data inspector and add a variable row
+    fireEvent.click(screen.getByTestId('data-inspector-toggle'));
+    fireEvent.click(screen.getByText('Add variable'));
+
+    const nameInput = screen.getByTestId('workflow-name-input') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'Typed Test' } });
+
+    const keyInput = screen.getAllByPlaceholderText('key')[0] as HTMLInputElement;
+    const valInput = screen.getAllByPlaceholderText('value')[0] as HTMLInputElement;
+    const typeSelect = screen.getByTestId('data-inspector').querySelector('select[data-testid="data-inspector-var-type"]') as HTMLSelectElement;
+
+    // Set key/value
+    fireEvent.change(keyInput, { target: { value: 'num' } });
+    // Switch to number type and enter invalid value
+    fireEvent.change(typeSelect, { target: { value: 'number' } });
+    fireEvent.change(valInput, { target: { value: 'abc' } });
+
+    // Save should be disabled due to invalid number
+    expect((screen.getByTestId('save-workflow') as HTMLButtonElement).disabled).toBe(true);
+
+    // Fix number and ensure Save enabled
+    fireEvent.change(valInput, { target: { value: '123' } });
+    expect((screen.getByTestId('save-workflow') as HTMLButtonElement).disabled).toBe(false);
+
+    // Switch to boolean type; key should be preserved and boolean dropdown visible
+    fireEvent.change(typeSelect, { target: { value: 'boolean' } });
+    expect(keyInput.value).toBe('num');
+    const boolSelect = screen.getByTestId('data-inspector').querySelector('select[data-testid="data-inspector-var-value-boolean"]') as HTMLSelectElement;
+    expect(boolSelect).toBeInTheDocument();
+    // Toggle boolean value to false
+    fireEvent.change(boolSelect, { target: { value: 'false' } });
+    expect(boolSelect.value).toBe('false');
+
+    // Switch back to string; key preserved, input shown
+    fireEvent.change(typeSelect, { target: { value: 'string' } });
+    expect(keyInput.value).toBe('num');
+    const strValInput = screen.getAllByPlaceholderText('value')[0] as HTMLInputElement;
+    expect(strValInput).toBeInTheDocument();
+  });
 });

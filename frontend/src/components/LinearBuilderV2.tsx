@@ -65,15 +65,19 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
         setWorkflowName(wf.name || 'Workflow');
         // Hydrate Additional variables from backend workflow variables (persisted on Save)
         try {
-          const vars: Array<{ name?: string; type?: string; defaultValue?: unknown }> = Array.isArray(wf.variables) ? wf.variables : [];
+          const vars: Array<{ name?: string; type?: string; dataType?: 'string'|'number'|'boolean'|'array'|'object'; defaultValue?: unknown }> = Array.isArray(wf.variables) ? wf.variables : [];
           const extras = vars
-            .map(v => ({ name: String(v?.name || ''), value: v?.defaultValue }))
+            .map(v => ({ name: String(v?.name || ''), value: v?.defaultValue, dataType: v?.dataType }))
             .filter(v => v.name.startsWith('workflow.') && v.name !== 'workflow.input')
             .map((v, idx) => ({
               id: `var-${v.name}-${idx}`,
               key: v.name.replace(/^workflow\./, ''),
               value: v.value != null ? String(v.value) : '',
-              dataType: ((): 'string' | 'number' | 'boolean' => (typeof v.value === 'boolean' ? 'boolean' : typeof v.value === 'number' ? 'number' : 'string'))(),
+              dataType: ((): 'string' | 'number' | 'boolean' => (
+                v.dataType === 'boolean' || v.dataType === 'number' || v.dataType === 'string'
+                  ? v.dataType
+                  : (typeof v.value === 'boolean' ? 'boolean' : typeof v.value === 'number' ? 'number' : 'string')
+              ))(),
             }));
           setExtraInputs(extras);
           setDupKeyError(recalcDupKeys(extras));
@@ -178,6 +182,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       const next = [...prev];
       const [removed] = next.splice(index, 1);
       next.splice(target, 0, removed);
+      // Recompute forward-ref invalids immediately on reorder
+      recomputeForwardRefs(next);
       return next;
     });
   };
@@ -372,16 +378,42 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                 // Non-fatal: continue even if we fail to load/delete existing steps
                 console.warn('Save workflow: unable to load/delete existing steps', e);
               }
-              // Persist new steps sequentially with fresh ordering
+              // Persist new steps sequentially with fresh ordering and remap local ids to server ids
+              const idMap = new Map<string, string>(); // localId -> serverId
+              const createdSteps: Array<{ localId: string; serverId: string; order: number; name: string; originalContent: string }>= [];
               for (let i = 0; i < steps.length; i++) {
                 const s = steps[i];
                 const promptContent = (s.config.promptContent ?? '').trim();
-                await workflowsAPI.createStep(id, {
+                const resp = await workflowsAPI.createStep(id, {
                   name: s.name || `${s.type} ${i + 1}`,
                   type: 'PROMPT',
                   order: i + 1,
                   config: { promptContent },
                 });
+                const serverStepId = resp?.id ?? resp?.data?.id ?? resp?.step?.id;
+                if (serverStepId) {
+                  idMap.set(s.id, serverStepId);
+                  createdSteps.push({ localId: s.id, serverId: serverStepId, order: i + 1, name: s.name, originalContent: promptContent });
+                }
+              }
+              // Second pass: update any tokens that reference local ids with server ids for stable references
+              const replaceLocalWithServer = (content: string): string => {
+                return content.replace(/{{\s*step\.([A-Za-z0-9_-]+)\.output\.text\s*}}/g, (_m, localId) => {
+                  const server = idMap.get(localId);
+                  const targetId = server ?? localId;
+                  return `{{step.${targetId}.output.text}}`;
+                });
+              };
+              for (const s of createdSteps) {
+                const updatedContent = replaceLocalWithServer(s.originalContent);
+                if (updatedContent !== s.originalContent) {
+                  await workflowsAPI.updateStep(id, s.serverId, {
+                    name: s.name || `PROMPT ${s.order}`,
+                    type: 'PROMPT',
+                    order: s.order,
+                    config: { promptContent: updatedContent },
+                  });
+                }
               }
               // Redirect to edit route and keep V2 enabled so Run is available immediately
               navigate(`/workflows/${id}/edit?v2=1`);

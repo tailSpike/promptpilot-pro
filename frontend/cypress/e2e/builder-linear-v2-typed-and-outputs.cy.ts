@@ -43,7 +43,7 @@ describe('Linear Builder V2 - Typed variables and Step Output binding', () => {
     cy.contains('Add variable').click();
     cy.contains('Add variable').click();
 
-    cy.get('[data-testid="data-inspector"]').within(() => {
+  cy.get('[data-testid="data-inspector"]').within(() => {
       cy.get('[data-testid="data-inspector-var-row"]').eq(0).within(() => {
         cy.get('select[data-testid="data-inspector-var-type"]').select('string');
         cy.get('input[placeholder="key"]').type('topic');
@@ -68,20 +68,60 @@ describe('Linear Builder V2 - Typed variables and Step Output binding', () => {
     cy.get('[data-testid="data-inspector-toggle"]').click();
     cy.get('[data-testid="data-inspector"]').within(() => {
       cy.get('[data-testid="data-inspector-var-row"]').should('have.length', 3);
-      cy.get('[data-testid="data-inspector-var-row"]').eq(0).within(() => {
+      // Assert by key value, not by index ordering
+      const assertRowByKey = (key: string, cb: () => void) => {
+        cy.get('[data-testid="data-inspector-var-row"]').then(($rows) => {
+          const row = Array.from($rows).find((r) => {
+            const keyInput = r.querySelector('input[placeholder="key"]') as HTMLInputElement | null;
+            return keyInput?.value === key;
+          });
+          cy.wrap(row, { log: false }).should('exist');
+          cy.wrap(row!).within(cb);
+        });
+      };
+      assertRowByKey('topic', () => {
         cy.get('select[data-testid="data-inspector-var-type"]').should('have.value', 'string');
-        cy.get('input[placeholder="key"]').should('have.value', 'topic');
         cy.get('input[placeholder="value"]').should('have.value', 'Testing');
       });
-      cy.get('[data-testid="data-inspector-var-row"]').eq(1).within(() => {
+      assertRowByKey('count', () => {
         cy.get('select[data-testid="data-inspector-var-type"]').should('have.value', 'number');
-        cy.get('input[placeholder="key"]').should('have.value', 'count');
         cy.get('input[placeholder="value"]').should('have.value', '3');
       });
-      cy.get('[data-testid="data-inspector-var-row"]').eq(2).within(() => {
+      assertRowByKey('enabled', () => {
         cy.get('select[data-testid="data-inspector-var-type"]').should('have.value', 'boolean');
-        cy.get('input[placeholder="key"]').should('have.value', 'enabled');
         cy.get('select[data-testid="data-inspector-var-value-boolean"]').should('have.value', 'true');
+      });
+    });
+
+    // Now delete one typed variable, save, reload, verify it's absent
+    const deleteRowByKey = (key: string) => {
+      cy.get('[data-testid="data-inspector"]').within(() => {
+        cy.get('[data-testid="data-inspector-var-row"]').then(($rows) => {
+          const row = Array.from($rows).find((r) => {
+            const keyInput = r.querySelector('input[placeholder="key"]') as HTMLInputElement | null;
+            return keyInput?.value === key;
+          });
+          cy.wrap(row!, { log: false }).within(() => {
+            cy.contains('button', '×').click();
+          });
+        });
+      });
+    };
+    deleteRowByKey('enabled');
+    cy.get('[data-testid="save-workflow"]').click();
+    cy.url().should('match', /\/workflows\/[^/]+\/edit\?v2=1$/);
+    cy.reload();
+    cy.get('[data-testid="builder-v2-linear"]').should('exist');
+    cy.get('[data-testid="data-inspector-toggle"]').click();
+    cy.get('[data-testid="data-inspector"]').within(() => {
+      cy.get('[data-testid="data-inspector-var-row"]').should('have.length', 2);
+      // Assert 'enabled' key no longer present
+      cy.get('[data-testid="data-inspector-var-row"]').then(($rows) => {
+        const hasEnabled = Array.from($rows).some((r) => {
+          const keyInput = r.querySelector('input[placeholder="key"]') as HTMLInputElement | null;
+          return keyInput?.value === 'enabled';
+        });
+        expect(hasEnabled).to.eq(false);
       });
     });
   });
@@ -92,7 +132,7 @@ describe('Linear Builder V2 - Typed variables and Step Output binding', () => {
     addPromptStep();
     // Ensure prompt content has a deterministic text
     cy.get('[data-testid="step-card"]').eq(0).within(() => {
-      cy.get('[data-testid="input-field-promptContent"]').clear().type('Hello {{workflow.input}}');
+      cy.get('[data-testid="input-field-promptContent"]').clear().type('Hello {{workflow.input}}', { parseSpecialCharSequences: false });
     });
     cy.get('[data-testid="step-card"]').eq(1).within(() => {
       cy.get('[data-testid="input-field-promptContent"]').clear().type('Second:');
@@ -114,10 +154,26 @@ describe('Linear Builder V2 - Typed variables and Step Output binding', () => {
     cy.get('[data-testid="step-card"]').eq(1).within(() => {
       cy.get('[data-testid="input-field-promptContent"]').should('contain.value', '{{step.');
     });
+    // Explicit page reload and re-assert binding
+    cy.reload();
+    cy.get('[data-testid="builder-v2-linear"]').should('exist');
+    cy.get('[data-testid="step-card"]').eq(1).within(() => {
+      cy.get('[data-testid="input-field-promptContent"]').should('contain.value', '{{step.');
+    });
     // Reorder to make forward reference invalid: move step 2 up
     cy.get('[data-testid="step-card"]').eq(1).within(() => { cy.contains('button', '▲').click(); });
+    // Allow UI to recompute invalid states, optionally preview again, then ensure Save is disabled
+    cy.get('[data-testid="preview-run"]').click({ force: true });
+    cy.get('[data-testid="save-workflow"]').should('be.disabled');
+    // Inline warning should be present on the now-first card (it references future step)
     cy.get('[data-testid="step-card"]').eq(0).within(() => {
       cy.get('[data-testid="output-forward-ref-warning"]').should('exist');
     });
+    // Reorder back to valid order and ensure warning clears and Save re-enables
+    cy.get('[data-testid="step-card"]').eq(0).within(() => { cy.contains('button', '▼').click(); });
+    cy.get('[data-testid="step-card"]').eq(1).within(() => {
+      cy.get('[data-testid="output-forward-ref-warning"]').should('not.exist');
+    });
+    cy.get('[data-testid="save-workflow"]').should('not.be.disabled');
   });
 });
