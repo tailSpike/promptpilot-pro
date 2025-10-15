@@ -26,7 +26,8 @@ jobs:
   # Recorded run to Cypress Cloud with parallelization
   cypress-run-recorded:
     needs: prep
-    if: ${{ needs.prep.outputs.has_record_key == 'true' }}
+    # Only record on pushes to primary branches to avoid PRs failing due to Cypress Cloud plan limits
+    if: ${{ needs.prep.outputs.has_record_key == 'true' && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop') }}
     runs-on: ubuntu-latest
     env:
       # Make secrets available to all steps in this job
@@ -77,10 +78,28 @@ jobs:
           CYPRESS_baseUrl: http://localhost:4173
           CYPRESS_apiUrl: http://localhost:3001
 
+      # Upload artifacts for debugging recorded runs as well
+      - name: Upload Cypress screenshots (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: frontend/cypress/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload Cypress videos (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: frontend/cypress/videos
+          if-no-files-found: ignore
+
   # Unrecorded run (single container, no parallel)
   cypress-run-unrecorded:
     needs: prep
-    if: ${{ needs.prep.outputs.has_record_key != 'true' }}
+    # Run unrecorded if we don't have a record key OR if this is not a primary-branch push (e.g., PRs)
+    if: ${{ needs.prep.outputs.has_record_key != 'true' || github.event_name != 'push' || !(github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop') }}
     runs-on: ubuntu-latest
     env:
       NPM_CONFIG_PRODUCTION: 'false'
