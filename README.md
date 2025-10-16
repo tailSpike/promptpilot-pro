@@ -1,108 +1,72 @@
 # 🚀 PromptPilot Pro
 
-PromptPilot Pro is an AI workflow operations platform that helps teams design, execute, and monitor structured prompts plus automation triggers in a single workspace. The monorepo ships a production-ready TypeScript API, a modern React dashboard, and a scheduling layer that keeps workflows on time.
+PromptPilot Pro is an AI workflow platform to design, execute, and monitor structured prompts and automations. This monorepo includes a TypeScript API (Express + Prisma), a React dashboard (Vite), and a lightweight scheduler.
 
 ---
 
-## 🌟 Feature highlights
-
-### Core workspace
-- Secure JWT authentication, scoped resources, and folder-based organization
-- Prompt authoring with variable templates, metadata, and semantic version history
-- Branch-aware prompt management with diff-friendly audit trails
-
-### Collaboration & sharing (Epic 3 Story 1)
-- Owner-to-viewer library sharing under feature flag `collaboration.sharing`
-- Share modal with member search, invite rate limiting, and revoke controls
-- "Shared with me" workspace view for read-only access to approved prompts
-- Audit, analytics, and email hooks wired for compliance-ready telemetry
-
-### Workflow automation
-- Drag-and-drop workflow builder with PROMPT, CONDITION, TRANSFORM, DELAY, WEBHOOK, and DECISION steps
-- Rich configuration forms, inline validation, and live preview of downstream variables
-- Execution history with recent run summaries and step-level logging
-
-### Testing & preview (Epic 2 Story 3)
-- One-click workflow previews with manual JSON input or auto-generated sample data
-- Step-by-step result explorer with duration, token estimates, warnings, and error stacks
-- Final output sandbox that highlights the executed payload without persisting history
-- Cypress end-to-end coverage for preview flows, including validation, sample-data toggles, and manual payloads
-
-### Trigger automation (Epic 2 Story 2)
-- Five trigger types: **Manual**, **Scheduled**, **Webhook**, **API**, and **Event** (extensible scaffold)
-- `TriggerService` drives node-cron scheduling with graceful startup/shutdown and timezone support
-- Secure secrets: automatic webhook HMAC secrets & API keys scoped per trigger
-- Frontend trigger console with simple/advanced scheduling modes, cron helpers, and inline examples
-- Execution metadata captured on the backend for upcoming workflow-run integration
-
-### Developer experience
-- Type-safe React + Vite frontend and Express + Prisma backend
-- PowerShell & Bash scripts for start/stop/status, Prisma sync, database resets, and hook installation
-- GitHub Actions CI covering linting, builds, unit/integration tests, and Cypress smoke flows
+## ✨ Features
+- Authenticated workspace with folders and scoped resources
+- Prompt authoring with variables, metadata, and version history
+- Workflow builder with PROMPT, CONDITION, TRANSFORM, DELAY, WEBHOOK, DECISION steps
+- Preview and inspect step-by-step results before saving
+- Triggers: Manual, Scheduled (cron), Webhook, API, Event (extensible)
+- Type-safe stack: React + Vite frontend, Express + Prisma backend
+- CI: Lint, build, unit/integration tests, and Cypress smoke flows
 
 ---
 
-## 🧭 Architecture snapshot
-- **Monorepo layout**: `backend/` (Express API, Prisma, scheduling), `frontend/` (React SPA), `docs/` (living architecture reference), `scripts/`.
-- **API layer**: Express routes backed by service classes (`WorkflowService`, `TriggerService`, etc.) with Zod validation and Prisma data access.
-- **Scheduler**: `TriggerService` hydrates active cron jobs on boot, persists configs in `workflow_triggers`, and tears them down during shutdown.
-- **Database**: SQLite for development/test with Prisma migrations; PostgreSQL-ready for production via `DATABASE_URL` swap.
-- **Frontend**: Vite + Tailwind UI consuming the REST API with shared TypeScript models and trigger-focused UX.
+## 🧭 Architecture (high-level)
+- Monorepo: `backend/` (API, Prisma, scheduling), `frontend/` (SPA), `docs/` (guides), `scripts/`
+- API: Express routes with service layer (e.g., `WorkflowService`, `TriggerService`), Zod validation, Prisma data access
+- Scheduler: `TriggerService` provisions cron jobs and handles lifecycle
+- Database: SQLite for dev/test; PostgreSQL-ready via `DATABASE_URL`
 
 ---
 
-## ⚡ Getting started
+## ⚡ Quick start
 
 ### Prerequisites
-- Node.js 18+ (20 recommended) & npm 9+
+- Node.js 18+ (20 recommended) and npm 9+
 - PowerShell 5.1+ (Windows) or Bash/Zsh (macOS/Linux)
-- Git
-- SQLite (bundled) or PostgreSQL for production deployments
 
 ### One-command bootstrap (Windows PowerShell)
 ```powershell
-# Clone and launch everything with managed processes
 git clone https://github.com/tailSpike/promptpilot-pro.git
 cd promptpilot-pro
 ./start.ps1
-
-# Check service status
-./status.ps1
-
-# Stop services when finished
-./stop.ps1
+./status.ps1   # optional
 ```
 
 ### Manual setup (cross-platform)
 ```bash
-# Install workspace dependencies
 npm run install:all
 
-# Prepare and start the backend (terminal 1)
+# Terminal 1: backend
 cd backend
 npx prisma generate
 npx prisma db push
 npm run dev
 
-# Start the frontend (terminal 2)
+# Terminal 2: frontend
 cd frontend
 npm run dev
 ```
-Frontend runs on `http://localhost:5173`, backend on `http://localhost:3001` by default.
+Frontend: http://localhost:5173 • Backend: http://localhost:3001
 
-### Environment variables
-Create `.env` files in both `backend/` and `frontend/` directories.
+---
 
-**backend/.env**
+## 🔧 Configuration
+Create `.env` files in `backend/` and `frontend/`.
+
+backend/.env
 ```
-DATABASE_URL="file:./prisma/dev.db"     # Swap to postgres:// for production
+DATABASE_URL="file:./prisma/dev.db"     # use postgres:// for production
 JWT_SECRET="your-super-secret-jwt-key"
 PORT=3001
 FRONTEND_URL="http://localhost:5173"
 CORS_ORIGIN="http://localhost:5173"
-FEATURE_FLAG_COLLABORATION_SHARING="on"   # Toggle library sharing skeleton
 
-# Multi-model provider credentials (leave blank to use simulated responses)
+# Optional model provider credentials (omit to use safe simulated responses)
 OPENAI_API_KEY="sk-..."
 AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
 AZURE_OPENAI_API_KEY="azr-..."
@@ -110,126 +74,68 @@ AZURE_OPENAI_API_VERSION="2025-04-01-preview"
 ANTHROPIC_API_KEY="sk-ant-..."
 GEMINI_API_KEY="AIza..."
 
-# Control which providers are accepted in workflow steps
+# Restrict which providers can be used in workflow steps
 ALLOWED_MODEL_PROVIDERS="openai,azure,anthropic,google,custom"
 ```
 
-If the provider keys are omitted the backend falls back to safe, simulated responses so builders can test the UI without contacting external APIs.
-
-**frontend/.env**
+frontend/.env
 ```
 VITE_API_URL="http://localhost:3001"
 ```
 
 ---
 
-## 🧰 Useful npm scripts
+## 🧰 Common scripts
 | Command | Description |
-|---------|-------------|
-| `npm run dev` | Start backend & frontend concurrently |
-| `npm run build` | Production build for both workspaces |
-| `npm run start` | Serve compiled assets (`backend/dist`, Vite preview) |
-| `npm run lint` / `npm run lint:fix` | ESLint across backend and frontend (optional fix) |
-| `npm run test:backend` | Jest unit + integration suites (SQLite in-memory) |
-| `npm run test:frontend` | Vitest component/unit suite |
-| `npm run test:e2e` | Build, reset DB, launch services, and run Cypress headless (includes library sharing journey) |
-| `npm run prepare:e2e` | Reset test database without executing Cypress |
-| `npm run ci` | Local mirror of the GitHub Actions pipeline |
+|--------|-------------|
+| `npm run dev` | Start backend and frontend together |
+| `npm run build` | Build both workspaces |
+| `npm run start` | Serve compiled assets (API + Vite preview) |
+| `npm run lint` / `npm run lint:fix` | Lint (optionally fix) across workspaces |
+| `npm run test:backend` | Jest unit + integration (SQLite) |
+| `npm run test:frontend` | Vitest unit/component (non-interactive) |
+| `npm run test:e2e` | Build, reset DB, launch, run Cypress headless |
+| `npm run ci` | Local mirror of CI pipeline |
 
-Backend-only scripts live under `backend/package.json` (`db:generate`, `db:reset`, `start:test`, etc.), while frontend scripts cover Cypress (`npm run e2e`, `npm run e2e:open`).
-
----
-
-## ✅ Testing & quality gates
-- **Backend**: Jest unit and integration tests execute against a real SQLite database (`npm run test:backend`).
-- **Frontend**: Vitest exercises React components and utilities (`npm run test:frontend`).
-- **End-to-end**: Cypress specs validate major flows, including trigger management and workflow preview/testing journeys (`npm run test:e2e`). Global retries (`runMode=2`) cushion known flake while specs are expanded.
-- **Static analysis**: ESLint + TypeScript rules enforced via `npm run lint` and pre-push hooks.
+Workspace-specific scripts live in `backend/package.json` and `frontend/package.json`.
 
 ---
 
-## 🔌 API surface (authenticated unless noted)
-
-### Authentication & health
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/health`
-
-### Prompts & folders
-- `GET /api/prompts`, `POST /api/prompts`
-- `GET/PUT/DELETE /api/prompts/:id`
-- `POST /api/prompts/:id/execute`
-- `GET /api/folders`, `POST /api/folders`
-- `GET/PUT/DELETE /api/folders/:id`
-
-### Workflows & steps
-- `GET /api/workflows` (search, folder filters, pagination)
-- `POST /api/workflows`
-- `GET /api/workflows/:id`
-- `PUT /api/workflows/:id`
-- `DELETE /api/workflows/:id`
-- `POST /api/workflows/:id/steps`
-- `PUT /api/workflows/:id/steps/:stepId`
-- `DELETE /api/workflows/:id/steps/:stepId`
-- `POST /api/workflows/:id/preview`
-- `POST /api/workflows/:id/execute`
-
-### Triggers & scheduling
-- `GET /api/workflows/:workflowId/triggers`
-- `POST /api/workflows/:workflowId/triggers`
-- `GET /api/triggers/:id`
-- `PUT /api/triggers/:id`
-- `DELETE /api/triggers/:id`
-- `POST /api/triggers/:id/execute` *(acknowledges request; execution wiring in progress)*
-- `POST /api/webhooks/:triggerId` *(acknowledges webhook; HMAC validation hook ready)*
+## ✅ Testing & quality
+- Backend: Jest unit + integration on SQLite
+- Frontend: Vitest (non-interactive by default)
+- E2E: Cypress specs for core flows
+- Static analysis: ESLint + TypeScript rules, pre-push hooks
 
 ---
 
-## 🗂️ Project structure
+## �️ Project structure (brief)
 ```
 promptpilot-pro/
-├── backend/
-│   ├── prisma/schema.prisma          # Source of truth for data models
-│   └── src/
-│       ├── index.ts                  # Express bootstrap + trigger initialization
-│       ├── routes/                   # REST controllers (auth, prompts, workflows, triggers)
-│       ├── services/
-│       │   ├── triggerService.ts     # node-cron scheduler, trigger lifecycle
-│       │   └── workflowService.ts    # Workflow orchestration helpers
-│       ├── middleware/               # Auth guards & error handling
-│       └── __tests__/                # Unit + integration suites
-├── frontend/
-│   └── src/
-│       ├── components/
-│       │   ├── WorkflowEditor.tsx
-│       │   └── WorkflowTriggers.tsx  # Trigger management UI
-│       ├── pages/
-│       ├── services/api.ts           # API client wrapper
-│       └── types/                    # Shared TypeScript contracts
-├── docs/                             # Living documentation (architecture, APIs, guides)
-├── scripts/                          # Cross-platform automation helpers
-└── *.ps1 / scripts/*.sh              # Start/stop/status tooling for local dev
+├─ backend/      # Express API, Prisma, scheduler
+├─ frontend/     # React + Vite SPA
+├─ docs/         # Architecture, API, guides
+├─ scripts/      # Cross-platform automation
+└─ *.ps1         # Start/stop/status (Windows)
 ```
 
 ---
 
-## 📚 Documentation & resources
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — technical architecture & deployment considerations
-- [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) — requirements, data flow, and future enhancements
-- [`docs/DATA_MODELS.md`](docs/DATA_MODELS.md) — Prisma-backed entity catalogue
-- [`docs/WORKFLOW_ENGINE.md`](docs/WORKFLOW_ENGINE.md) — execution model, scheduling, and retry strategy
-- [`docs/DEV_GUIDE.md`](docs/DEV_GUIDE.md) — contributor workflow, testing expectations, open TODOs
-- [`docs/API.md`](docs/API.md) — detailed endpoint reference with request/response shapes
+## 📚 Documentation
+- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- API reference: [`docs/API.md`](docs/API.md)
+- Data models: [`docs/DATA_MODELS.md`](docs/DATA_MODELS.md)
+- Workflow engine: [`docs/WORKFLOW_ENGINE.md`](docs/WORKFLOW_ENGINE.md)
+- Developer guide: [`docs/DEV_GUIDE.md`](docs/DEV_GUIDE.md)
 
 ---
 
-## 🛣️ Status & next steps
-- Scheduled triggers currently log their intent; wiring into the workflow execution engine is tracked in `TriggerService` TODOs.
-- Manual trigger execution (`POST /api/triggers/:id/execute`) and webhook callbacks return acknowledgements while runtime integration is finalized.
-- Workflow previews currently simulate execution in-process and return the result envelope without persisting history; follow-up work will allow saving previews and reusing sample payloads.
-- Cypress coverage for trigger CRUD/execution flows is in progress; see the test TODOs in `docs/DEV_GUIDE.md` before treating failures as regressions.
-- `EVENT` trigger type exists for forward compatibility and will be wired to internal bus integrations in a subsequent epic.
+## 🤝 Contributing
+Please see [`CONTRIBUTING.md`](CONTRIBUTING.md). Issues and PRs are welcome.
+
+## 📄 License
+MIT License. See package metadata for details.
 
 ---
 
-Questions? Open an issue or drop by the discussions tab—we love pairing on automation ideas.
+Questions? Open an issue or start a discussion.
