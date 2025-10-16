@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { workflowsAPI } from '../services/api';
-import { toPreviewInputs as buildPreviewInputs, toFlattenedInputs as buildFlattenedInputs, interpolate as applyInterpolation, recalcDupKeys } from '../lib/linearBuilderV2Utils';
+import { toPreviewInputs as buildPreviewInputs, toFlattenedInputs as buildFlattenedInputs, interpolate as applyInterpolation, recalcDupKeys, buildStepOutputVariableList, buildOutputsDataMap, extractStepOutputRefs, parseVariableValue } from '../lib/linearBuilderV2Utils';
 
 type StepType = 'PROMPT';
 
@@ -26,9 +26,11 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   const navigate = useNavigate();
   const [steps, setSteps] = useState<StepState[]>([]);
   const [selectedField, setSelectedField] = useState<string | null>(null);
+  // Keep refs to prompt content inputs to support insertion at cursor
+  const promptInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   // Primary input as plain text; additional variables as key/value pairs
   const [textInput, setTextInput] = useState<string>('World');
-  const [extraInputs, setExtraInputs] = useState<Array<{ id: string; key: string; value: string }>>([]);
+  const [extraInputs, setExtraInputs] = useState<Array<{ id: string; key: string; value: string; dataType?: 'string' | 'number' | 'boolean'; error?: string }>>([]);
   const [dupKeyError, setDupKeyError] = useState<string | null>(null);
   const variables = useMemo(
     () => ['workflow.input', ...extraInputs.filter(v => v.key.trim().length > 0).map(v => `workflow.${v.key}`)],
@@ -36,6 +38,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   );
   const [showDataInspector, setShowDataInspector] = useState(false);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [stepOutputVars, setStepOutputVars] = useState<Array<{ key: string; label: string; stepId: string; order: number }>>([]);
+  const [forwardRefInvalidSteps, setForwardRefInvalidSteps] = useState<Set<string>>(new Set());
   // Advanced JSON modal
   const [showAdvancedJson, setShowAdvancedJson] = useState(false);
   const [advancedJson, setAdvancedJson] = useState<string>('');
@@ -45,6 +49,9 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   const [saving, setSaving] = useState(false);
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
 
+  const hasTypeErrors = useMemo(() => extraInputs.some(r => r.error), [extraInputs]);
+  // Disable actions when forward-reference invalids exist
+  const hasForwardRefErrors = useMemo(() => forwardRefInvalidSteps.size > 0, [forwardRefInvalidSteps]);
   const isValid = useMemo(() => steps.every(s => !!(s.config.promptContent && s.config.promptContent.trim().length > 0)), [steps]);
 
   const [showTypeChooser, setShowTypeChooser] = useState(false);
@@ -60,15 +67,25 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
         setWorkflowName(wf.name || 'Workflow');
         // Hydrate Additional variables from backend workflow variables (persisted on Save)
         try {
-          const vars: Array<{ name?: string; type?: string; defaultValue?: unknown }> = Array.isArray(wf.variables) ? wf.variables : [];
+          type VarDto = { name?: string; type?: string; dataType?: 'string'|'number'|'boolean'|'array'|'object'; defaultValue?: unknown };
+          const vars: VarDto[] = Array.isArray(wf.variables) ? wf.variables : [];
+          const pickDataType = (v: VarDto): 'string'|'number'|'boolean' => {
+            if (v.dataType === 'boolean' || v.dataType === 'number' || v.dataType === 'string') return v.dataType;
+            const raw = v.defaultValue;
+            return (typeof raw === 'boolean' ? 'boolean' : typeof raw === 'number' ? 'number' : 'string');
+          };
+          const toRow = (v: VarDto, idx: number) => {
+            const full = String(v?.name || '');
+            return {
+              id: `var-${full}-${idx}`,
+              key: full.replace(/^workflow\./, ''),
+              value: v?.defaultValue != null ? String(v.defaultValue) : '',
+              dataType: pickDataType(v),
+            } as { id: string; key: string; value: string; dataType: 'string'|'number'|'boolean' };
+          };
           const extras = vars
-            .map(v => ({ name: String(v?.name || ''), value: v?.defaultValue }))
-            .filter(v => v.name.startsWith('workflow.') && v.name !== 'workflow.input')
-            .map((v, idx) => ({
-              id: `var-${v.name}-${idx}`,
-              key: v.name.replace(/^workflow\./, ''),
-              value: v.value != null ? String(v.value) : '',
-            }));
+            .filter(v => String(v?.name || '').startsWith('workflow.') && String(v?.name || '') !== 'workflow.input')
+            .map(toRow);
           setExtraInputs(extras);
           setDupKeyError(recalcDupKeys(extras));
         } catch { /* ignore */ }
@@ -143,9 +160,22 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       const token = `{{${variable}}}`;
       // Avoid duplicate insertion if token already present
       if (current.includes(token)) return s;
-      const sep = current.length > 0 && !current.endsWith(' ') ? ' ' : '';
-      const nextContent = current + sep + token;
-      return { ...s, config: { ...s.config, promptContent: nextContent } };
+      // Insert at cursor position if we have a ref; otherwise append
+      const inputEl = promptInputRefs.current[stepId] ?? null;
+      if (inputEl && typeof inputEl.selectionStart === 'number' && typeof inputEl.selectionEnd === 'number') {
+        const start = inputEl.selectionStart ?? current.length;
+        const end = inputEl.selectionEnd ?? start;
+        const before = current.slice(0, start);
+        const after = current.slice(end);
+        const needsSpaceBefore = before.length > 0 && !before.endsWith(' ');
+        const needsSpaceAfter = after.length > 0 && !after.startsWith(' ');
+        const nextContent = `${before}${needsSpaceBefore ? ' ' : ''}${token}${needsSpaceAfter ? ' ' : ''}${after}`;
+        return { ...s, config: { ...s.config, promptContent: nextContent } };
+      } else {
+        const sep = current.length > 0 && !current.endsWith(' ') ? ' ' : '';
+        const nextContent = current + sep + token;
+        return { ...s, config: { ...s.config, promptContent: nextContent } };
+      }
     }));
     // Auto-add variable rows for any new workflow.<key> references (except workflow.input)
     setExtraInputs(prev => {
@@ -154,7 +184,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       if (variable.startsWith('workflow.') && variable !== 'workflow.input') {
         const key = variable.replace(/^workflow\./, '');
         if (!existingKeys.has(key)) {
-          needed.push({ id: `var-${key}`, key, value: '' });
+          needed.push({ id: `var-${key}`, key, value: '', dataType: 'string' });
         }
       }
       if (needed.length === 0) return prev;
@@ -172,6 +202,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       const next = [...prev];
       const [removed] = next.splice(index, 1);
       next.splice(target, 0, removed);
+      // Recompute forward-ref invalids immediately on reorder
+      recomputeForwardRefs(next);
       return next;
     });
   };
@@ -242,15 +274,26 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       if (workflowId) {
         await workflowsAPI.previewWorkflow(workflowId, { input: inputsFlat, useSampleData: false, simulateOnly: false, triggerType: 'manual' });
       }
-      const outputs: TimelineEntry[] = workingSteps.map((s, i) => {
-        if (i <= (untilStepIndex ?? workingSteps.length - 1)) {
+      const outputs: TimelineEntry[] = [];
+      for (let i = 0; i < workingSteps.length; i++) {
+        const s = workingSteps[i];
+        const upTo = untilStepIndex ?? workingSteps.length - 1;
+        if (i <= upTo) {
           const content = s.config.promptContent ?? '';
-          const text = interpolate(content, inputsNested) || '[no output]';
-          return { stepId: s.id, status: 'success', output: { text } };
+          const outputsMap = buildOutputsDataMap(outputs);
+          const data: Record<string, unknown> = { ...inputsFlat, ...inputsNested, ...outputsMap };
+          const text = interpolate(content, data) || '[no output]';
+          outputs.push({ stepId: s.id, status: 'success', output: { text } });
+        } else {
+          outputs.push({ stepId: s.id, status: 'pending' });
         }
-        return { stepId: s.id, status: 'pending' };
-      });
+      }
       setTimeline(outputs);
+      // Build step output variables list for inspector
+      const list = buildStepOutputVariableList(workingSteps, outputs);
+      setStepOutputVars(list);
+      // Recompute forward-ref validation based on current steps content
+      recomputeForwardRefs(workingSteps);
     } catch {
       const working = steps.length > 0 ? steps : [];
       setTimeline(working.map((s, i) => ({ stepId: s.id, status: i <= (untilStepIndex ?? working.length - 1) ? 'error' : 'pending' })));
@@ -258,6 +301,28 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   };
 
   const rerunStep = async (index: number) => runPreview(index);
+
+  const recomputeForwardRefs = (currentSteps: StepState[]) => {
+    const invalid = new Set<string>();
+    const idToIndex = new Map<string, number>();
+    currentSteps.forEach((s, i) => idToIndex.set(s.id, i));
+    currentSteps.forEach((s, i) => {
+      const content = s.config.promptContent ?? '';
+      const refs = extractStepOutputRefs(content);
+      for (const refStepId of refs) {
+        const producerIndex = idToIndex.get(refStepId);
+        if (producerIndex == null) continue;
+        if (producerIndex >= i) {
+          invalid.add(s.id);
+        }
+      }
+    });
+    setForwardRefInvalidSteps(invalid);
+  };
+
+  useEffect(() => {
+    recomputeForwardRefs(steps);
+  }, [steps]);
 
   // Execute (Run) using backend endpoint; requires workflowId
   const runExecute = async () => {
@@ -275,6 +340,22 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   // Duplicate key detection and guards
   // recalcDupKeys imported from utils
 
+  // Aggregate Save disabling reasons for UX (tooltip + summary + a11y)
+  const saveDisabledReasons = useMemo(() => {
+    const reasons: string[] = [];
+    if (!workflowName.trim()) reasons.push('Workflow name is required');
+    if (steps.length === 0) reasons.push('At least one step is required');
+    if (!isValid) reasons.push('All steps must have prompt content');
+    if (dupKeyError) reasons.push(dupKeyError);
+    if (hasTypeErrors) reasons.push('Fix invalid variable values (e.g., number/boolean)');
+    if (hasForwardRefErrors) reasons.push('Resolve forward references to later step outputs');
+    return reasons;
+  }, [workflowName, steps.length, isValid, dupKeyError, hasTypeErrors, hasForwardRefErrors]);
+
+  const isSaveDisabled = saving || saveDisabledReasons.length > 0;
+  const saveReasonsSummary = saveDisabledReasons.join('; ');
+  const saveReasonsId = 'save-disabled-reasons';
+
   return (
     <div className="w-full" data-testid="builder-v2-linear">
       {/* Controls */}
@@ -288,9 +369,12 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
           onChange={(e) => setWorkflowName(e.target.value)}
         />
         <button
-          className="px-2 py-1 border rounded"
+          className={`px-2 py-1 border rounded ${isSaveDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           data-testid="save-workflow"
-          disabled={saving || !workflowName.trim() || steps.length === 0}
+          disabled={isSaveDisabled}
+          aria-disabled={isSaveDisabled}
+          aria-describedby={isSaveDisabled ? saveReasonsId : undefined}
+          title={isSaveDisabled ? `Cannot save: ${saveReasonsSummary}` : ''}
           onClick={async () => {
             try {
               setSaving(true);
@@ -306,8 +390,15 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               if (!id) throw new Error('Failed to resolve workflow id after save');
               // Persist variables from Data Inspector first (treat as input variables)
               try {
-                const toVar = (name: string, value: unknown) => ({ name, type: 'input' as const, dataType: 'string' as const, defaultValue: String(value ?? '') });
-                const vars = [toVar('workflow.input', textInput), ...extraInputs.filter(v => v.key.trim()).map(v => toVar(`workflow.${v.key.trim()}`, v.value))];
+                const toVar = (name: string, row?: { dataType?: 'string'|'number'|'boolean'; value?: string }) => {
+                  if (!row) {
+                    return { name, type: 'input' as const, dataType: 'string' as const, defaultValue: String(textInput ?? '') };
+                  }
+                  const parsed = parseVariableValue(row.dataType ?? 'string', row.value ?? '');
+                  const dt = (row.dataType ?? 'string');
+                  return { name, type: 'input' as const, dataType: dt, defaultValue: parsed.error ? row.value ?? '' : parsed.value };
+                };
+                const vars = [toVar('workflow.input'), ...extraInputs.filter(v => v.key.trim()).map(v => toVar(`workflow.${v.key.trim()}`, v))];
                 await workflowsAPI.replaceVariables(id, vars);
               } catch (e) {
                 console.warn('Save workflow: variables update failed (non-fatal)', e);
@@ -326,16 +417,42 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                 // Non-fatal: continue even if we fail to load/delete existing steps
                 console.warn('Save workflow: unable to load/delete existing steps', e);
               }
-              // Persist new steps sequentially with fresh ordering
+              // Persist new steps sequentially with fresh ordering and remap local ids to server ids
+              const idMap = new Map<string, string>(); // localId -> serverId
+              const createdSteps: Array<{ localId: string; serverId: string; order: number; name: string; originalContent: string }>= [];
               for (let i = 0; i < steps.length; i++) {
                 const s = steps[i];
                 const promptContent = (s.config.promptContent ?? '').trim();
-                await workflowsAPI.createStep(id, {
+                const resp = await workflowsAPI.createStep(id, {
                   name: s.name || `${s.type} ${i + 1}`,
                   type: 'PROMPT',
                   order: i + 1,
                   config: { promptContent },
                 });
+                const serverStepId = resp?.id ?? resp?.data?.id ?? resp?.step?.id;
+                if (serverStepId) {
+                  idMap.set(s.id, serverStepId);
+                  createdSteps.push({ localId: s.id, serverId: serverStepId, order: i + 1, name: s.name, originalContent: promptContent });
+                }
+              }
+              // Second pass: update any tokens that reference local ids with server ids for stable references
+              const replaceLocalWithServer = (content: string): string => {
+                return content.replace(/{{\s*step\.([A-Za-z0-9_-]+)\.output\.text\s*}}/g, (_m, localId) => {
+                  const server = idMap.get(localId);
+                  const targetId = server ?? localId;
+                  return `{{step.${targetId}.output.text}}`;
+                });
+              };
+              for (const s of createdSteps) {
+                const updatedContent = replaceLocalWithServer(s.originalContent);
+                if (updatedContent !== s.originalContent) {
+                  await workflowsAPI.updateStep(id, s.serverId, {
+                    name: s.name || `PROMPT ${s.order}`,
+                    type: 'PROMPT',
+                    order: s.order,
+                    config: { promptContent: updatedContent },
+                  });
+                }
               }
               // Redirect to edit route and keep V2 enabled so Run is available immediately
               navigate(`/workflows/${id}/edit?v2=1`);
@@ -352,16 +469,21 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
             }
           }}
         >{saving ? 'Saving…' : 'Save Workflow'}</button>
+        {isSaveDisabled && saveDisabledReasons.length > 0 ? (
+          <div id={saveReasonsId} className="text-xs text-red-700" data-testid="save-disabled-reasons">
+            Cannot save: {saveDisabledReasons[0]}{saveDisabledReasons.length > 1 ? ` (+${saveDisabledReasons.length - 1} more)` : ''}
+          </div>
+        ) : null}
         <button className="px-2 py-1 border rounded" data-testid="add-step" onClick={() => setShowTypeChooser(true)}>Add Step</button>
         {showDataInspector ? null : (
           <button className="px-2 py-1 border rounded" data-testid="data-inspector-toggle" onClick={() => setShowDataInspector(true)}>Data</button>
         )}
-        <button className="px-2 py-1 border rounded" data-testid="preview-run" onClick={() => runPreview() } disabled={!isValid || !!dupKeyError}>Preview</button>
+  <button className="px-2 py-1 border rounded" data-testid="preview-run" onClick={() => runPreview() } disabled={!isValid || !!dupKeyError || hasTypeErrors}>Preview</button>
         <button
           className="px-2 py-1 border rounded"
           data-testid="run-workflow"
           onClick={runExecute}
-          disabled={!workflowId || !isValid || !!dupKeyError}
+          disabled={!workflowId || !isValid || !!dupKeyError || hasTypeErrors || hasForwardRefErrors}
           title={workflowId ? '' : 'Save workflow first to enable Run'}
         >Run</button>
         {runStatus !== 'idle' ? (
@@ -380,6 +502,16 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               {v}
             </div>
           ))}
+          {stepOutputVars.length > 0 ? (
+            <div className="mt-3">
+              <div className="text-xs font-semibold mb-1">Step Outputs</div>
+              {stepOutputVars.map((o) => (
+                <div key={o.key} className="text-xs text-blue-700 cursor-pointer" data-testid={`variable-item-${o.key}`} onClick={() => onBindVariable(o.key)}>
+                  {o.label}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </aside>
 
         <section className="col-span-6 space-y-3">
@@ -409,10 +541,14 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                   value={step.config.promptContent ?? ''}
                   onChange={(e) => handlePromptContentChange(step.id, e.target.value)}
                   onFocus={() => onSelectPromptField(step.id)}
+                  ref={(el) => { promptInputRefs.current[step.id] = el; }}
                 />
               </div>
               {!step.config.promptContent ? (
                 <div className="text-xs text-red-600" data-testid="validation-inline">Required: prompt content</div>
+              ) : null}
+              {forwardRefInvalidSteps.has(step.id) ? (
+                <div className="text-xs text-red-600" data-testid="output-forward-ref-warning">Invalid forward reference: refers to a later step output</div>
               ) : null}
             </div>
           ))}
@@ -434,6 +570,20 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               <div className="space-y-2">
                 {extraInputs.map((v) => (
                   <div className="flex items-center gap-1" key={v.id} data-testid="data-inspector-var-row">
+                    <select
+                      className="border rounded px-1 py-1 text-xs"
+                      data-testid="data-inspector-var-type"
+                      value={v.dataType ?? 'string'}
+                      onChange={(e) => {
+                        const dt = (e.target.value as 'string'|'number'|'boolean');
+                        const calcError = (dtVal: 'string'|'number'|'boolean', raw: string) => dtVal === 'number' ? parseVariableValue('number', raw).error : undefined;
+                        setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, dataType: dt, error: calcError(dt, x.value) } : x));
+                      }}
+                    >
+                      <option value="string">string</option>
+                      <option value="number">number</option>
+                      <option value="boolean">boolean</option>
+                    </select>
                     <input
                       className={`border rounded px-2 py-1 text-xs w-20 ${dupKeyError ? 'border-red-400' : ''}`}
                       placeholder="key"
@@ -445,22 +595,39 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                         setExtraInputs(next);
                       }}
                     />
-                    <input
-                      className="border rounded px-2 py-1 text-xs flex-1"
-                      placeholder="value"
-                      value={v.value}
-                      onChange={(e) => setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, value: e.target.value } : x))}
-                    />
+                    { (v.dataType ?? 'string') === 'boolean' ? (
+                      <select
+                        className="border rounded px-2 py-1 text-xs flex-1"
+                        data-testid="data-inspector-var-value-boolean"
+                        value={(v.value || '').toString().toLowerCase() === 'true' ? 'true' : 'false'}
+                        onChange={(e) => setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, value: e.target.value } : x))}
+                      >
+                        <option value="true">true</option>
+                        <option value="false">false</option>
+                      </select>
+                    ) : (
+                      <input
+                        className={`border rounded px-2 py-1 text-xs flex-1 ${(v.dataType === 'number' && v.error) ? 'border-red-400' : ''}`}
+                        placeholder="value"
+                        value={v.value}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const err = v.dataType === 'number' ? parseVariableValue('number', val).error : undefined;
+                          setExtraInputs(prev => prev.map(x => x.id === v.id ? { ...x, value: val, error: err } : x));
+                        }}
+                      />
+                    )}
                     <button className="px-2 py-1 border rounded text-xs" onClick={() => setExtraInputs(prev => prev.filter(x => x.id !== v.id))}>×</button>
                   </div>
                 ))}
               </div>
               {dupKeyError ? <div className="text-xs text-red-600 mt-1">{dupKeyError}</div> : null}
+              {hasTypeErrors ? <div className="text-xs text-red-600 mt-1">Fix invalid typed variable values</div> : null}
               <div className="mt-2 flex items-center gap-2">
                 <button
                   className="px-2 py-1 border rounded text-xs"
                   disabled={!!dupKeyError}
-                  onClick={() => setExtraInputs(prev => [...prev, { id: `var-${Date.now()}-${prev.length}`, key: '', value: '' }])}
+                  onClick={() => setExtraInputs(prev => [...prev, { id: `var-${Date.now()}-${prev.length}`, key: '', value: '', dataType: 'string' }])}
                 >Add variable</button>
                 <button className="px-2 py-1 border rounded text-xs" onClick={() => {
                   // Open advanced JSON modal prefilled with composed inputs
@@ -539,7 +706,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                       if (k === 'input') continue;
                       map.set(k, v != null ? String(v) : '');
                     }
-                    const entries: Array<{ id: string; key: string; value: string }> = Array.from(map.entries()).map(([k, v]) => ({ id: `var-${k}`, key: k, value: v }));
+                    const entries: Array<{ id: string; key: string; value: string; dataType?: 'string' | 'number' | 'boolean' }> = Array.from(map.entries()).map(([k, v]) => ({ id: `var-${k}`, key: k, value: v, dataType: 'string' }));
                     setTextInput(newText);
                     setExtraInputs(entries);
                     setDupKeyError(recalcDupKeys(entries));

@@ -18,9 +18,10 @@ Phase 1 — Live model keys & connectivity (Complete)
 Phase 2 — Workflow Builder V2 (UX) — ship in slices
 - 🆕 Epic 8: Story 1 — Linear Builder V2 (authoring, mapping, preview)
 - 🆕 Epic 8: Story 2 — Variable & Data Inspectors (always-visible, copy/export, masking)
-- 🆕 Epic 8: Story 4 — Quickstart Wizard & Templates (time-to-first-run)
-- 🆕 Epic 8: Story 3 — Canvas Builder (advanced mapping)
-- 🆕 Epic 8: Story 5 — Polish & Accessibility Hardening (performance, a11y)
+- 🆕 Epic 8: Story 3 — Execution Visualization in Builder V2 (live run timeline in-editor)
+- 🆕 Epic 8: Story 4 — Canvas Builder (advanced mapping)
+- 🆕 Epic 8: Story 5 — Quickstart Wizard & Templates (time-to-first-run)
+- 🆕 Epic 8: Story 6 — Polish & Accessibility Hardening (performance, a11y)
 
 Phase 3 — Model routing & guardrails
 - 📝 Epic 4: Story 3 — Adaptive Model Routing & Cost Guardrails

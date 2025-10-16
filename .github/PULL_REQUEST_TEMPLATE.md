@@ -16,7 +16,7 @@
 - [ ] Feature flag gates (if applicable) verified
 - [ ] Lint/build/test pass locally
 - [ ] Docs updated (README/DEV_GUIDE) if behavior or flows changed
- - [ ] Follows Standard Workflow: see [docs/STANDARD_WORKFLOW.md](../docs/STANDARD_WORKFLOW.md)
+- [ ] Follows Standard Workflow: see [docs/STANDARD_WORKFLOW.md](../docs/STANDARD_WORKFLOW.md)
 
 ## Testing Notes
 
