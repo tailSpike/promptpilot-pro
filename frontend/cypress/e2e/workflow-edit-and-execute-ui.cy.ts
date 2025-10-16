@@ -132,9 +132,9 @@ describe('Workflow - Edit and Execute (UI)', () => {
       // Ensure steps are present (persisted to backend) before editing
       waitForWorkflowSteps(workflowId);
 
-      // Edit first step name
+      // Edit first step name (append to avoid transient empty value that triggers backend validation)
       cy.get('[data-testid="workflow-step-0"]').within(() => {
-        cy.get('[data-testid^="step-name-"]').clear().type('Prompt Step (edited)');
+        cy.get('[data-testid^="step-name-"]').type(' (edited)');
       });
 
       // Save updates via submit button
