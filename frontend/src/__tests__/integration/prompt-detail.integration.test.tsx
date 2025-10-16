@@ -181,12 +181,17 @@ describe('PromptDetail', () => {
 
     renderWithRouter();
 
+    // Ensure the prompt has been fetched and rendered before asserting UI text
     await waitFor(() => {
       expect(promptsAPI.getPrompt).toHaveBeenCalledWith('prompt-1');
     });
 
+    // Wait for the page to render post-load (heading appears once loading spinner is gone)
+    await screen.findByRole('heading', { name: 'Welcome Email' });
+
+    // Use findByText to allow for async rendering timing differences in CI
     expect(
-      screen.getByText('Feedback is disabled by feature flags.'),
+      await screen.findByText('Feedback is disabled by feature flags.'),
     ).toBeInTheDocument();
 
     featureFlagsMock.flags['collaboration.comments'] = true;
