@@ -1,5 +1,56 @@
 ## Summary
 
+Describe the change, link to the user story/epic, and call out notable design decisions.
+
+---
+
+## Acceptance Criteria Coverage
+
+- [ ] AC 1: … (link to Cypress spec/assertions)
+- [ ] AC 2: …
+- [ ] AC 3: …
+
+Specs:
+- `frontend/cypress/e2e/builder-canvas-v2.cy.ts` (or other relevant specs)
+
+---
+
+## How to run locally
+
+Windows PowerShell:
+```powershell
+# From repo root
+npm run setup
+npm run dev
+```
+
+Optional (targeted E2E):
+```powershell
+node scripts/run-e2e.js --spec cypress/e2e/builder-canvas-v2.cy.ts --headed
+```
+
+---
+
+## Manual verification steps
+
+Follow the steps in `docs/testing/manual/canvas-builder-v2.md`.
+
+---
+
+## Documentation updates
+
+- [ ] README updated if applicable
+- [ ] Developer or feature docs updated (list files)
+
+---
+
+## Checklist
+
+- [ ] Unit tests pass locally
+- [ ] E2E tests pass locally or are addressed
+- [ ] Lint/type-check pass
+- [ ] CI green or issues explained## Summary
+
 - What does this PR change and why?
 
 ## Checklist

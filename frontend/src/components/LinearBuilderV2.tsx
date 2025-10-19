@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { workflowsAPI } from '../services/api';
 import { toPreviewInputs as buildPreviewInputs, toFlattenedInputs as buildFlattenedInputs, interpolate as applyInterpolation, recalcDupKeys, buildStepOutputVariableList, buildOutputsDataMap, extractStepOutputRefs, parseVariableValue } from '../lib/linearBuilderV2Utils';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
 
 type StepType = 'PROMPT';
 
@@ -20,6 +21,39 @@ interface TimelineEntry {
   status: 'pending' | 'running' | 'success' | 'error';
   output?: { text?: string } | string | null;
 }
+
+// Minimal shape for backend execution polling
+type LiveExecutionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+type LiveExecution = {
+  id?: string;
+  status: LiveExecutionStatus;
+  output?: unknown;
+};
+
+type StepResultEntry = {
+  meta?: { id?: string; name?: string; type?: string; order?: number };
+  output?: unknown;
+  durationMs?: number;
+  exported?: Record<string, unknown>;
+};
+
+const extractPrimaryText = (out: unknown): string | undefined => {
+  if (out && typeof out === 'object') {
+    const obj = out as Record<string, unknown>;
+    const gt = obj['generatedText'];
+    if (typeof gt === 'string') return gt;
+    const t = obj['text'];
+    if (typeof t === 'string') return t;
+    const ot = obj['outputText'];
+    if (typeof ot === 'string') return ot;
+    const ref = obj['generatedTextRef'];
+    if (ref && typeof ref === 'object') {
+      const prev = (ref as Record<string, unknown>)['preview'];
+      if (typeof prev === 'string') return prev;
+    }
+  }
+  return undefined;
+};
 
 export const LinearBuilderV2: React.FC<{ workflowId?: string }>
  = ({ workflowId }) => {
@@ -48,6 +82,10 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
   const [saving, setSaving] = useState(false);
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+    const { isEnabled: isFlagEnabled } = useFeatureFlags();
+    const runInlineEnabled = isFlagEnabled('workflow.run.inline');
+    const [liveExecutionId, setLiveExecutionId] = useState<string | null>(null);
+    const livePollRef = useRef<number | null>(null);
 
   const hasTypeErrors = useMemo(() => extraInputs.some(r => r.error), [extraInputs]);
   // Disable actions when forward-reference invalids exist
@@ -330,12 +368,119 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
     try {
       setRunStatus('running');
       const inputsFlat = toFlattenedInputs();
-      await workflowsAPI.executeWorkflow(workflowId, inputsFlat, 'manual');
+      const execResp = await workflowsAPI.executeWorkflow(workflowId, inputsFlat, 'manual');
+      // Prefer executionId if present; fallback to id
+      const execId: string | undefined = execResp?.executionId ?? execResp?.id ?? execResp?.data?.executionId ?? execResp?.data?.id;
       setRunStatus('success');
+      if (runInlineEnabled && execId) {
+        setLiveExecutionId(execId);
+      }
     } catch {
       setRunStatus('error');
     }
   };
+
+  // Live execution polling → map backend execution output shape into timeline entries
+  useEffect(() => {
+    if (!workflowId || !liveExecutionId || !runInlineEnabled) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const exec: LiveExecution = await workflowsAPI.getWorkflowExecution(workflowId, liveExecutionId);
+        if (cancelled || !exec) return;
+        // exec.output may be JSON string; normalize to object
+        let outputObj: Record<string, unknown> | null = null;
+        if (exec.output) {
+          if (typeof exec.output === 'string') {
+            try { outputObj = JSON.parse(exec.output); } catch { outputObj = null; }
+          } else if (typeof exec.output === 'object') {
+            outputObj = exec.output as Record<string, unknown>;
+          }
+        }
+        // Safe parse stepResults → Record<string, StepResultEntry>
+        let stepResults: Record<string, StepResultEntry> = {};
+        if (outputObj && typeof (outputObj as Record<string, unknown>)['stepResults'] === 'object' && (outputObj as Record<string, unknown>)['stepResults'] !== null) {
+          const raw = (outputObj as Record<string, unknown>)['stepResults'] as Record<string, unknown>;
+          const parsed: Record<string, StepResultEntry> = {};
+          for (const [k, v] of Object.entries(raw)) {
+            if (!v || typeof v !== 'object') continue;
+            const rv = v as Record<string, unknown>;
+            const meta = rv['meta'];
+            parsed[k] = {
+              meta: (meta && typeof meta === 'object') ? (meta as StepResultEntry['meta']) : undefined,
+              output: rv['output'],
+            };
+          }
+          stepResults = parsed;
+        }
+        // Build timeline based on current steps and any known step outputs
+  const mapped: TimelineEntry[] = steps.map((s) => {
+          // In stepResults we keyed by step order when executing service (step_<order>) and meta.id holds the server step id
+          const match = Object.values(stepResults).find((r) => Boolean(r?.meta?.id && r.meta!.id === s.id));
+          if (match) {
+            const curLowered = String(exec.status || '').toLowerCase();
+            const status: TimelineEntry['status'] = curLowered === 'running' ? 'running' : (curLowered === 'failed' ? 'error' : 'success');
+            const out = match.output;
+            const text = extractPrimaryText(out);
+            return { stepId: s.id, status: status as TimelineEntry['status'], output: text ? { text } : (out ?? null) };
+          }
+          // Not yet reached → pending or running if execution overall running and earlier steps done
+          const curLowered = String(exec.status || '').toLowerCase();
+          return { stepId: s.id, status: curLowered === 'running' ? 'running' : 'pending' };
+        });
+        // If failed, surface top-level error message on the first unmatched step
+        const overallLowered = String(exec.status || '').toLowerCase();
+        if (overallLowered === 'failed') {
+          let errorMsg: string | undefined;
+          const rawErrUnknown = (exec as unknown as { error?: unknown })?.error;
+          if (typeof rawErrUnknown === 'string') {
+            try {
+              const parsed = JSON.parse(rawErrUnknown) as { message?: unknown };
+              errorMsg = typeof parsed?.message === 'string' ? parsed.message : 'Execution failed';
+            } catch {
+              errorMsg = rawErrUnknown;
+            }
+          } else if (rawErrUnknown && typeof rawErrUnknown === 'object') {
+            const maybeMsg = (rawErrUnknown as Record<string, unknown>)['message'];
+            errorMsg = typeof maybeMsg === 'string' ? maybeMsg : 'Execution failed';
+          }
+          const matchedIds = new Set(Object.values(stepResults).map((r) => r?.meta?.id).filter(Boolean) as string[]);
+          const firstUnmatched = steps.find((s) => !matchedIds.has(s.id));
+          if (firstUnmatched && errorMsg) {
+            const idx = mapped.findIndex((m) => m.stepId === firstUnmatched.id);
+            if (idx >= 0) {
+              mapped[idx] = { stepId: firstUnmatched.id, status: 'error', output: { text: errorMsg } };
+            }
+          }
+        }
+        setTimeline(mapped);
+        // Build Step Outputs list from live data too
+        const list = buildStepOutputVariableList(steps, mapped);
+        setStepOutputVars(list);
+
+        const lowered = String(exec.status || '').toLowerCase();
+        const terminal = (lowered === 'completed' || lowered === 'failed' || lowered === 'cancelled');
+        if (!terminal) {
+          // Schedule next poll
+          livePollRef.current = window.setTimeout(poll, 800);
+        } else {
+          livePollRef.current = null;
+        }
+      } catch {
+        // Backoff on errors
+        livePollRef.current = window.setTimeout(poll, 1500);
+      }
+    };
+    // Kick off immediately
+    poll();
+    return () => {
+      cancelled = true;
+      if (livePollRef.current) {
+        window.clearTimeout(livePollRef.current);
+        livePollRef.current = null;
+      }
+    };
+  }, [workflowId, liveExecutionId, runInlineEnabled, steps]);
 
   // Duplicate key detection and guards
   // recalcDupKeys imported from utils
@@ -369,6 +514,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
           onChange={(e) => setWorkflowName(e.target.value)}
         />
         <button
+          type="button"
           className={`px-2 py-1 border rounded ${isSaveDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           data-testid="save-workflow"
           disabled={isSaveDisabled}
@@ -474,17 +620,22 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
             Cannot save: {saveDisabledReasons[0]}{saveDisabledReasons.length > 1 ? ` (+${saveDisabledReasons.length - 1} more)` : ''}
           </div>
         ) : null}
-        <button className="px-2 py-1 border rounded" data-testid="add-step" onClick={() => setShowTypeChooser(true)}>Add Step</button>
+        <button type="button" className="px-2 py-1 border rounded" data-testid="add-step" onClick={() => setShowTypeChooser(true)}>Add Step</button>
         {showDataInspector ? null : (
-          <button className="px-2 py-1 border rounded" data-testid="data-inspector-toggle" onClick={() => setShowDataInspector(true)}>Data</button>
+          <button type="button" className="px-2 py-1 border rounded" data-testid="data-inspector-toggle" onClick={() => setShowDataInspector(true)}>Data</button>
         )}
-  <button className="px-2 py-1 border rounded" data-testid="preview-run" onClick={() => runPreview() } disabled={!isValid || !!dupKeyError || hasTypeErrors}>Preview</button>
+  <button type="button" className="px-2 py-1 border rounded" data-testid="preview-run" onClick={() => runPreview() } disabled={!isValid || !!dupKeyError || hasTypeErrors}>Preview</button>
         <button
+          type="button"
           className="px-2 py-1 border rounded"
           data-testid="run-workflow"
           onClick={runExecute}
           disabled={!workflowId || !isValid || !!dupKeyError || hasTypeErrors || hasForwardRefErrors}
-          title={workflowId ? '' : 'Save workflow first to enable Run'}
+          title={
+            !workflowId
+              ? 'Save workflow first to enable Run'
+              : (!runInlineEnabled ? 'Live run timeline disabled by feature flag; run will still start.' : '')
+          }
         >Run</button>
         {runStatus !== 'idle' ? (
           <span className={`text-xs ${runStatus === 'success' ? 'text-green-700' : runStatus === 'error' ? 'text-red-700' : 'text-gray-600'}`}>
@@ -528,9 +679,9 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                   <span className="text-xs text-gray-500">{step.type}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button className="px-2 py-1 border rounded text-xs" disabled={idx === 0} onClick={() => moveStep(idx, -1)}>▲</button>
-                  <button className="px-2 py-1 border rounded text-xs" disabled={idx === steps.length - 1} onClick={() => moveStep(idx, 1)}>▼</button>
-                  <button className="px-2 py-1 border rounded text-xs text-red-700" onClick={() => deleteStep(idx)}>Delete</button>
+                  <button type="button" className="px-2 py-1 border rounded text-xs" disabled={idx === 0} onClick={() => moveStep(idx, -1)}>▲</button>
+                  <button type="button" className="px-2 py-1 border rounded text-xs" disabled={idx === steps.length - 1} onClick={() => moveStep(idx, 1)}>▼</button>
+                  <button type="button" className="px-2 py-1 border rounded text-xs text-red-700" onClick={() => deleteStep(idx)}>Delete</button>
                 </div>
               </div>
               <div className="mb-2">
@@ -617,7 +768,7 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                         }}
                       />
                     )}
-                    <button className="px-2 py-1 border rounded text-xs" onClick={() => setExtraInputs(prev => prev.filter(x => x.id !== v.id))}>×</button>
+                    <button type="button" className="px-2 py-1 border rounded text-xs" onClick={() => setExtraInputs(prev => prev.filter(x => x.id !== v.id))}>×</button>
                   </div>
                 ))}
               </div>
@@ -625,11 +776,12 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               {hasTypeErrors ? <div className="text-xs text-red-600 mt-1">Fix invalid typed variable values</div> : null}
               <div className="mt-2 flex items-center gap-2">
                 <button
+                  type="button"
                   className="px-2 py-1 border rounded text-xs"
                   disabled={!!dupKeyError}
                   onClick={() => setExtraInputs(prev => [...prev, { id: `var-${Date.now()}-${prev.length}`, key: '', value: '', dataType: 'string' }])}
                 >Add variable</button>
-                <button className="px-2 py-1 border rounded text-xs" onClick={() => {
+                <button type="button" className="px-2 py-1 border rounded text-xs" onClick={() => {
                   // Open advanced JSON modal prefilled with composed inputs
                   const json = JSON.stringify(toPreviewInputs(), null, 2);
                   setAdvancedJson(json);
@@ -646,8 +798,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
       {/* Step type chooser */}
       {showTypeChooser && (
         <div className="mb-3 p-2 border rounded bg-white shadow-sm inline-flex gap-2">
-          <button className="px-2 py-1 border rounded" data-testid="step-type-PROMPT" onClick={() => addStep('PROMPT')}>PROMPT</button>
-          <button className="px-2 py-1 border rounded" onClick={() => setShowTypeChooser(false)}>Cancel</button>
+          <button type="button" className="px-2 py-1 border rounded" data-testid="step-type-PROMPT" onClick={() => addStep('PROMPT')}>PROMPT</button>
+          <button type="button" className="px-2 py-1 border rounded" onClick={() => setShowTypeChooser(false)}>Cancel</button>
         </div>
       )}
 
@@ -669,8 +821,8 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
                       : String(t.output)}
                   </div>
                 ) : null}
-                <button className="px-2 py-1 border rounded text-xs" data-testid="timeline-run-to-here" onClick={() => runPreview(i)}>Run to here</button>
-                <button className="px-2 py-1 border rounded text-xs" data-testid="timeline-rerun-step" onClick={() => rerunStep(i)}>Re-run step</button>
+                <button type="button" className="px-2 py-1 border rounded text-xs" data-testid="timeline-run-to-here" onClick={() => runPreview(i)}>Run to here</button>
+                <button type="button" className="px-2 py-1 border rounded text-xs" data-testid="timeline-rerun-step" onClick={() => rerunStep(i)}>Re-run step</button>
               </div>
             ))}
           </div>
@@ -692,8 +844,9 @@ export const LinearBuilderV2: React.FC<{ workflowId?: string }>
               <div className="text-xs text-red-600 mt-1">{advancedJsonError}</div>
             ) : null}
             <div className="mt-3 flex items-center gap-2 justify-end">
-              <button className="px-3 py-1 border rounded text-sm" onClick={() => setShowAdvancedJson(false)} data-testid="data-inspector-advanced-cancel">Cancel</button>
+              <button type="button" className="px-3 py-1 border rounded text-sm" onClick={() => setShowAdvancedJson(false)} data-testid="data-inspector-advanced-cancel">Cancel</button>
               <button
+                type="button"
                 className="px-3 py-1 border rounded text-sm bg-gray-50"
                 data-testid="data-inspector-advanced-save"
                 onClick={() => {
