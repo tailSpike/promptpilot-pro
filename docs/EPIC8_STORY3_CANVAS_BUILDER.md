@@ -48,7 +48,8 @@ All acceptance criteria are covered by Cypress E2E (see Verification below).
 - Additional unit coverage exists across Builder V2 (linear) for variable and preview flows; Canvas-specific unit tests can be expanded in follow-ups.
 
 ### Manual Verification
-- Primary guide: `docs/testing/manual/canvas-builder-v2.md`
+- Primary guide (story-named): `docs/EPIC8_STORY3_CANVAS_BUILDER_TEST_GUIDE.md`
+- Normalized manual: `docs/testing/manual/canvas-builder-v2.md`
 - Legacy copy (kept for compatibility): `docs/CANVAS_BUILDER_V2_TEST_GUIDE.md`
 
 ## Non-Goals

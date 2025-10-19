@@ -1,6 +1,6 @@
 # Canvas Builder V2 — Manual Verification Guide
 
-Note: This guide has a normalized twin in `docs/testing/manual/canvas-builder-v2.md`. Please prefer the normalized path for new references. This copy remains for backward compatibility with existing links.
+Note: This guide has a normalized twin in `docs/testing/manual/canvas-builder-v2.md` and a story-named copy `docs/EPIC8_STORY3_CANVAS_BUILDER_TEST_GUIDE.md`. Please prefer the normalized path for new references. This copy remains for backward compatibility with existing links.
 
 This guide mirrors the Cypress acceptance test for EPIC 8 — Story 3 (Canvas Builder). Follow these steps to verify functionality manually.
 
