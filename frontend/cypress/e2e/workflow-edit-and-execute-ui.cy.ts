@@ -134,7 +134,11 @@ describe('Workflow - Edit and Execute (UI)', () => {
 
       // Edit first step name (append to avoid transient empty value that triggers backend validation)
       cy.get('[data-testid="workflow-step-0"]').within(() => {
-        cy.get('[data-testid^="step-name-"]').type(' (edited)');
+        cy.get('[data-testid^="step-name-"]')
+          .scrollIntoView()
+          .should('be.visible')
+          .and('not.be.disabled')
+          .type(' (edited)', { force: true });
       });
 
       // Save updates via submit button

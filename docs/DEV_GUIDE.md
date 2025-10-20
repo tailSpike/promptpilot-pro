@@ -155,6 +155,49 @@ Tip: If you used `setx` to set user-level variables, open a new terminal or the 
 
 ---
 
+### 3.4 Builder V2 – Canvas Mode
+
+The Canvas Builder (V2) is an experimental UI for composing workflows using nodes and edges. It is gated behind feature flags and query params for deterministic testing and CI.
+
+- Feature flags returned by `/api/feature-flags`:
+	- `builder.v2.linear`: enables V2 in general
+	- `builder.v2.canvas`: enables Canvas mode option in V2
+	- `workflow.run.inline`: unrelated to Canvas, used by Linear V2 for inline runs
+
+- Query params for deterministic routing:
+	- `?v2=1` enables Builder V2 for the current session
+	- `?canvas=1` prefers Canvas mode when V2 is enabled
+
+- Local persistence keys:
+	- `ppp-builder-v2-mode`: remembers last selected V2 mode (`linear` or `canvas`)
+	- `ppp-canvas-last-saved:<workflowId>`: stores minimal canvas state (nodes, edges, zoom) on form submit for rehydration; Save is disabled until the workflow has an ID
+
+- Test IDs (for QA/E2E):
+	- `builder-v2-canvas`: root of the Canvas builder
+	- `canvas-step-library-button`: toggles quick-add library
+	- `canvas-add-step-<TYPE>`: quick-add PROMPT/TRANSFORM
+	- `canvas-node-<id>`, `canvas-edge-<id>`: nodes and edges
+	- `handle-output`, `handle-input`: connection handles on a node
+	- `edge-popover`, `edge-mapping-path`, `edge-mapping-apply`: edge mapping UI
+	- `canvas-zoom-in`, `canvas-zoom-out`, `canvas-minimap`: zoom/minimap UI
+
+Manual verification (mirrors the Cypress spec `frontend/cypress/e2e/builder-canvas-v2.cy.ts`):
+1) Ensure feature flags return `builder.v2.linear=true`, `builder.v2.canvas=true` (in tests this is intercepted).
+2) Create a workflow and visit `/workflows/:id/edit?v2=1&canvas=1`.
+3) Verify Canvas renders (`[data-testid="builder-v2-canvas"]`).
+4) Open Step Library and quick-add a PROMPT and a TRANSFORM; verify at least two nodes appear.
+5) Connect PROMPT → TRANSFORM by mousedown on `handle-output` of the first node and mouseup on `handle-input` of the second.
+6) In the popover, set mapping path (e.g., `output.text`) and Apply.
+7) Zoom in twice, zoom out once; confirm mini-map visible.
+8) Click Save (submits the editor form). Canvas state persists to localStorage.
+9) Reload the same URL; verify nodes and at least one edge rehydrate.
+
+Scope notes:
+- For this story, persistence is localStorage-only; server-side layout persistence is a follow-up.
+- Deterministic Canvas render in tests uses `?v2=1&canvas=1` to avoid UI toggle races.
+
+---
+
 ## 4. Coding standards
 - Use TypeScript everywhere; keep types close to usage.
 - Run `npm run lint` before pushing—pre-push hooks enforce lint + tests.

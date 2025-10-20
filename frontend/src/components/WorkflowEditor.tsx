@@ -5,6 +5,7 @@ import type { Prompt } from '../types';
 import { AuthContext } from '../contexts/AuthContext';
 import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import LinearBuilderV2 from './LinearBuilderV2';
+import CanvasBuilderV2 from './CanvasBuilderV2';
 
 type PromptModelProvider = 'openai' | 'azure' | 'anthropic' | 'google' | 'custom';
 
@@ -172,7 +173,10 @@ export default function WorkflowEditor() {
   const auth = useContext(AuthContext);
   const { isEnabled } = useFeatureFlags();
   const builderV2Enabled = isEnabled('builder.v2.linear');
+  const builderV2CanvasEnabled = isEnabled('builder.v2.canvas');
   const [useBuilderV2, setUseBuilderV2] = useState(false);
+  type BuilderV2Mode = 'linear' | 'canvas';
+  const [builderV2Mode, setBuilderV2Mode] = useState<BuilderV2Mode>('linear');
   const fallbackUserId = useMemo(() => {
     if (typeof window === 'undefined') {
       return null;
@@ -376,7 +380,29 @@ export default function WorkflowEditor() {
     if (builderV2Enabled && params.get('v2') === '1') {
       setUseBuilderV2(true);
     }
-  }, [id, isEditing, fetchWorkflow, fetchPrompts, location.search, builderV2Enabled]);
+    // Restore last Builder V2 mode
+    try {
+      const lastMode = typeof window !== 'undefined' ? window.localStorage.getItem('ppp-builder-v2-mode') : null;
+      if (lastMode === 'linear' || lastMode === 'canvas') {
+        setBuilderV2Mode(lastMode);
+      }
+      if (builderV2CanvasEnabled && params.get('canvas') === '1') {
+        setBuilderV2Mode('canvas');
+      } else if (builderV2Enabled && params.get('v2') === '1') {
+        // Default to linear when V2 is enabled for this session and no explicit canvas query is present
+        setBuilderV2Mode('linear');
+      }
+    } catch { /* ignore */ }
+  }, [id, isEditing, fetchWorkflow, fetchPrompts, location.search, builderV2Enabled, builderV2CanvasEnabled]);
+
+  // Persist Builder V2 mode choice
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('ppp-builder-v2-mode', builderV2Mode);
+      }
+    } catch { /* ignore */ }
+  }, [builderV2Mode]);
 
   const validateWorkflowSteps = () => {
     const errors: string[] = [];
@@ -430,6 +456,17 @@ export default function WorkflowEditor() {
         : await workflowsAPI.createWorkflow(workflowData);
 
       // For new workflows, we now have the ID and can save any pending steps
+      if (!isEditing) {
+        // Migrate any canvas draft (created without an id) into the namespaced storage key
+        try {
+          const draft = window.localStorage.getItem('ppp-canvas-draft:new');
+          if (draft) {
+            window.localStorage.setItem(`ppp-canvas-last-saved:${savedWorkflow.id}`, draft);
+            window.localStorage.removeItem('ppp-canvas-draft:new');
+          }
+        } catch { /* ignore */ }
+      }
+
       if (!isEditing && workflow.steps.length > 0) {
         const workflowId = savedWorkflow.id;
         
@@ -828,10 +865,99 @@ export default function WorkflowEditor() {
             >
               {useBuilderV2 ? 'Switch to Builder V1' : 'Switch to Builder V2'}
             </button>
+            {builderV2CanvasEnabled && (
+              <span className="inline-flex items-center gap-2 ml-3 align-middle">
+                <span className="text-sm text-gray-600">Mode:</span>
+                <button
+                  type="button"
+                  className={`px-2 py-1 border rounded text-sm ${builderV2Mode === 'linear' ? 'bg-purple-50 border-purple-300' : ''}`}
+                  data-testid="builder-v2-mode-linear"
+                  onClick={() => setBuilderV2Mode('linear')}
+                >
+                  Linear
+                </button>
+                <button
+                  type="button"
+                  className={`px-2 py-1 border rounded text-sm ${builderV2Mode === 'canvas' ? 'bg-purple-50 border-purple-300' : ''}`}
+                  data-testid="builder-v2-mode-canvas"
+                  onClick={() => setBuilderV2Mode('canvas')}
+                >
+                  Canvas
+                </button>
+              </span>
+            )}
           </div>
         )}
+        {/* Error banner (V2) */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex">
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <pre className="whitespace-pre-wrap font-sans">{error}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Basic Information (V2) */}
+          <div className="bg-white shadow rounded-lg p-4">
+            <h2 className="text-base font-medium text-gray-900 mb-3">Basic Information</h2>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label htmlFor="v2-name" className="block text-sm font-medium text-gray-700">
+                  Workflow Name *
+                </label>
+                <input
+                  type="text"
+                  id="v2-name"
+                  value={workflow.name}
+                  onChange={(e) => setWorkflow(prev => ({ ...prev, name: e.target.value }))}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="My Workflow"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="v2-description" className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  id="v2-description"
+                  value={workflow.description || ''}
+                  onChange={(e) => setWorkflow(prev => ({ ...prev, description: e.target.value }))}
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                  rows={3}
+                  placeholder="Optional description"
+                />
+              </div>
+            </div>
+          </div>
+          {builderV2CanvasEnabled && builderV2Mode === 'canvas' ? (
+            <CanvasBuilderV2 workflowId={typeof id === 'string' ? id : null} />
+          ) : (
+            <LinearBuilderV2 workflowId={typeof id === 'string' ? id : undefined} />
+          )}
 
-        <LinearBuilderV2 workflowId={typeof id === 'string' ? id : undefined} />
+          <div className="flex items-center justify-end gap-3">
+            <Link
+              to="/workflows"
+              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={saving}
+              data-testid="submit-workflow-button"
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : (isEditing ? 'Update Workflow' : 'Create Workflow')}
+            </button>
+          </div>
+        </form>
       </div>
     );
   }
@@ -1288,6 +1414,7 @@ export default function WorkflowEditor() {
                                       min="0"
                                       max="2"
                                       step="0.05"
+                                      disabled={false}
                                         data-testid="model-temperature-input"
                                       value={model.parameters?.temperature ?? DEFAULT_MODEL_PARAMETERS.temperature}
                                       onChange={(e) => {
@@ -1954,6 +2081,7 @@ export default function WorkflowEditor() {
                     type="text"
                     value={modalStepName}
                     onChange={(e) => setModalStepName(e.target.value)}
+                    disabled={false}
                     className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                     placeholder={`Step ${workflow.steps.length + 1}`}
                     data-testid="modal-step-name"
