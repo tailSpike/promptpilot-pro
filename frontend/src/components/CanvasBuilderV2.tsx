@@ -23,6 +23,7 @@ interface PersistedCanvasState {
 }
 
 const LS_KEY_LAST_SAVED = 'ppp-canvas-last-saved';
+const LS_KEY_DRAFT_NEW = 'ppp-canvas-draft:new';
 
 interface CanvasBuilderV2Props {
   workflowId?: string | null;
@@ -61,15 +62,29 @@ export const CanvasBuilderV2: React.FC<CanvasBuilderV2Props> = ({ workflowId }) 
 
   // Rehydrate from last saved (local storage) per workflow on mount/id change
   useEffect(() => {
-    if (!storageKey) return; // skip rehydrate for new workflow page (no id yet)
     try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as PersistedCanvasState;
-        if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
-          setNodes(parsed.nodes);
-          setEdges(parsed.edges);
-          setZoom(parsed.zoom ?? 1);
+      if (storageKey) {
+        const raw = window.localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as PersistedCanvasState;
+          if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+            setNodes(parsed.nodes);
+            setEdges(parsed.edges);
+            setZoom(parsed.zoom ?? 1);
+            return;
+          }
+        }
+      } else {
+        // New workflow (no id yet): attempt to load draft
+        const rawDraft = window.localStorage.getItem(LS_KEY_DRAFT_NEW);
+        if (rawDraft) {
+          const parsed = JSON.parse(rawDraft) as PersistedCanvasState;
+          if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+            setNodes(parsed.nodes);
+            setEdges(parsed.edges);
+            setZoom(parsed.zoom ?? 1);
+            return;
+          }
         }
       }
     } catch {
@@ -77,7 +92,7 @@ export const CanvasBuilderV2: React.FC<CanvasBuilderV2Props> = ({ workflowId }) 
     }
   }, [storageKey]);
 
-  // Hook into nearest form submit to persist current graph
+  // Hook into nearest form submit to persist current graph (only when workflowId exists)
   useEffect(() => {
     const form = document.querySelector('form');
     if (!form) return;
@@ -93,6 +108,17 @@ export const CanvasBuilderV2: React.FC<CanvasBuilderV2Props> = ({ workflowId }) 
     };
     form.addEventListener('submit', handler);
     return () => form.removeEventListener('submit', handler);
+  }, [nodes, edges, zoom, storageKey]);
+
+  // Persist draft continuously for new workflows (no id yet)
+  useEffect(() => {
+    if (storageKey) return; // do not write draft when we have a concrete workflow id
+    try {
+      const payload: PersistedCanvasState = { nodes, edges, zoom };
+      window.localStorage.setItem(LS_KEY_DRAFT_NEW, JSON.stringify(payload));
+    } catch {
+      // ignore
+    }
   }, [nodes, edges, zoom, storageKey]);
 
   const addNode = useCallback((type: NodeType) => {
@@ -144,25 +170,15 @@ export const CanvasBuilderV2: React.FC<CanvasBuilderV2Props> = ({ workflowId }) 
 
   const graphStyle = useMemo(() => ({ transform: `scale(${zoom})`, transformOrigin: '0 0' as const }), [zoom]);
 
-  // Compute visual handle center using DOM if available; fallback to math constants
+  // Compute handle centers purely from node layout (zoom-invariant), avoids DOM/transform rounding
   const getHandleCenter = useCallback((nodeId: string, kind: 'input' | 'output') => {
-    const g = graphRef.current;
-    const el = (kind === 'input' ? inputHandleRefs.current[nodeId] : outputHandleRefs.current[nodeId]);
-    if (g && el) {
-      const gRect = g.getBoundingClientRect();
-      const r = el.getBoundingClientRect();
-      const cx = (r.left + r.width / 2 - gRect.left) / zoom;
-      const cy = (r.top + r.height / 2 - gRect.top) / zoom;
-      return { x: cx, y: cy };
-    }
-    // Fallback to computed positions
-    const n = nodes.find((n) => n.id === nodeId);
+    const n = nodes.find((nn) => nn.id === nodeId);
     if (!n) return null;
     if (kind === 'output') {
       return { x: n.position.x + NODE_W + OUTPUT_HANDLE_OFFSET_X, y: n.position.y + NODE_H / 2 };
     }
     return { x: n.position.x + INPUT_HANDLE_OFFSET_X, y: n.position.y + NODE_H / 2 };
-  }, [nodes, zoom, INPUT_HANDLE_OFFSET_X, OUTPUT_HANDLE_OFFSET_X, NODE_W, NODE_H]);
+  }, [nodes, INPUT_HANDLE_OFFSET_X, OUTPUT_HANDLE_OFFSET_X, NODE_W, NODE_H]);
 
 
   const submitNearestForm = useCallback(() => {

@@ -456,6 +456,17 @@ export default function WorkflowEditor() {
         : await workflowsAPI.createWorkflow(workflowData);
 
       // For new workflows, we now have the ID and can save any pending steps
+      if (!isEditing) {
+        // Migrate any canvas draft (created without an id) into the namespaced storage key
+        try {
+          const draft = window.localStorage.getItem('ppp-canvas-draft:new');
+          if (draft) {
+            window.localStorage.setItem(`ppp-canvas-last-saved:${savedWorkflow.id}`, draft);
+            window.localStorage.removeItem('ppp-canvas-draft:new');
+          }
+        } catch { /* ignore */ }
+      }
+
       if (!isEditing && workflow.steps.length > 0) {
         const workflowId = savedWorkflow.id;
         
