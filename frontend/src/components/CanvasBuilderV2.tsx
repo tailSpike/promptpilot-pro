@@ -303,8 +303,8 @@ export const CanvasBuilderV2: React.FC<CanvasBuilderV2Props> = ({ workflowId }) 
             }
           }}
         >
-          {/* Edges: SVG layer in graph coordinates */}
-          <svg className="absolute inset-0" width="100%" height="100%" style={{ overflow: 'visible' }}>
+          {/* Edges: SVG layer above node backgrounds but below handles */}
+          <svg className="absolute inset-0 z-10" width="100%" height="100%" style={{ overflow: 'visible' }}>
             {edges.map((e) => {
               const src = nodes.find((n) => n.id === e.sourceId);
               const dst = nodes.find((n) => n.id === e.targetId);
@@ -325,22 +325,23 @@ export const CanvasBuilderV2: React.FC<CanvasBuilderV2Props> = ({ workflowId }) 
               const c2y = ty;
               const d = `M ${sx},${sy} C ${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`;
               return (
-                <path
-                  key={e.id}
-                  d={d}
-                  stroke="#7c3aed"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                  fill="none"
-                  className="cursor-pointer"
-                  data-testid={`canvas-edge-${e.id}`}
-                  onClick={() => {
-                    setEdgePopover({ edgeId: e.id, open: true });
-                    setEdgeMappingDraft(e.mappingPath || '');
-                  }}
-                />
+                <g key={e.id} className="cursor-pointer" data-testid={`canvas-edge-${e.id}`} onClick={() => {
+                  setEdgePopover({ edgeId: e.id, open: true });
+                  setEdgeMappingDraft(e.mappingPath || '');
+                }}>
+                  <path
+                    d={d}
+                    stroke="#7c3aed"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    fill="none"
+                  />
+                  {/* endpoint caps to visually meet handle centers */}
+                  <circle cx={sx} cy={sy} r={3} fill="#7c3aed" />
+                  <circle cx={tx} cy={ty} r={3} fill="#7c3aed" />
+                </g>
               );
             })}
             {pendingConnection.current && pendingPoint && (() => {
