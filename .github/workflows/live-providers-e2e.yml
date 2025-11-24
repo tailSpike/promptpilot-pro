@@ -9,7 +9,7 @@ on:
         default: 'cypress/e2e/workflow-live-providers.cy.ts'
   schedule:
     # Run daily at 07:20 UTC
-    - cron: '20 7 * * *'
+    # - cron: '20 7 * * *'
 
 concurrency:
   group: live-providers-e2e-${{ github.ref }}
