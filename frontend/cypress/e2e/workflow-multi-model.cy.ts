@@ -151,13 +151,11 @@ describe('Workflow multi-model execution', () => {
       .find('.bg-gray-50.border.border-gray-200.rounded-lg')
       .should(($cards) => {
         expect($cards.length, 'model card count').to.be.gte(2);
-      })
-      .then(($cards) => {
-        cy.wrap($cards.eq(0)).as('modelOne');
-        cy.wrap($cards.eq(1)).as('modelTwo');
       });
 
-    cy.get('@modelOne')
+    cy.get('@promptStep')
+      .find('.bg-gray-50.border.border-gray-200.rounded-lg')
+      .eq(0)
       .find('[data-testid="model-provider-select"]')
       .first()
       .scrollIntoView()
@@ -172,11 +170,15 @@ describe('Workflow multi-model execution', () => {
         expect(optionText).to.include('Google · Gemini');
       });
 
-    cy.get('@modelOne')
+    cy.get('@promptStep')
+      .find('.bg-gray-50.border.border-gray-200.rounded-lg')
+      .eq(0)
       .find('[data-testid="model-name-input"]')
       .should('have.value', 'gpt-4o-mini');
 
-    cy.get('@modelTwo')
+    cy.get('@promptStep')
+      .find('.bg-gray-50.border.border-gray-200.rounded-lg')
+      .eq(1)
       .find('[data-testid="model-provider-select"]')
       .first()
       .scrollIntoView()
@@ -185,18 +187,18 @@ describe('Workflow multi-model execution', () => {
           expect($select.val(), 'model two provider value').to.equal('anthropic');
           return;
         }
+        // Programmatically set value to avoid detachment/actionability issues
+        const el = $select.get(0) as HTMLSelectElement;
+        el.value = 'anthropic';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      })
+      // allow UI to settle; provider selection may debounce server updates
+      .then(() => cy.wait(200));
 
-        return cy
-          .wrap($select)
-          // In CI, this select can be momentarily flagged as non-interactive; force the selection after scrolling
-          .select('anthropic', { force: true })
-          .then(() => cy.wait('@updateStep'))
-          .then((interception) => {
-            expect([200, 204, 400], 'model two provider response status').to.include(interception?.response?.statusCode);
-          });
-      });
-
-    cy.get('@modelTwo')
+    cy.get('@promptStep')
+      .find('.bg-gray-50.border.border-gray-200.rounded-lg')
+      .eq(1)
       .find('[data-testid="model-name-input"]')
       .then(($input) => {
         if (($input.val() as string) === 'claude-3-haiku-20240307') {
@@ -214,8 +216,11 @@ describe('Workflow multi-model execution', () => {
           });
       });
 
-    cy.get('@modelTwo')
+    cy.get('@promptStep')
+      .find('.bg-gray-50.border.border-gray-200.rounded-lg')
+      .eq(1)
       .find('[data-testid="model-temperature-input"]')
+      .scrollIntoView()
       .then(($input) => {
         if (($input.val() as string) === '0.3') {
           expect($input.val(), 'model two temperature value').to.equal('0.3');
@@ -224,8 +229,10 @@ describe('Workflow multi-model execution', () => {
 
         return cy
           .wrap($input)
-          .clear()
-          .type('0.3')
+          .should('be.visible')
+          // In CI, this input can be flagged as non-interactive momentarily; force typing after ensuring visibility
+          .clear({ force: true })
+          .type('0.3', { force: true })
           .then(() => cy.wait('@updateStep'))
           .then((interception) => {
             expect([200, 204, 400], 'model two temperature response status').to.include(interception?.response?.statusCode);

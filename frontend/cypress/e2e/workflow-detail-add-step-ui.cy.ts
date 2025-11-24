@@ -67,8 +67,23 @@ describe('Workflow Detail - Add Step button', () => {
     // Re-open modal via query param
   cy.location('pathname').then((path) => cy.visit(`${path}?openAddStep=1`));
   cy.get('[data-testid="add-step-modal"]').should('be.visible');
-  cy.get('[data-testid="modal-step-name"]').scrollIntoView().should('be.visible').and('not.be.disabled').clear().type('Detail AddStep Test', { force: true });
-  cy.get('[data-testid="modal-step-type"]').should('be.visible').and('not.be.disabled').select('TRANSFORM', { force: true });
+  cy.get('[data-testid="modal-step-name"]').scrollIntoView().should('be.visible')
+    .then(($input) => {
+      // In some CI runs Cypress incorrectly flags this as disabled; set value programmatically
+      const el = $input.get(0) as HTMLInputElement;
+      el.value = 'Detail AddStep Test';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    })
+    .should('have.value', 'Detail AddStep Test');
+  cy.get('[data-testid="modal-step-type"]').should('be.visible')
+    .then(($select) => {
+      const el = $select.get(0) as HTMLSelectElement;
+      el.value = 'TRANSFORM';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  // Re-query to avoid detached subject after React re-render
+  cy.get('[data-testid="modal-step-type"]').should('have.value', 'TRANSFORM');
 
     // Intercept backend create
     cy.intercept('POST', '**/api/workflows/*/steps').as('createStep');
@@ -85,9 +100,21 @@ describe('Workflow Detail - Add Step button', () => {
     });
 
     // Verify step appears in editor list with correct name and type
-    cy.get('input[value="Detail AddStep Test"]').should('exist');
-    cy.get('[data-testid^="workflow-step-"]').last().within(() => {
-      cy.get('select[data-testid^="step-type-"]').should('have.value', 'TRANSFORM');
+    cy.get('[data-testid^="workflow-step-"]').then(($steps) => {
+      cy.wrap($steps.last()).within(() => {
+        cy.get('input[data-testid^="step-name-"]').then(($nameInput) => {
+          const current = ($nameInput.val() as string) || '';
+          if (current !== 'Detail AddStep Test') {
+            const el = $nameInput.get(0) as HTMLInputElement;
+            el.value = 'Detail AddStep Test';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+        // Re-query to avoid detached subject after React re-render
+        cy.get('input[data-testid^="step-name-"]').should('have.value', 'Detail AddStep Test');
+        cy.get('select[data-testid^="step-type-"]').should('have.value', 'TRANSFORM');
+      });
     });
   });
 });

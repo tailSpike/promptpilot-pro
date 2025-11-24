@@ -1,9 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { LinearBuilderV2 } from '../components/LinearBuilderV2';
 import { MemoryRouter } from 'react-router-dom';
+
+// Mock feature flags hook to avoid provider dependency
+vi.mock('../hooks/useFeatureFlags', () => ({
+  useFeatureFlags: () => ({
+    flags: { 'builder.v2.linear': true, 'workflow.run.inline': true },
+    loading: false,
+    refresh: async () => {},
+    isEnabled: (flag: string) => flag === 'builder.v2.linear' || flag === 'workflow.run.inline',
+  }),
+}));
+
+// Import after mocks are set up
+import { LinearBuilderV2 } from '../components/LinearBuilderV2';
 
 describe('LinearBuilderV2 component', () => {
   it('renders and supports adding/removing Additional variables; Save disabled until valid', async () => {

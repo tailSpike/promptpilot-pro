@@ -5,13 +5,22 @@ PromptPilot Pro is an AI workflow platform to design, execute, and monitor struc
 ---
 
 ## ✨ Features
-- Authenticated workspace with folders and scoped resources
-- Prompt authoring with variables, metadata, and version history
-- Workflow builder with PROMPT, CONDITION, TRANSFORM, DELAY, WEBHOOK, DECISION steps
-- Preview and inspect step-by-step results before saving
-- Triggers: Manual, Scheduled (cron), Webhook, API, Event (extensible)
-- Type-safe stack: React + Vite frontend, Express + Prisma backend
-- CI: Lint, build, unit/integration tests, and Cypress smoke flows
+### Canvas Builder (feature flagged)
+
+An experimental Canvas Builder (EPIC 8 — Story 3) is available behind a feature flag.
+
+- Backend flag: `FEATURE_FLAG_BUILDER_V2_CANVAS`
+- Defaults: Enabled in `development`, `test`, and `e2e` modes; disabled in production unless explicitly enabled.
+- Frontend usage: Toggle Builder V2 in the Workflow Editor. When the canvas flag is enabled, the V2 editor renders the Canvas Builder.
+
+How to use locally:
+- Navigate to `/workflows/:id/edit?v2=1&canvas=1` to force Builder V2 Canvas for a specific workflow.
+- For a brand new workflow, enter a name under "Basic Information" and click "Create Workflow" first. Canvas Save is disabled until a workflow ID exists.
+- Canvas layout persistence is client-side: `localStorage` key `ppp-canvas-last-saved:<workflowId>` stores nodes, edges, and zoom per workflow.
+
+Notes:
+- E2E tests cover node/edge creation, mapping popover, minimap/zoom controls, and persistence across revisit.
+- A follow-up will persist layout to the database.
 
 ---
 
@@ -52,6 +61,13 @@ cd frontend
 npm run dev
 ```
 Frontend: http://localhost:5173 • Backend: http://localhost:3001
+
+### Run the Canvas Builder E2E (optional)
+Windows PowerShell:
+```powershell
+# From repo root: build, reset test DB, start servers, and run the Canvas spec
+node scripts/run-e2e.js --spec cypress/e2e/builder-canvas-v2.cy.ts --headed
+```
 
 ---
 
